@@ -9,7 +9,8 @@ export default function OAuthCallback() {
     const status = params.get("status");
 
     if (status === "connected") {
-      navigate("/dashboard");
+navigate("/dashboard", { replace: true });
+
     }
 
     if (status === "connected_select_resource") {

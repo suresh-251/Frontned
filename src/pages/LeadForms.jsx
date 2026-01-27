@@ -12,43 +12,44 @@ import PageSelector from "../components/facebook/PageSelector";
 import LeadFormCard from "../components/facebook/LeadFormCard";
 import { useFacebookPage } from "../context/FacebookPageContext";
 
-
 export default function LeadForms() {
-const { activePage } = useFacebookPage();
+  const { activePage } = useFacebookPage();
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  /* =========================
-     LOAD FORMS FOR ACTIVE PAGE
-     ========================= */
-  const loadForms = async () => {
-    if (!activePage) {
-      setForms([]);
-      return;
-    }
+const loadForms = async (silent = false) => {
+  if (!activePage) {
+    setForms([]);
+    return;
+  }
 
-    try {
-      setLoading(true);
-      setError("");
+  try {
+    if (!silent) setLoading(true);
+    const data = await getLeadForms(activePage.pageId);
+    setForms(data);
+  } catch {
+    setError("Failed to load lead forms");
+  } finally {
+    if (!silent) setLoading(false);
+  }
+};
 
-      const data = await getLeadForms();
-      setForms(data);
-    } catch {
-      setError("Failed to load lead forms");
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  // 🔥 Reload when active page changes
+  // 🔁 AUTO refresh forms (every 30 sec)
   useEffect(() => {
-    loadForms();
+    loadForms(true);
+
+    const interval = setInterval(() => {
+      loadForms(true);
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [activePage?.pageId]);
 
-  /* =========================
+  /* ============================
      ENABLE / DISABLE FORM
-     ========================= */
+     ============================ */
   const toggleForm = async (form) => {
     if (!activePage) return;
 
@@ -58,7 +59,9 @@ const { activePage } = useFacebookPage();
       } else {
         await enableForm(activePage.pageId, form.id);
       }
-      loadForms();
+
+      // 🔘 manual refresh after toggle
+      await loadForms();
     } catch {
       setError("Failed to update form state");
     }
@@ -68,7 +71,6 @@ const { activePage } = useFacebookPage();
     <div className="card">
       <h2>Facebook Lead Forms</h2>
 
-      {/* ✅ PAGE SELECTOR */}
       <PageSelector />
 
       <hr />
@@ -76,21 +78,17 @@ const { activePage } = useFacebookPage();
       {loading && <p>Loading forms...</p>}
       {error && <p style={{ color: "red" }}>{error}</p>}
 
-      {!loading && !activePage && (
-        <p>Please select a Facebook page</p>
-      )}
-
-      {!loading && activePage && forms.length === 0 && (
-        <p>No lead forms found for this page</p>
-      )}
+      {!activePage && <p>Please select a Facebook page</p>}
 
       {forms.map(form => (
+// {/* Manual sync stays */}
         <LeadFormCard
           key={form.id}
           form={form}
           onToggle={toggleForm}
           onSync={syncLeadsByForm}
         />
+
       ))}
     </div>
   );

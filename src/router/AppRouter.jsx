@@ -8,14 +8,23 @@ import CreatePost from "../pages/CreatePost";
 import MultiPagePost from "../pages/MultiPagePost";
 import LeadForms from "../pages/LeadForms";
 import Leads from "../pages/Leads";
-
+import ProtectedRoute from "./ProtectedRoute";
+import PageSubscriptions from "../pages/PageSubscriptions";
 
 export default function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<Login />} />
       <Route path="/oauth/callback/facebook" element={<OAuthCallback />} />
-      <Route path="/facebook/pages/select" element={<PageSelection />} />
+      {/* <Route path="/facebook/pages/select" element={<PageSelection />} /> */}
+            {/* 🔐 Protected area */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      ></Route>
       {/* Protected Dashboard */}
       <Route element={<DashboardLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
@@ -23,6 +32,9 @@ export default function AppRouter() {
         <Route path="/post/multi" element={<MultiPagePost />} />
         <Route path="/leads/forms" element={<LeadForms />} />
         <Route path="/leads" element={<Leads />} />
+        
+        {/* 🔥 NEW PAGE */}
+        <Route path="/facebook/pages/subscriptions" element={<PageSubscriptions />} />
       </Route>
     </Routes>
   );

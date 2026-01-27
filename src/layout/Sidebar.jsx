@@ -20,11 +20,18 @@ export default function Sidebar() {
         <Link to="/dashboard">Dashboard</Link>
         <Link to="/post/create">Create Post</Link>
         <Link to="/post/multi">Multi-Page Post</Link>
-        <Link to="/analytics">Analytics</Link>
+
+        <hr style={{ borderColor: "#374151" }} />
+
         <Link to="/leads">Leads</Link>
         <Link to="/leads/forms">Lead Forms</Link>
 
+        {/* 🔥 NEW */}
+        <Link to="/facebook/pages/subscriptions">
+          Lead Page Subscriptions
+        </Link>
       </nav>
     </div>
   );
 }
+  

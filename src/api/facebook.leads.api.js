@@ -3,12 +3,13 @@ import api from "./apiClient";
 /* ============================
    GET LEAD FORMS (ACTIVE PAGE)
    ============================ */
-export const getLeadForms = async () => {
-  const res = await api.get("/facebook/leads/forms");
-
-  // ✅ backend already returns array
+export const getLeadForms = async (pageId) => {
+  const res = await api.get("/facebook/leads/forms", {
+    params: { pageId }
+  });
   return res.data || [];
 };
+
 
 
 /* ============================

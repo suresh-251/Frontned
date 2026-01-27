@@ -21,14 +21,15 @@ export default function Leads() {
   }, []);
 
   /* LOAD FORMS WHEN PAGE CHANGES */
-  useEffect(() => {
-    if (!filters.pageId) {
-      setForms([]);
-      return;
-    }
+useEffect(() => {
+  if (!filters.pageId) {
+    setForms([]);
+    return;
+  }
 
-    getLeadForms().then(setForms);
-  }, [filters.pageId]);
+  getLeadForms(filters.pageId).then(setForms);
+}, [filters.pageId]);
+
 
   return (
     <div className="card">

@@ -22,17 +22,6 @@ export default function DashboardLayout() {
         <div style={{ flex: 1, background: "#f5f6f8" }}>
           <Topbar />
 
-          {/* ⚠️ PAGE NOT SELECTED WARNING */}
-          {caps && !caps.hasActivePage && (
-            <div className="card" style={{ margin: 20 }}>
-              ⚠ No Facebook Page Selected  
-              <br />
-              <a href="/facebook/pages/select">
-                Select a Page
-              </a>
-            </div>
-          )}
-
           <div style={{ padding: "20px" }}>
             <Outlet />
           </div>

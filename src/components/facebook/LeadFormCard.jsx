@@ -32,7 +32,7 @@ export default function LeadFormCard({
         </label>
 
         <button onClick={() => onSync(form.id)}>
-          Sync
+            Sync Old Leads
         </button>
       </div>
     </div>

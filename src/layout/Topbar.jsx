@@ -14,7 +14,7 @@ export default function Topbar() {
       <strong>
         {caps?.hasActivePage
           ? `Active Page: ${caps.activePageName}`
-          : "No active page selected"}
+          : "No active page (posting & leads still available)"}
       </strong>
     </div>
   );
