@@ -1,157 +1,219 @@
 import { useEffect, useState } from "react";
-import {
-  postTextToFacebook,
-  postImageToFacebook,
-  postVideoToFacebook
-} from "../api/facebook.posts.api";
-import { loadCapabilities } from "../store/capabilities.store";
+import api from "../api/apiClient";
+import { getInstagramDisplayName } from "../utils/instagramDisplayName";
 
 export default function CreatePost() {
-  const [caps, setCaps] = useState(null);
-  const [mode, setMode] = useState(null);
+  const [mode, setMode] = useState("Text"); // Text | Image | Video
 
-  const [message, setMessage] = useState("");
-  const [caption, setCaption] = useState("");
-  const [description, setDescription] = useState("");
+  const [fbPages, setFbPages] = useState([]);
+  const [igAccounts, setIgAccounts] = useState([]);
 
-  const [imageFile, setImageFile] = useState(null);
-  const [videoFile, setVideoFile] = useState(null);
-  const [videoUrl, setVideoUrl] = useState("");
+  const [selectedFb, setSelectedFb] = useState([]);
+  const [selectedIg, setSelectedIg] = useState([]);
+
+  const [content, setContent] = useState("");
+  const [file, setFile] = useState(null);
 
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState("");
+  const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
+  /* =========================
+     LOAD FACEBOOK PAGES
+     ========================= */
   useEffect(() => {
-    loadCapabilities().then(setCaps);
+    api.get("/facebook/pages")
+      .then(res => setFbPages(res.data))
+      .catch(() => {});
   }, []);
 
+  /* =========================
+     LOAD INSTAGRAM ACCOUNTS
+     ========================= */
   useEffect(() => {
-    if (!caps) return;
-    if (caps.canPostText) setMode("text");
-    else if (caps.canPostImage) setMode("image");
-    else if (caps.canPostVideo) setMode("video");
-  }, [caps]);
+    api.get("/instagram/accounts")
+      .then(res => setIgAccounts(res.data))
+      .catch(() => {});
+  }, []);
 
-  const resetFiles = () => {
-    setImageFile(null);
-    setVideoFile(null);
-    setVideoUrl("");
-  };
-
-  const resetStatus = () => {
-    setSuccess("");
-    setError("");
-  };
-
-  if (!caps) return <p>Loading...</p>;
-
-  if (!caps.hasActivePage) {
-    return (
-      <div className="card">
-        <h3>No Facebook Page Selected</h3>
-        <a href="/facebook/pages/select">Select Page</a>
-      </div>
+  const toggle = (id, setter) => {
+    setter(prev =>
+      prev.includes(id)
+        ? prev.filter(x => x !== id)
+        : [...prev, id]
     );
-  }
-
-  const submitText = async () => {
-    try {
-      setLoading(true);
-      resetStatus();
-      await postTextToFacebook(message);
-      setSuccess("Post published successfully ✅");
-      setMessage("");
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
   };
 
-  const submitImage = async () => {
-    try {
-      setLoading(true);
-      resetStatus();
-      await postImageToFacebook({ imageFile, caption });
-      setSuccess("Image posted successfully ✅");
-      resetFiles();
-      setCaption("");
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
+  /* =========================
+     SUBMIT (UNIFIED)
+     ========================= */
+  const submit = async () => {
+    if (!selectedFb.length && !selectedIg.length) {
+      setError("Select at least one Facebook page or Instagram account");
+      return;
     }
-  };
 
-  const submitVideo = async () => {
+    if (mode !== "Text" && !file) {
+      setError("Select a media file");
+      return;
+    }
+
     try {
       setLoading(true);
-      resetStatus();
-      await postVideoToFacebook({
-        videoFile,
-        videoUrl,
-        description
+      setError("");
+      setResult(null);
+
+      const form = new FormData();
+
+      // Platforms
+      if (selectedFb.length) form.append("Platforms", "Facebook");
+      if (selectedIg.length) form.append("Platforms", "Instagram");
+
+      // Targets
+      [...selectedFb, ...selectedIg].forEach(id =>
+        form.append("TargetAccountIds", id)
+      );
+
+      form.append("Type", mode);
+      form.append("Content", content || "");
+
+      if (file) {
+        form.append("MediaFiles", file);
+      }
+
+      const res = await api.post("/post", form, {
+        headers: { "Content-Type": "multipart/form-data" }
       });
-      setSuccess("Video posted successfully ✅");
-      resetFiles();
-      setDescription("");
+
+      setResult(res.data);
     } catch (e) {
-      setError(e.message);
+      setError("Unified post failed");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="card">
-      <h2>Create Post</h2>
+    <div style={{ maxWidth: 800 }}>
+      <h1>Unified Multi-Page Post</h1>
 
-      <div>
-        {caps.canPostText && (
-          <button onClick={() => { setMode("text"); resetFiles(); }}>
-            Text
-          </button>
-        )}
-        {caps.canPostImage && (
-          <button onClick={() => { setMode("image"); resetFiles(); }}>
-            Image
-          </button>
-        )}
-        {caps.canPostVideo && (
-          <button onClick={() => { setMode("video"); resetFiles(); }}>
-            Video
-          </button>
-        )}
+      {/* MODE */}
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={() => setMode("Text")}>Text</button>{" "}
+        <button onClick={() => setMode("Image")}>Image</button>{" "}
+        <button onClick={() => setMode("Video")}>Video</button>
       </div>
 
-      {success && <p style={{ color: "green" }}>{success}</p>}
+{/* FACEBOOK + INSTAGRAM SIDE BY SIDE */}
+<div
+  style={{
+    display: "flex",
+    gap: "40px",
+    alignItems: "flex-start",
+    marginTop: 20,
+    flexWrap: "wrap"
+  }}
+>
+  {/* FACEBOOK PAGES */}
+  <div style={{ flex: 1, minWidth: 300 }}>
+    <h3>Facebook Pages</h3>
+    {fbPages.length === 0 && <p>No pages found</p>}
+{fbPages.map(p => (
+  <div key={p.pageId} style={{ marginBottom: 6 }}>
+    <label
+      style={{
+        display: "inline-flex",
+        alignItems: "baseline",
+        gap: 8,
+        cursor: "pointer"
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={selectedFb.includes(p.pageId)}
+        onChange={() => toggle(p.pageId, setSelectedFb)}
+      />
+      <span>{p.name}</span>
+    </label>
+  </div>
+))}
+
+  </div>
+
+  {/* INSTAGRAM ACCOUNTS */}
+  <div style={{ flex: 1, minWidth: 300 }}>
+    <h3>Instagram Accounts</h3>
+    {igAccounts.length === 0 && <p>No accounts found</p>}
+{igAccounts.map(a => (
+  <div key={a.instagramBusinessId} style={{ marginBottom: 6 }}>
+    <label
+      style={{
+        display: "inline-flex",
+        alignItems: "baseline",
+        gap: 8,
+        cursor: "pointer"
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={selectedIg.includes(a.instagramBusinessId)}
+        onChange={() =>
+          toggle(a.instagramBusinessId, setSelectedIg)
+        }
+      />
+      <span>
+        <span>{getInstagramDisplayName(a)}</span>
+        {a.isActive ? "✓" : " (inactive)"}
+      </span>
+    </label>
+  </div>
+))}
+
+  </div>
+</div>
+
+
+
+
+      {/* CONTENT */}
+      <textarea
+        rows="4"
+        style={{ width: "100%" }}
+        placeholder="Post content"
+        value={content}
+        onChange={e => setContent(e.target.value)}
+      />
+
+      <br /><br />
+
+      {/* MEDIA */}
+      {(mode === "Image" || mode === "Video") && (
+        <input
+          type="file"
+          accept={mode === "Image" ? "image/*" : "video/*"}
+          onChange={e => setFile(e.target.files[0])}
+        />
+      )}
+
+      <br /><br />
+
+      <button onClick={submit} disabled={loading}>
+        {loading ? "Posting..." : "Post to Selected Accounts"}
+      </button>
+
       {error && <p style={{ color: "red" }}>{error}</p>}
 
-      {mode === "text" && (
-        <>
-          <textarea value={message} onChange={e => setMessage(e.target.value)} />
-          <button onClick={submitText}>Post</button>
-        </>
-      )}
-
-      {mode === "image" && (
-        <>
-          <input type="file" accept="image/*"
-            onChange={e => setImageFile(e.target.files[0])} />
-          <textarea value={caption} onChange={e => setCaption(e.target.value)} />
-          <button onClick={submitImage}>Post Image</button>
-        </>
-      )}
-
-      {mode === "video" && (
-        <>
-          <input type="file" accept="video/*"
-            onChange={e => setVideoFile(e.target.files[0])} />
-          <textarea value={description}
-            onChange={e => setDescription(e.target.value)} />
-          <button onClick={submitVideo}>Post Video</button>
-        </>
+      {/* RESULT */}
+      {result && (
+        <div style={{ marginTop: 20 }}>
+          <h3>Result</h3>
+          {result.map(r => (
+            <div key={r.targetAccountId}>
+              <strong>{r.targetAccountId}</strong> →{" "}
+              {r.status} {r.success ? "✅" : "❌"}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -18,8 +18,8 @@ export default function Sidebar() {
 
       <nav style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <Link to="/dashboard">Dashboard</Link>
-        <Link to="/post/create">Create Post</Link>
-        <Link to="/post/multi">Multi-Page Post</Link>
+        <Link to="/post/create">Compose Post</Link>
+        {/* <Link to="/post/multi">Multi-Page Post</Link> */}
 
         <hr style={{ borderColor: "#374151" }} />
 

@@ -14,7 +14,7 @@ navigate("/dashboard", { replace: true });
     }
 
     if (status === "connected_select_resource") {
-      navigate("/facebook/pages/select");
+      navigate("/dashboard");
     }
 
     if (!status) {
