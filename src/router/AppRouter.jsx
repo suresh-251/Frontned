@@ -16,7 +16,7 @@ export default function AppRouter() {
     <Routes>
       <Route path="/" element={<Login />} />
       <Route path="/oauth/callback/facebook" element={<OAuthCallback />} />
-      {/* <Route path="/facebook/pages/select" element={<PageSelection />} /> */}
+      <Route path="/facebook/pages/select" element={<PageSelection />} />
             {/* 🔐 Protected area */}
       <Route
         element={
@@ -29,7 +29,7 @@ export default function AppRouter() {
       <Route element={<DashboardLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/post/create" element={<CreatePost />} />
-        <Route path="/post/multi" element={<MultiPagePost />} />
+        {/* <Route path="/post/multi" element={<MultiPagePost />} /> */}
         <Route path="/leads/forms" element={<LeadForms />} />
         <Route path="/leads" element={<Leads />} />
         

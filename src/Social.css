@@ -1,0 +1,64 @@
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont;
+  background: #f5f6f8;
+  color: #111827;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+
+button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+input,
+textarea {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px;
+  width: 100%;
+  font-size: 14px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+
+.card {
+  background: white;
+  padding: 16px;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+
+.page-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}

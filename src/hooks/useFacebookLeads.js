@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import {
   getLeads,
-  updateLeadStatus
+  updateLeadStatus,
+  assignLead as assignLeadApi
 } from "../api/facebook.leads.api";
 
 export default function useFacebookLeads() {
@@ -14,11 +15,9 @@ export default function useFacebookLeads() {
     status: ""
   });
 
-  // 🔒 Always keep latest filters for polling
   const filtersRef = useRef(filters);
   const lastCountRef = useRef(0);
 
-  // keep ref in sync
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
@@ -33,7 +32,6 @@ export default function useFacebookLeads() {
 
     const data = await getLeads(finalFilters);
 
-    // update only if data changed
     if (data.length !== lastCountRef.current) {
       lastCountRef.current = data.length;
       setLeads(data);
@@ -42,9 +40,9 @@ export default function useFacebookLeads() {
     if (!silent) setLoading(false);
   };
 
-  // 🔁 AUTO REFRESH (webhook → DB → UI)
+  // AUTO REFRESH
   useEffect(() => {
-    loadLeads({}, true); // silent first load
+    loadLeads({}, true);
 
     const interval = setInterval(() => {
       loadLeads({}, true);
@@ -53,28 +51,43 @@ export default function useFacebookLeads() {
     return () => clearInterval(interval);
   }, []);
 
-  // 🔘 MANUAL reload (filters / button)
-  const reload = (override = {}) => {
-    const newFilters = {
-      ...filtersRef.current,
-      ...override
-    };
-
-    setFilters(newFilters);
-    loadLeads(override);
+const reload = (override = {}) => {
+  const newFilters = {
+    ...filtersRef.current,
+    ...override
   };
+
+  setFilters(newFilters);
+
+  // 🔥 always reload leads, even if pageId is empty
+  loadLeads(newFilters);
+};
+
 
   const changeStatus = async (leadId, newStatus) => {
     await updateLeadStatus(leadId, newStatus);
     await loadLeads();
   };
 
+const assignLead = async (leadId, user) => {
+  await assignLeadApi(leadId, {
+    userId: user.id,
+    userName: user.name,
+    remark: "Assigned from Leads page"
+  });
+
+  await loadLeads({}, true);
+};
+
+
+
   return {
     leads,
     loading,
     filters,
-    setFilters, // if UI directly updates filters
-    reload,     // manual refresh
-    changeStatus
+    setFilters,
+    reload,
+    changeStatus,
+    assignLead
   };
 }

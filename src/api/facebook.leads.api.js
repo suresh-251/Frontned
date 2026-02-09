@@ -57,3 +57,17 @@ export const updateLeadStatus = async (leadId, status) => {
     }
   );
 };
+/* ============================
+   🔥 ASSIGN LEAD (NEW)
+   ============================ */
+export const assignLead = async (leadId, payload) => {
+  await api.put(
+    `/facebook/leads/${leadId}/assign`,
+        JSON.stringify(payload),
+    {
+      headers: {
+        "Content-Type": "application/json"
+      }
+    }
+  );
+};
