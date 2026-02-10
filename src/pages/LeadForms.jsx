@@ -38,9 +38,16 @@ const loadForms = async (silent = false) => {
 };
 
 
+  // 🔁 AUTO load forms when active page changes
+  useEffect(() => {
+    if (activePage?.pageId) {
+      loadForms();
+    }
+  }, [activePage?.pageId]);
+
   // 🔁 AUTO refresh forms (every 30 sec)
   useEffect(() => {
-    loadForms(true);
+    if (!activePage?.pageId) return;
 
     const interval = setInterval(() => {
       loadForms(true);

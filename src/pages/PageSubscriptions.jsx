@@ -11,6 +11,7 @@ import Badge from "../components/common/Badge";
 export default function PageSubscriptions() {
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [togglingPageId, setTogglingPageId] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -22,6 +23,23 @@ export default function PageSubscriptions() {
   useEffect(() => {
     load();
   }, []);
+
+  const handleToggle = async (pageId, currentlySubscribed) => {
+    setTogglingPageId(pageId);
+    try {
+      if (currentlySubscribed) {
+        await unsubscribePage(pageId);
+      } else {
+        await subscribePage(pageId);
+      }
+      // Reload the pages to get updated subscription status
+      await load();
+    } catch (error) {
+      console.error("Toggle failed:", error);
+    } finally {
+      setTogglingPageId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -84,26 +102,25 @@ export default function PageSubscriptions() {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="mt-6 flex gap-2">
+              {/* Actions - Toggle Switch */}
+              <div className="mt-6 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">
+                  {p.isSubscribed ? "Subscribed" : "Not Subscribed"}
+                </span>
                 <button
-                  onClick={() => subscribePage(p.pageId)}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white text-sm font-medium rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md flex items-center justify-center gap-2"
+                  onClick={() => handleToggle(p.pageId, p.isSubscribed)}
+                  disabled={togglingPageId === p.pageId}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    p.isSubscribed
+                      ? "bg-green-600"
+                      : "bg-gray-300"
+                  } ${togglingPageId === p.pageId ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Enable
-                </button>
-
-                <button
-                  onClick={() => unsubscribePage(p.pageId)}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-medium rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-sm hover:shadow-md flex items-center justify-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Disable
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                      p.isSubscribed ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
                 </button>
               </div>
             </Card>
