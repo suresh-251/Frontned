@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://localhost:7015/api", // 🔥 IMPORTANT
+  baseURL: "https://crm.metagensoft.com/", // 🔥 IMPORTANT
   withCredentials: true
 });
 
