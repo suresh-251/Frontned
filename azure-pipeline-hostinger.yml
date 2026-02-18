@@ -26,6 +26,6 @@ steps:
       $(tag)
     
 - script: |
-    curl -X POST -k https://89.116.20.215:9443/api/stacks/webhooks/a77005b0-989a-4f41-8a89-34ac35c4806e
+    curl -X POST -k https://89.116.20.215:9443/api/stacks/webhooks/cd5cb9fd-abc1-47c7-b4bd-f40ae0d07637?IMAGE_TAG=$(Build.BuildId)
   displayName: 'Trigger Portainer webhook'
   condition: succeeded()
