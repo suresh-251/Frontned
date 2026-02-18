@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../api/apiClient";
 import { getInstagramDisplayName } from "../utils/instagramDisplayName";
-import { getLinkedInOrgs } from "../api/linkedin.orgs.api";
+// import { getLinkedInOrgs } from "../api/linkedin.orgs.api";
 import { connectPlatform } from "../api/auth.api";
 
 export default function CreatePost() {
@@ -10,7 +10,8 @@ export default function CreatePost() {
 
   const [fbPages, setFbPages] = useState([]);
   const [igAccounts, setIgAccounts] = useState([]);
-  const [linkedInOrgs, setLinkedInOrgs] = useState([]);
+const [linkedInPages, setLinkedInPages] = useState([]);
+const [linkedInProfile, setLinkedInProfile] = useState(null);
 
   const [selectedFb, setSelectedFb] = useState([]);
   const [selectedIg, setSelectedIg] = useState([]);
@@ -44,11 +45,11 @@ export default function CreatePost() {
   /* =========================
      LOAD LINKEDIN ORGS
      ========================= */
-  useEffect(() => {
-    getLinkedInOrgs()
-      .then(data => setLinkedInOrgs(data))
-      .catch(() => {});
-  }, []);
+  // useEffect(() => {
+  //   getLinkedInOrgs()
+  //     .then(data => setLinkedInOrgs(data))
+  //     .catch(() => {});
+  // }, []);
 
   const toggle = (id, setter) => {
     setter(prev =>
@@ -57,6 +58,32 @@ export default function CreatePost() {
         : [...prev, id]
     );
   };
+  useEffect(() => {
+  api.get("/linkedin/orgs")
+    .then(res => {
+      setLinkedInPages(
+        res.data.map(p => ({
+          ...p,
+          type: "organization"
+        }))
+      );
+    })
+    .catch(() => {});
+}, []);
+/*=============================
+LINKEDIN profile
+===========================*/
+useEffect(() => {
+  api.get("/linkedin/read/profile")
+    .then(res => {
+      setLinkedInProfile({
+        id: res.data.sub,
+        name: res.data.name,
+        type: "profile"
+      });
+    })
+    .catch(() => {});
+}, []);
 
   /* =========================
      GET SELECTED COUNT & NAMES
@@ -79,9 +106,29 @@ export default function CreatePost() {
     });
     
     selectedLinkedIn.forEach(id => {
-      const org = linkedInOrgs.find(o => o.id === id);
-      if (org) names.push({ name: org.name, platform: 'LinkedIn', icon: 'li' });
+
+  // Profile
+  if (linkedInProfile && id === linkedInProfile.id) {
+    names.push({
+      name: linkedInProfile.name,
+      platform: 'LinkedIn',
+      icon: 'li',
+      badge: 'Personal'
     });
+  }
+
+  // Pages
+  const page = linkedInPages.find(p => p.id === id);
+  if (page) {
+    names.push({
+      name: page.name,
+      platform: 'LinkedIn',
+      icon: 'li',
+      badge: 'Page'
+    });
+  }
+});
+
     
     return names;
   };
@@ -273,33 +320,73 @@ export default function CreatePost() {
                   )}
 
                   {/* LinkedIn Orgs */}
-                  {linkedInOrgs.length > 0 && (
-                    <div className="p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <svg className="w-5 h-5 text-blue-700" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                        </svg>
-                        <span className="font-semibold text-gray-900">LinkedIn Organizations</span>
-                      </div>
-                      {linkedInOrgs.map(org => (
-                        <label
-                          key={org.id}
-                          className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-all"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedLinkedIn.includes(org.id)}
-                            onChange={() => toggle(org.id, setSelectedLinkedIn)}
-                            className="w-4 h-4 text-blue-700 rounded focus:ring-2 focus:ring-blue-500"
-                          />
-                          <span className="text-sm text-gray-900">{org.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
+                  {/* LinkedIn Profile */}
+{linkedInProfile && (
+  <div className="p-3 border-b border-gray-200">
+    <div className="flex items-center gap-2 mb-2">
+      <svg className="w-5 h-5 text-blue-700" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452z"/>
+      </svg>
+      <span className="font-semibold text-gray-900">
+        LinkedIn Profile
+      </span>
+    </div>
+
+    <label className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
+      <input
+        type="checkbox"
+        checked={selectedLinkedIn.includes(linkedInProfile.id)}
+        onChange={() => toggle(linkedInProfile.id, setSelectedLinkedIn)}
+        className="w-4 h-4 text-blue-700"
+      />
+      <span className="text-sm text-gray-900">
+        {linkedInProfile.name}
+      </span>
+      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+        Personal
+      </span>
+    </label>
+  </div>
+)}
+
+{/* LinkedIn Pages */}
+{linkedInPages.length > 0 && (
+  <div className="p-3">
+    <div className="flex items-center gap-2 mb-2">
+      <svg className="w-5 h-5 text-blue-700" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452z"/>
+      </svg>
+      <span className="font-semibold text-gray-900">
+        LinkedIn Pages
+      </span>
+    </div>
+
+    {linkedInPages.map(page => (
+      <label
+        key={page.id}
+        className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
+      >
+        <input
+          type="checkbox"
+          checked={selectedLinkedIn.includes(page.id)}
+          onChange={() => toggle(page.id, setSelectedLinkedIn)}
+          className="w-4 h-4 text-blue-700"
+        />
+        <span className="text-sm text-gray-900">
+          {page.name}
+        </span>
+        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+          Page
+        </span>
+      </label>
+    ))}
+  </div>
+)}
+
 
                   {/* No Accounts Available */}
-                  {fbPages.length === 0 && igAccounts.length === 0 && linkedInOrgs.length === 0 && (
+                  {fbPages.length === 0 && igAccounts.length === 0 && !linkedInProfile &&
+ linkedInPages.length === 0 && (
                     <div className="p-4 text-center text-gray-500">
                       <p className="mb-3">No accounts connected</p>
                       <p className="text-sm">Connect your social media accounts to start posting</p>
@@ -332,10 +419,18 @@ export default function CreatePost() {
                       </svg>
                     )}
                     {item.icon === 'li' && (
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                      </svg>
-                    )}
+  <>
+    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286z"/>
+    </svg>
+    {item.badge && (
+      <span className="text-xs bg-white bg-opacity-40 px-2 py-0.5 rounded-full">
+        {item.badge}
+      </span>
+    )}
+  </>
+)}
+
                     <span className="truncate max-w-[150px]">{item.name}</span>
                   </div>
                 ))}
@@ -487,7 +582,7 @@ export default function CreatePost() {
                   <div className="flex items-center gap-3">
                     <span className="text-2xl">{r.success ? "✅" : "❌"}</span>
                     <div>
-                      <p className="font-medium text-gray-900">{r.targetAccountId}</p>
+                      <p className="font-medium text-gray-900">{r.targetAccountName || r.targetAccountId}</p>
                       <p className={`text-sm ${r.success ? "text-green-600" : "text-red-600"}`}>
                         {r.status}
                       </p>

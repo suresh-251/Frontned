@@ -25,13 +25,13 @@
 
 
   export const subscribePage = async (pageId) => {
-      console.log("Calling subscribe API for:", pageId);
+      // console.log("Calling subscribe API for:", pageId);
 
     await api.post(`/facebook/pages/${pageId}/subscribe`);
   };
 
   export const unsubscribePage = async (pageId) => {
-          console.log("Calling unsubscribe API for:", pageId);
+          // console.log("Calling unsubscribe API for:", pageId);
     await api.post(`/facebook/pages/${pageId}/unsubscribe`);
   };
 
