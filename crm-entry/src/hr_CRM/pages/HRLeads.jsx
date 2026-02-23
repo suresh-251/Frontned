@@ -1,144 +1,3 @@
-// // src/HR_CRM/pages/HRLeads.jsx
-// import { useEffect, useState } from "react";
-// import { useAuth } from "../../auth/AuthContext";
-// import useFacebookLeads from "../../socialCRM/hooks/useFacebookLeads";
-// import LeadsTable from "../../components/LeadsTable";
-
-// export default function HRLeads() {
-//   const { user } = useAuth();
-//   const { leads, loading, reload, assignLead } = useFacebookLeads();
-
-//   const [remarkMap, setRemarkMap] = useState({});
-//   const [selectedLead, setSelectedLead] = useState(null);
-
-//   useEffect(() => {
-//     if (user?.userId) {
-//       reload({ assignedToUserId: user.userId });
-//     }
-//   }, [user]);
-
-//   return (
-//     <div className="p-6">
-//       <h1 className="text-2xl font-bold mb-6">My Assigned Leads</h1>
-
-//       <LeadsTable
-//         leads={leads}
-//         loading={loading}
-//         remarkMap={remarkMap}
-//         setRemarkMap={setRemarkMap}
-//         setSelectedLead={setSelectedLead}
-//         viewOnly={true} // HR cannot change status
-//         columns={["assignedTo", "createdAt", "remark", "actions"]}
-//       />
-
-//       {/* Details Modal */}
-//       {selectedLead && (
-//         <div
-//           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-//           onClick={() => setSelectedLead(null)}
-//         >
-//           <div
-//             className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden"
-//             onClick={(e) => e.stopPropagation()}
-//           >
-//             {/* Modal Header */}
-//             <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 flex items-center justify-between">
-//               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-//                 Lead Details
-//               </h3>
-//               <button
-//                 onClick={() => setSelectedLead(null)}
-//                 className="text-white hover:bg-white/20 rounded-lg p-1 transition-colors"
-//               >
-//                 ✕
-//               </button>
-//             </div>
-
-//             {/* Modal Body */}
-//             <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)] grid grid-cols-1 md:grid-cols-2 gap-4">
-//               {selectedLead.fields && Object.keys(selectedLead.fields).length > 0 ? (
-//                 Object.entries(selectedLead.fields).map(([k, v]) => (
-//                   <div key={k} className="bg-gray-50 rounded-lg p-4">
-//                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-//                       {k.replace(/_/g, " ")}
-//                     </p>
-//                     <p className="text-sm font-medium text-gray-900">{v || "-"}</p>
-//                   </div>
-//                 ))
-//               ) : (
-//                 <div className="col-span-2 text-center py-8">
-//                   <p className="text-gray-600">No additional form data available</p>
-//                 </div>
-//               )}
-
-//               {/* Remark input */}
-//               <div className="col-span-2">
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">Remark</label>
-//                 <input
-//                   type="text"
-//                   value={remarkMap[selectedLead.id] ?? selectedLead.remark ?? ""}
-//                   onChange={(e) =>
-//                     setRemarkMap((prev) => ({ ...prev, [selectedLead.id]: e.target.value }))
-//                   }
-//                   onBlur={() =>
-//                     assignLead(
-//                       selectedLead.id,
-//                       selectedLead.assignedToUserId,
-//                       selectedLead.assignedToUserName,
-//                       remarkMap[selectedLead.id]
-//                     )
-//                   }
-//                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-//                 />
-//               </div>
-//             </div>
-
-//             {/* Modal Footer */}
-//             <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
-//               <button
-//                 onClick={() => setSelectedLead(null)}
-//                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300"
-//               >
-//                 Close
-//               </button>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// src/HR_CRM/pages/HRLeads.jsx
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import useFacebookLeads from "../../socialCRM/hooks/useFacebookLeads";
@@ -146,254 +5,258 @@ import * as XLSX from "xlsx";
 
 export default function HRLeads() {
   const { user } = useAuth();
-  const { leads, loading, reload, assignLead, changeStatus } = useFacebookLeads();
+  const { leads, loading, reload, assignLead } = useFacebookLeads();
 
   const [remarkMap, setRemarkMap] = useState({});
   const [selectedLead, setSelectedLead] = useState(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
 
-  // Load all leads on mount
   useEffect(() => {
-    reload({}); // fetch all leads
+    reload({});
   }, []);
 
-  // Filter only assigned leads
-  const assignedLeads = leads.filter(l => l.assignedToUserId);
+  // ✅ SHOW ONLY ASSIGNED LEADS
+  const assignedLeads = leads.filter(
+    (l) =>
+      l.assignedToUserId !== null &&
+      l.assignedToUserId !== undefined &&
+      l.assignedToUserId !== "" &&
+      l.assignedToUserName
+  );
 
-  // Toggle selection of individual leads
   const toggleLeadSelection = (id) => {
-    setSelectedLeadIds(prev =>
-      prev.includes(id)
-        ? prev.filter(x => x !== id)
-        : [...prev, id]
+    setSelectedLeadIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
 
-  // Select all visible leads
   const selectAllVisible = (checked) => {
-    setSelectedLeadIds(checked ? assignedLeads.map(l => l.id) : []);
+    setSelectedLeadIds(checked ? assignedLeads.map((l) => l.id) : []);
   };
 
-  // Export leads to Excel
   const exportToExcel = (mode) => {
-    if (!assignedLeads || assignedLeads.length === 0) {
-      alert("No leads to export");
-      return;
-    }
+    if (!assignedLeads.length) return alert("No leads to export");
 
     let exportLeads =
       mode === "selected"
-        ? assignedLeads.filter(l => selectedLeadIds.includes(l.id))
+        ? assignedLeads.filter((l) => selectedLeadIds.includes(l.id))
         : assignedLeads;
 
-    if (!exportLeads.length) {
-      alert("No leads match criteria");
-      return;
-    }
+    if (!exportLeads.length) return alert("No leads match criteria");
 
-    const rows = exportLeads.map(l => {
-      const row = {
-        Name: l.name || "",
-        Email: l.email || "",
-        Phone: l.phone || "",
-        Status: l.status || "",
-        AssignedTo: l.assignedToUserName || "",
-        CreatedAt: new Date(l.createdAt).toLocaleString(),
-      };
-
-      if (l.fields) {
-        Object.entries(l.fields).forEach(([key, value]) => {
-          const label = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-          row[label] = value;
-        });
-      }
-
-      return row;
-    });
+    const rows = exportLeads.map((l) => ({
+      Name: l.name || "",
+      Email: l.email || "",
+      Phone: l.phone || "",
+      Status: l.status || "",
+      AssignedTo: l.assignedToUserName || "",
+      CreatedAt: new Date(l.createdAt).toLocaleString(),
+      ...(l.fields || {}),
+    }));
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
-
     XLSX.writeFile(
       workbook,
-      mode === "selected"
-        ? "hr-leads-selected.xlsx"
-        : "hr-leads-all.xlsx"
+      mode === "selected" ? "hr-leads-selected.xlsx" : "hr-leads-all.xlsx"
     );
   };
 
+  const statusColors = {
+    New: "bg-blue-100 text-blue-700",
+    Contacted: "bg-yellow-100 text-yellow-700",
+    Qualified: "bg-green-100 text-green-700",
+    Lost: "bg-red-100 text-red-700",
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <h1 className="text-3xl font-bold mb-6">Leads</h1>
+    <div className="w-full h-full overflow-y-auto">
+      <div className="p-6">
 
-      {/* Export Button */}
-      <div className="mb-4 flex gap-2">
-        <button
-          onClick={() => exportToExcel("all")}
-          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-        >
-          Export All
-        </button>
-        <button
-          onClick={() => exportToExcel("selected")}
-          disabled={selectedLeadIds.length === 0}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300"
-        >
-          Export Selected ({selectedLeadIds.length})
-        </button>
-      </div>
+        {/* ===== HEADER ===== */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+          <h1 className="text-2xl font-bold text-slate-800">
+            Leads Management
+          </h1>
 
-      {/* Leads Table */}
-      <div className="overflow-x-auto bg-white rounded shadow border border-gray-200">
-        {loading && (
-          <div className="p-16 text-center text-gray-600">
-            Loading leads...
+          <div className="flex gap-3">
+            <button
+              onClick={() => exportToExcel("all")}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium shadow hover:bg-emerald-700 transition"
+            >
+              Export All
+            </button>
+
+            <button
+              onClick={() => exportToExcel("selected")}
+              disabled={selectedLeadIds.length === 0}
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium shadow disabled:opacity-40 hover:bg-indigo-700 transition"
+            >
+              Export Selected ({selectedLeadIds.length})
+            </button>
           </div>
-        )}
+        </div>
 
-        {!loading && assignedLeads.length === 0 && (
-          <div className="p-16 text-center text-gray-600">
-            No assigned leads found
-          </div>
-        )}
+        {/* ===== TABLE ===== */}
+        <div className="bg-white rounded-2xl shadow border border-slate-200 overflow-x-auto">
 
-        {!loading && assignedLeads.length > 0 && (
-          <table className="w-full text-sm divide-y divide-gray-200">
-            <thead className="bg-gray-50 text-gray-600 uppercase text-xs">
-              <tr>
-                <th className="px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedLeadIds.length === assignedLeads.length}
-                    onChange={e => selectAllVisible(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                </th>
-                <th className="px-4 py-3 text-left">Name</th>
-                <th className="px-4 py-3 text-left">Email</th>
-                <th className="px-4 py-3 text-left">Phone</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Assigned To</th>
-                <th className="px-4 py-3 text-left">Created At</th>
-                <th className="px-4 py-3 text-left">Remark</th>
-                <th className="px-4 py-3 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {assignedLeads.map(l => (
-                <tr key={l.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2">
+          {loading && (
+            <div className="p-10 text-center text-slate-500">
+              Loading leads...
+            </div>
+          )}
+
+          {!loading && assignedLeads.length === 0 && (
+            <div className="p-10 text-center text-slate-500">
+              No assigned leads found
+            </div>
+          )}
+
+          {!loading && assignedLeads.length > 0 && (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-100 border-b border-slate-200 sticky top-0">
+                <tr className="text-xs uppercase text-slate-600 tracking-wider">
+                  <th className="px-6 py-4 text-center">
                     <input
                       type="checkbox"
-                      checked={selectedLeadIds.includes(l.id)}
-                      onChange={() => toggleLeadSelection(l.id)}
-                      className="w-4 h-4"
+                      checked={selectedLeadIds.length === assignedLeads.length}
+                      onChange={(e) => selectAllVisible(e.target.checked)}
+                      className="w-4 h-4 accent-indigo-600"
                     />
-                  </td>
-                  <td className="px-4 py-2">{l.name || "-"}</td>
-                  <td className="px-4 py-2">{l.email || "-"}</td>
-                  <td className="px-4 py-2">{l.phone || "-"}</td>
-                  <td className="px-4 py-2">
-                    <select
-                      value={l.status}
-                      onChange={e => changeStatus(l.id, e.target.value)}
-                      className={`px-2 py-1 text-xs rounded border`}
-                    >
-                      <option value="New">New</option>
-                      <option value="Contacted">Contacted</option>
-                      <option value="Qualified">Qualified</option>
-                      <option value="Lost">Lost</option>
-                    </select>
-                  </td>
-                  <td className="px-4 py-2">{l.assignedToUserName}</td>
-                  <td className="px-4 py-2 text-xs text-gray-600">
-                    {new Date(l.createdAt).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2">
-                    <input
-                      type="text"
-                      value={remarkMap[l.id] ?? l.remark ?? ""}
-                      onChange={e =>
-                        setRemarkMap(prev => ({ ...prev, [l.id]: e.target.value }))
-                      }
-                      onBlur={() =>
-                        assignLead(l.id, l.assignedToUserId, l.assignedToUserName, remarkMap[l.id])
-                      }
-                      className="px-2 py-1 text-xs border rounded w-full"
-                    />
-                  </td>
-                  <td className="px-4 py-2">
-                    <button
-                      onClick={() => setSelectedLead(l)}
-                      className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
-                    >
-                      View
-                    </button>
-                  </td>
+                  </th>
+                  <th className="px-6 py-4 text-left">Name</th>
+                  <th className="px-6 py-4 text-left">Phone</th>
+                  <th className="px-6 py-4 text-left">Email</th>
+                  <th className="px-6 py-4 text-left">Status</th>
+                  <th className="px-6 py-4 text-left">Assigned To</th>
+                  <th className="px-6 py-4 text-left">Created At</th>
+                  <th className="px-6 py-4 text-left">Remark</th>
+                  <th className="px-6 py-4 text-center">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+
+              <tbody>
+                {assignedLeads.map((l, index) => (
+                  <tr
+                    key={l.id}
+                    className={`border-b border-slate-100 transition hover:bg-indigo-50 ${
+                      index % 2 === 0 ? "bg-white" : "bg-slate-50"
+                    }`}
+                  >
+                    <td className="px-6 py-4 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedLeadIds.includes(l.id)}
+                        onChange={() => toggleLeadSelection(l.id)}
+                        className="w-4 h-4 accent-indigo-600"
+                      />
+                    </td>
+
+                    <td className="px-6 py-4 font-semibold text-slate-800">
+                      {l.name || "-"}
+                    </td>
+
+                    <td className="px-6 py-4 text-slate-600">
+                      {l.phone || "-"}
+                    </td>
+
+                    <td className="px-6 py-4 text-slate-600">
+                      {l.email || "-"}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <span
+                        className={`px-3 py-1 text-xs font-medium rounded-full ${
+                          statusColors[l.status] ||
+                          "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {l.status}
+                      </span>
+                    </td>
+
+                    <td className="px-6 py-4 text-slate-700 font-medium">
+                      {l.assignedToUserName}
+                    </td>
+
+                    <td className="px-6 py-4 text-xs text-slate-500">
+                      {new Date(l.createdAt).toLocaleString()}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <input
+                        type="text"
+                        value={remarkMap[l.id] ?? l.remark ?? ""}
+                        onChange={(e) =>
+                          setRemarkMap((prev) => ({
+                            ...prev,
+                            [l.id]: e.target.value,
+                          }))
+                        }
+                        onBlur={() =>
+                          assignLead(
+                            l.id,
+                            l.assignedToUserId,
+                            l.assignedToUserName,
+                            remarkMap[l.id]
+                          )
+                        }
+                        className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+                        placeholder="Add remark..."
+                      />
+                    </td>
+
+                    <td className="px-6 py-4 text-center">
+                      <button
+                        onClick={() => setSelectedLead(l)}
+                        className="px-4 py-2 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
-      {/* Details Modal */}
+      {/* ===== MODAL ===== */}
       {selectedLead && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+          className="fixed inset-0 z-50 flex items-center justify-center"
           onClick={() => setSelectedLead(null)}
         >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
+            className="relative bg-white w-full max-w-2xl mx-4 rounded-2xl shadow-2xl border border-slate-200 p-8 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-white">Lead Details</h3>
-              <button onClick={() => setSelectedLead(null)} className="text-white text-xl font-bold">
-                ✕
-              </button>
-            </div>
+            <h3 className="text-xl font-bold mb-6 text-slate-800">
+              Lead Details
+            </h3>
 
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {selectedLead.fields && Object.keys(selectedLead.fields).length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              {selectedLead.fields &&
                 Object.entries(selectedLead.fields).map(([k, v]) => (
-                  <div key={k} className="bg-gray-50 p-4 rounded">
-                    <p className="text-xs font-semibold text-gray-500 uppercase">{k.replace(/_/g, " ")}</p>
-                    <p className="text-sm text-gray-900">{v || "-"}</p>
+                  <div key={k}>
+                    <p className="text-xs text-slate-500 uppercase">
+                      {k.replace(/_/g, " ")}
+                    </p>
+                    <p className="font-medium text-slate-800">
+                      {v || "-"}
+                    </p>
                   </div>
-                ))
-              ) : (
-                <div className="col-span-2 text-center py-8 text-gray-600">
-                  No additional form data available
-                </div>
-              )}
-
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Remark</label>
-                <input
-                  type="text"
-                  value={remarkMap[selectedLead.id] ?? selectedLead.remark ?? ""}
-                  onChange={(e) =>
-                    setRemarkMap(prev => ({ ...prev, [selectedLead.id]: e.target.value }))
-                  }
-                  onBlur={() =>
-                    assignLead(
-                      selectedLead.id,
-                      selectedLead.assignedToUserId,
-                      selectedLead.assignedToUserName,
-                      remarkMap[selectedLead.id]
-                    )
-                  }
-                  className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+                ))}
             </div>
 
-            <div className="bg-gray-50 px-6 py-4 flex justify-end border-t border-gray-200">
+            <div className="mt-8 flex justify-end">
               <button
                 onClick={() => setSelectedLead(null)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                className="px-6 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition"
               >
                 Close
               </button>

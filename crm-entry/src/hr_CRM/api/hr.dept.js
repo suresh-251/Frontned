@@ -1,19 +1,50 @@
-import axios from "axios";
+import hrApi from "./hr.api";
 
-const BASE_URL = "http://89.116.20.215:9095/api";
-
+/**
+ * ✅ Get All Departments
+ * GET: /api/Department
+ */
 export const getDepartments = async () => {
-  return await axios.get(`${BASE_URL}/Department`);
+  const response = await hrApi.get("/api/Department");
+  return response.data;
 };
 
-export const createDepartment = async (data) => {
-  return await axios.post(`${BASE_URL}/Department`, data);
+/**
+ * ✅ Create Department
+ * POST: /api/Department
+ * Body:
+ * {
+ *   departmentName: string,
+ *   branchId: number
+ * }
+ */
+export const createDepartment = async (departmentData) => {
+  const response = await hrApi.post("/api/Department", departmentData);
+  return response.data;
 };
 
-export const updateDepartment = async (id, data) => {
-  return await axios.put(`${BASE_URL}/Department/${id}`, data);
+/**
+ * ✅ Update Department
+ * PUT: /api/Department/{id}
+ * Body:
+ * {
+ *   departmentName: string,
+ *   branchId: number
+ * }
+ */
+export const updateDepartment = async (id, departmentData) => {
+  const response = await hrApi.put(
+    `/api/Department/${id}`,
+    departmentData
+  );
+  return response.data;
 };
 
+/**
+ * ✅ Delete Department
+ * DELETE: /api/Department/{id}
+ */
 export const deleteDepartment = async (id) => {
-  return await axios.delete(`${BASE_URL}/Department/${id}`);
+  const response = await hrApi.delete(`/api/Department/${id}`);
+  return response.data;
 };

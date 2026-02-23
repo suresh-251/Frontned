@@ -4,10 +4,82 @@ import {
   createProject,
   updateProject,
   deleteProject,
-} from "../api/hr.api";
+} from "../api/project.api";
 
+import { getManagers } from "../../api/users/users.api";
+import { getDepartments } from "../api/hr.dept";
+
+/* ================= PROJECT TABLE ================= */
+const ProjectTable = ({ projects = [], onEdit, onDelete }) => {
+  return (
+    <div className="relative h-full rounded-2xl border border-indigo-100 shadow-xl bg-white overflow-auto">
+      <table className="min-w-full text-sm">
+        <thead className="sticky top-0 z-10">
+          <tr className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-xs uppercase tracking-wider">
+            <th className="px-6 py-4 text-left">Name</th>
+            <th className="px-6 py-4 text-left">Duration</th>
+            <th className="px-6 py-4 text-left">Status</th>
+            <th className="px-6 py-4 text-left">Manager</th>
+            <th className="px-6 py-4 text-left">Department</th>
+            <th className="px-6 py-4 text-center">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody className="divide-y divide-gray-100">
+          {projects.map((p, index) => (
+            <tr
+              key={p.projectId}
+              className={`hover:bg-indigo-50 transition ${
+                index % 2 === 0 ? "bg-slate-50" : "bg-white"
+              }`}
+            >
+              <td className="px-6 py-4 font-semibold">{p.projectName}</td>
+              <td className="px-6 py-4">{p.duration}</td>
+              <td className="px-6 py-4">
+                <span className="px-3 py-1 text-xs bg-indigo-100 text-indigo-700 rounded-full">
+                  {p.status}
+                </span>
+              </td>
+              <td className="px-6 py-4">{p.managerName}</td>
+              <td className="px-6 py-4">
+                {p.departmentName} - {p.branchName} - {p.location}
+              </td>
+              <td className="px-6 py-4 text-center space-x-2">
+                <button
+                  onClick={() => onEdit(p)}
+                  className="bg-yellow-500 text-white px-3 py-1.5 rounded-md text-xs hover:bg-yellow-600 transition"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => onDelete(p.projectId)}
+                  className="bg-red-600 text-white px-3 py-1.5 rounded-md text-xs hover:bg-red-700 transition"
+                >
+                  Delete
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {projects.length === 0 && (
+        <div className="text-center py-10 text-gray-500">
+          No projects found
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ================= MAIN COMPONENT ================= */
 export default function Project() {
   const [projects, setProjects] = useState([]);
+  const [managers, setManagers] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
   const [formData, setFormData] = useState({
     projectName: "",
     duration: "",
@@ -15,30 +87,23 @@ export default function Project() {
     managerId: "",
     departmentId: "",
   });
-  const [editingId, setEditingId] = useState(null);
 
-  /* ================= LOAD PROJECTS ================= */
   const loadProjects = async () => {
-    try {
-      const res = await getProjects();
-      setProjects(res.data);
-    } catch (error) {
-      console.error("Error loading projects:", error);
-    }
+    const data = await getProjects();
+    setProjects(data || []);
   };
 
   useEffect(() => {
     loadProjects();
+    getManagers("SOCIALMEDIA").then(setManagers);
+    getDepartments().then(setDepartments);
   }, []);
 
-  /* ================= HANDLE INPUT ================= */
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  /* ================= SUBMIT ================= */
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
+    if (!formData.status) {
+      alert("Please select status");
+      return;
+    }
 
     const payload = {
       ...formData,
@@ -46,160 +111,175 @@ export default function Project() {
       departmentId: Number(formData.departmentId),
     };
 
-    try {
-      if (editingId) {
-        await updateProject(editingId, payload);
-      } else {
-        await createProject(payload);
-      }
-
-      setFormData({
-        projectName: "",
-        duration: "",
-        status: "",
-        managerId: "",
-        departmentId: "",
-      });
-      setEditingId(null);
-      loadProjects();
-    } catch (error) {
-      console.error("Error saving project:", error);
+    if (editingId) {
+      await updateProject(editingId, payload);
+    } else {
+      await createProject(payload);
     }
+
+    closeModal();
+    loadProjects();
   };
 
-  /* ================= EDIT ================= */
-  const handleEdit = (project) => {
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingId(null);
     setFormData({
-      projectName: project.projectName,
-      duration: project.duration,
-      status: project.status,
-      managerId: project.managerId,
-      departmentId: project.departmentId,
+      projectName: "",
+      duration: "",
+      status: "",
+      managerId: "",
+      departmentId: "",
     });
-    setEditingId(project.id);
   };
 
-  /* ================= DELETE ================= */
+  const handleEdit = (p) => {
+    setEditingId(p.projectId);
+    setFormData({
+      projectName: p.projectName,
+      duration: p.duration,
+      status: p.status,
+      managerId: p.managerId?.toString(),
+      departmentId: p.departmentId?.toString(),
+    });
+    setModalOpen(true);
+  };
+
   const handleDelete = async (id) => {
-    try {
-      await deleteProject(id);
-      loadProjects();
-    } catch (error) {
-      console.error("Error deleting project:", error);
-    }
+    if (!window.confirm("Are you sure?")) return;
+    await deleteProject(id);
+    loadProjects();
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Project Management</h1>
+    <div className="flex flex-col h-full overflow-hidden">
 
-      {/* Form */}
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white shadow rounded-xl p-6 mb-8 max-w-xl"
-      >
-        <div className="grid grid-cols-2 gap-4">
-          <input
-            type="text"
-            name="projectName"
-            placeholder="Project Name"
-            value={formData.projectName}
-            onChange={handleChange}
-            className="border p-3 rounded-lg"
-            required
-          />
-
-          <input
-            type="text"
-            name="duration"
-            placeholder="Duration"
-            value={formData.duration}
-            onChange={handleChange}
-            className="border p-3 rounded-lg"
-            required
-          />
-
-          <input
-            type="text"
-            name="status"
-            placeholder="Status"
-            value={formData.status}
-            onChange={handleChange}
-            className="border p-3 rounded-lg"
-            required
-          />
-
-          <input
-            type="number"
-            name="managerId"
-            placeholder="Manager ID"
-            value={formData.managerId}
-            onChange={handleChange}
-            className="border p-3 rounded-lg"
-            required
-          />
-
-          <input
-            type="number"
-            name="departmentId"
-            placeholder="Department ID"
-            value={formData.departmentId}
-            onChange={handleChange}
-            className="border p-3 rounded-lg"
-            required
-          />
-        </div>
+      {/* HEADER */}
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+          Project Management
+        </h2>
 
         <button
-          type="submit"
-          className="mt-4 bg-indigo-600 text-white px-6 py-2 rounded-lg"
+          onClick={() => setModalOpen(true)}
+          className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-5 py-2.5 rounded-xl shadow hover:opacity-90 transition"
         >
-          {editingId ? "Update Project" : "Add Project"}
+          + Create Project
         </button>
-      </form>
-
-      {/* Table */}
-      <div className="bg-white shadow rounded-xl p-6">
-        <h2 className="text-lg font-semibold mb-4">Project List</h2>
-
-        <table className="w-full border">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-3 border">Name</th>
-              <th className="p-3 border">Duration</th>
-              <th className="p-3 border">Status</th>
-              <th className="p-3 border">Manager</th>
-              <th className="p-3 border">Department</th>
-              <th className="p-3 border">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {projects.map((project) => (
-              <tr key={project.id}>
-                <td className="p-3 border">{project.projectName}</td>
-                <td className="p-3 border">{project.duration}</td>
-                <td className="p-3 border">{project.status}</td>
-                <td className="p-3 border">{project.managerId}</td>
-                <td className="p-3 border">{project.departmentId}</td>
-                <td className="p-3 border space-x-2">
-                  <button
-                    onClick={() => handleEdit(project)}
-                    className="bg-yellow-500 text-white px-3 py-1 rounded"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(project.id)}
-                    className="bg-red-600 text-white px-3 py-1 rounded"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
+
+      {/* TABLE */}
+      <div className="flex-1 min-h-0">
+        <ProjectTable
+          projects={projects}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      </div>
+
+      {/* ================= MODAL ================= */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={closeModal}
+          />
+
+          <div className="relative bg-white w-full max-w-3xl mx-4 rounded-2xl shadow-2xl border border-indigo-200 p-8 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl font-bold text-indigo-700 mb-6">
+              {editingId ? "Update Project" : "Create Project"}
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+              <Input
+                placeholder="Project Name"
+                value={formData.projectName}
+                onChange={(e) =>
+                  setFormData({ ...formData, projectName: e.target.value })
+                }
+              />
+
+              <Input
+                placeholder="Duration"
+                value={formData.duration}
+                onChange={(e) =>
+                  setFormData({ ...formData, duration: e.target.value })
+                }
+              />
+
+              <select
+                value={formData.status}
+                onChange={(e) =>
+                  setFormData({ ...formData, status: e.target.value })
+                }
+                className="col-span-2 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-400 outline-none"
+                required
+              >
+                <option value="">Select Status</option>
+                <option value="Pending">Pending</option>
+                <option value="Active">Active</option>
+                <option value="Completed">Completed</option>
+              </select>
+
+              <select
+                value={formData.managerId}
+                onChange={(e) =>
+                  setFormData({ ...formData, managerId: e.target.value })
+                }
+                className="col-span-2 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-400 outline-none"
+              >
+                <option value="">Select Manager</option>
+                {managers?.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.name} ({m.domainCode})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={formData.departmentId}
+                onChange={(e) =>
+                  setFormData({ ...formData, departmentId: e.target.value })
+                }
+                className="col-span-2 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-400 outline-none"
+              >
+                <option value="">Select Department</option>
+                {departments?.map((d) => (
+                  <option key={d.departmentId} value={d.departmentId}>
+                    {d.departmentName} - {d.branchName} - {d.location}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mt-8 flex justify-end gap-3">
+              <button
+                onClick={handleSubmit}
+                className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition"
+              >
+                {editingId ? "Update" : "Create"}
+              </button>
+
+              <button
+                onClick={closeModal}
+                className="bg-gray-200 px-6 py-2.5 rounded-xl hover:bg-gray-300 transition"
+              >
+                Cancel
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+/* ================= REUSABLE INPUT ================= */
+const Input = ({ className = "", ...props }) => (
+  <input
+    {...props}
+    className={`border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-400 outline-none ${className}`}
+  />
+);

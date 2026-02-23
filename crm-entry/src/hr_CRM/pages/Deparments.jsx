@@ -1,64 +1,71 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
-
-const BASE_URL = "http://89.116.20.215:9095/api";
+import {
+  getDepartments,
+  createDepartment,
+  updateDepartment,
+  deleteDepartment,
+} from "../api/hr.dept";
+import { getBranches } from "../api/api.branch";
 
 export default function Departments() {
   const [departments, setDepartments] = useState([]);
+  const [allDepartments, setAllDepartments] = useState([]);
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
-  const [form, setForm] = useState({
+  const [formData, setFormData] = useState({
     departmentName: "",
     branchId: "",
   });
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
-  /* ================= FETCH DATA ================= */
+  /* ================= LOAD DATA ================= */
+
+  const loadBranches = async () => {
+    try {
+      const data = await getBranches();
+      setBranches(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Branch Load Error:", error);
+      setBranches([]);
+    }
+  };
+
+  const loadDepartments = async () => {
+    try {
+      const data = await getDepartments();
+      setAllDepartments(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Department Load Error:", error);
+      setAllDepartments([]);
+    }
+  };
+
   useEffect(() => {
-    fetchBranches();
+    loadBranches();
+    loadDepartments();
   }, []);
 
+  /* ================= FILTER ================= */
+
   useEffect(() => {
-    if (selectedBranchId) {
-      fetchDepartments(selectedBranchId);
-      setForm({ ...form, branchId: selectedBranchId });
+    if (!selectedBranchId) {
+      setDepartments(allDepartments);
     } else {
-      setDepartments([]);
-      setForm({ ...form, branchId: "" });
-    }
-  }, [selectedBranchId]);
-
-  const fetchBranches = async () => {
-    try {
-      const res = await axios.get(`${BASE_URL}/Branch`);
-      // Only Active branches
-      const activeBranches = res.data.filter(
-        (b) => b.status.toLowerCase() === "active"
+      const filtered = allDepartments.filter(
+        (d) => d.branchId === Number(selectedBranchId)
       );
-      setBranches(activeBranches);
-    } catch (error) {
-      console.error("Branch fetch error:", error);
+      setDepartments(filtered);
     }
-  };
-
-  const fetchDepartments = async (branchId) => {
-    try {
-      const res = await axios.get(`${BASE_URL}/Department`);
-      // Filter departments by selected branch
-      const branchDepartments = res.data.filter(
-        (d) => d.branchId === Number(branchId)
-      );
-      setDepartments(branchDepartments);
-    } catch (error) {
-      console.error("Department fetch error:", error);
-    }
-  };
+  }, [selectedBranchId, allDepartments]);
 
   /* ================= SUBMIT ================= */
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.departmentName || !form.branchId) {
+
+    if (!formData.departmentName || !formData.branchId) {
       alert("Please fill all fields");
       return;
     }
@@ -66,188 +73,230 @@ export default function Departments() {
     try {
       setLoading(true);
 
-      if (editingId !== null) {
-        await axios.put(`${BASE_URL}/Department/${editingId}`, {
-          departmentName: form.departmentName,
-          branchId: Number(form.branchId),
-        });
-        alert("Department Updated Successfully ✅");
-      } else {
-        // Verify if department already exists for the same branch
-        const res = await axios.get(`${BASE_URL}/Department`);
-        const exists = res.data.some(
-          (d) =>
-            d.departmentName.toLowerCase() ===
-              form.departmentName.toLowerCase() &&
-            d.branchId === Number(form.branchId)
-        );
-        if (exists) {
-          alert("Department already exists for this branch ❌");
-          setLoading(false);
-          return;
-        }
+      const payload = {
+        departmentName: formData.departmentName,
+        branchId: Number(formData.branchId),
+      };
 
-        await axios.post(`${BASE_URL}/Department`, {
-          departmentName: form.departmentName,
-          branchId: Number(form.branchId),
-        });
-        alert("Department Added Successfully ✅");
+      if (editingId) {
+        await updateDepartment(editingId, payload);
+      } else {
+        await createDepartment(payload);
       }
 
-      setForm({ ...form, departmentName: "" });
+      setFormData({ departmentName: "", branchId: "" });
       setEditingId(null);
-      fetchDepartments(selectedBranchId);
+      setShowModal(false);
+      await loadDepartments();
     } catch (error) {
-      console.error("Save error:", error.response?.data || error);
-      alert("Operation failed. Check console.");
+      console.error("Submit Error:", error);
     } finally {
       setLoading(false);
     }
   };
 
   /* ================= EDIT ================= */
+
   const handleEdit = (dept) => {
-    setForm({
+    setFormData({
       departmentName: dept.departmentName,
       branchId: dept.branchId,
     });
     setEditingId(dept.departmentId);
-    setSelectedBranchId(dept.branchId);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setShowModal(true);
   };
 
   /* ================= DELETE ================= */
+
   const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure to delete?")) return;
+    if (!window.confirm("Delete this department?")) return;
 
     try {
-      await axios.delete(`${BASE_URL}/Department/${id}`);
-      fetchDepartments(selectedBranchId);
-      alert("Deleted Successfully 🗑️");
+      await deleteDepartment(id);
+      await loadDepartments();
     } catch (error) {
-      console.error("Delete error:", error);
+      console.error("Delete Error:", error);
     }
   };
 
+  /* ================= UI (UNCHANGED) ================= */
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 p-8">
+    <div className="h-full overflow-y-auto p-1">
 
-      {/* ================= HEADER ================= */}
-      <h1 className="text-4xl font-extrabold text-center bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-10">
-        Department Management
-      </h1>
+      {/* HEADER ROW */}
+      <div className="flex flex-wrap items-center justify-between mb-6 gap-4">
 
-      {/* ================= FORM CARD ================= */}
-      <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-3xl p-8 mb-10 border border-gray-200">
+        <div>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+            Department Management
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Manage departments across branches
+          </p>
+        </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="grid md:grid-cols-3 gap-6 items-center"
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-600">
+            View By:
+          </span>
+          <select
+            value={selectedBranchId}
+            onChange={(e) => setSelectedBranchId(e.target.value)}
+            className="border rounded-xl px-4 py-2 text-sm shadow-sm focus:ring-2 focus:ring-indigo-400 outline-none bg-white"
+          >
+            <option value="">All Branches</option>
+            {branches.map((b) => (
+              <option key={b.branchId} value={b.branchId}>
+                {b.branchName} ({b.location})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          onClick={() => {
+            setFormData({ departmentName: "", branchId: "" });
+            setEditingId(null);
+            setShowModal(true);
+          }}
+          className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-5 py-2 rounded-xl shadow-md hover:opacity-90 transition text-sm font-medium"
         >
-          {/* Branch Selection */}
-          <div className="flex flex-col">
-            <label className="font-semibold mb-1">Select Branch</label>
-            <select
-              value={selectedBranchId}
-              onChange={(e) => setSelectedBranchId(e.target.value)}
-              className="border p-4 rounded-xl focus:ring-4 focus:ring-purple-300 outline-none transition"
-              required
-            >
-              <option value="">Select Branch</option>
-              {branches.map((branch) => (
-                <option key={branch.branchId} value={branch.branchId}>
-                  {branch.branchName} ({branch.location})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Department Name */}
-          <div className="flex flex-col">
-            <label className="font-semibold mb-1">Department Name</label>
-            <input
-              type="text"
-              placeholder="Enter Department Name"
-              value={form.departmentName}
-              onChange={(e) =>
-                setForm({ ...form, departmentName: e.target.value })
-              }
-              className="border p-4 rounded-xl focus:ring-4 focus:ring-indigo-300 outline-none transition"
-              required
-            />
-          </div>
-
-          {/* Submit Button */}
-          <div className="flex items-end">
-            <button
-              type="submit"
-              disabled={loading}
-              className={`rounded-xl px-6 py-4 text-white font-semibold transition-all duration-300 shadow-lg
-                ${
-                  editingId !== null
-                    ? "bg-gradient-to-r from-yellow-500 to-orange-500 hover:scale-105"
-                    : "bg-gradient-to-r from-indigo-600 to-purple-600 hover:scale-105"
-                }
-                disabled:opacity-50`}
-            >
-              {editingId !== null ? "Update Department" : "Add Department"}
-            </button>
-          </div>
-        </form>
+          + Add Department
+        </button>
       </div>
 
-      {/* ================= TABLE CARD ================= */}
-      <div className="max-w-6xl mx-auto bg-white shadow-2xl rounded-3xl p-8 border border-gray-200">
-        {departments.length === 0 ? (
-          <p className="text-center text-gray-400 py-10 text-lg">
-            No Departments Found for selected branch
-          </p>
-        ) : (
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b text-gray-600 text-lg">
-                <th className="py-4">ID</th>
-                <th>Name</th>
-                <th>Branch</th>
-                <th className="text-center">Actions</th>
+      {/* TABLE */}
+      <div className="bg-white rounded-2xl shadow-xl border border-indigo-100 overflow-hidden">
+        <div className="max-h-[500px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-xs uppercase tracking-wider sticky top-0">
+              <tr>
+                <th className="px-6 py-4 text-left">ID</th>
+                <th className="px-6 py-4 text-left">Department</th>
+                <th className="px-6 py-4 text-left">Branch</th>
+                <th className="px-6 py-4 text-center">Actions</th>
               </tr>
             </thead>
-            <tbody>
-              {departments.map((dept) => {
-                const branch = branches.find(b => b.branchId === dept.branchId);
+
+            <tbody className="divide-y divide-gray-100">
+              {departments.map((d, index) => {
+                const branch = branches.find(
+                  (b) => b.branchId === d.branchId
+                );
+
                 return (
                   <tr
-                    key={dept.departmentId}
-                    className="border-b hover:bg-indigo-50 transition duration-200"
+                    key={d.departmentId}
+                    className={`transition hover:bg-indigo-50 ${
+                      index % 2 === 0 ? "bg-slate-50" : "bg-white"
+                    }`}
                   >
-                    <td className="py-4 font-medium">{dept.departmentId}</td>
-                    <td className="font-semibold text-indigo-700">{dept.departmentName}</td>
-                    <td>
-                      <span className="px-4 py-1 rounded-full text-sm bg-purple-100 text-purple-700">
-                        {branch ? branch.branchName : "N/A"}
-                      </span>
+                    <td className="px-6 py-4 text-gray-500">
+                      {d.departmentId}
                     </td>
-                    <td className="text-center space-x-3">
+                    <td className="px-6 py-4 font-semibold text-gray-800">
+                      {d.departmentName}
+                    </td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {branch
+                        ? `${branch.branchName} (${branch.location})`
+                        : "N/A"}
+                    </td>
+                    <td className="px-6 py-4 text-center space-x-2">
                       <button
-                        onClick={() => handleEdit(dept)}
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition shadow-md"
+                        onClick={() => handleEdit(d)}
+                        className="bg-yellow-500 text-white px-3 py-1 rounded-md text-xs hover:opacity-90"
                       >
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(dept.departmentId)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition shadow-md"
+                        onClick={() => handleDelete(d.departmentId)}
+                        className="bg-red-500 text-white px-3 py-1 rounded-md text-xs hover:opacity-90"
                       >
                         Delete
                       </button>
                     </td>
                   </tr>
-                )
+                );
               })}
+
+              {departments.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="text-center py-10 text-gray-400">
+                    No departments found
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-        )}
+        </div>
       </div>
+
+      {/* MODAL */}
+      {showModal && (
+        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+            <h3 className="text-lg font-semibold mb-4">
+              {editingId ? "Update Department" : "Add Department"}
+            </h3>
+
+            <form className="space-y-4" onSubmit={handleSubmit}>
+              <div>
+                <label className="text-xs text-gray-600">Select Branch</label>
+                <select
+                  value={formData.branchId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, branchId: e.target.value })
+                  }
+                  className="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 outline-none"
+                  required
+                >
+                  <option value="">Select Branch</option>
+                  {branches.map((b) => (
+                    <option key={b.branchId} value={b.branchId}>
+                      {b.branchName} ({b.location})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-600">
+                  Department Name
+                </label>
+                <input
+                  value={formData.departmentName}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      departmentName: e.target.value,
+                    })
+                  }
+                  className="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 outline-none"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 text-sm rounded-lg border"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={loading}
+                  className="px-4 py-2 text-sm bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:opacity-90"
+                >
+                  {editingId ? "Update" : "Add"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

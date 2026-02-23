@@ -1,12 +1,51 @@
-import api from "./hr.api";
+import hrApi from "./hr.api";
 
-// ================= BRANCH API =================
+/**
+ * ✅ Get All Branches
+ * GET: /api/Branch
+ */
+export const getBranches = async () => {
+  const response = await hrApi.get("/api/Branch");
+  return response.data;
+};
 
-export const getBranches = () => api.get("/Branch");
+/**
+ * ✅ Create Branch
+ * POST: /api/Branch
+ * Body:
+ * {
+ *   branchName: string,
+ *   location: string,
+ *   status: string
+ * }
+ */
+export const createBranch = async (branchData) => {
+  const response = await hrApi.post("/api/Branch", branchData);
+  return response.data;
+};
 
-export const createBranch = (data) => api.post("/Branch", data);
+/**
+ * ✅ Update Branch
+ * PUT: /api/Branch/{id}
+ * Body:
+ * {
+ *   branchName: string,
+ *   location: string,
+ *   status: string
+ * }
+ */
+export const updateBranch = async (id, branchData) => {
+  const response = await hrApi.put(`/api/Branch/${id}`, branchData);
+  return response.data;
+};
 
-export const updateBranch = (branchId, data) =>
-  api.put(`/Branch/${branchId}`, data);
+/**
+ * ✅ Delete Branch
+ * DELETE: /api/Branch/{id}
+ */
+export const deleteBranch = async (id) => {
+  const response = await hrApi.delete(`/api/Branch/${id}`);
+  return response.data;
+};
 
-export const deleteBranch = (branchId) => api.delete(`/Branch/${branchId}`);
+

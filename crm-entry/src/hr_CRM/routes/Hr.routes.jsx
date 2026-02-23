@@ -9,8 +9,10 @@ import Employees from "../pages/Employees";
 import Branch from "../pages/Branch";
 import Project from "../pages/Project";
 import HRLeads from "../pages/HRLeads";
-import Attendance from "../pages/Attendence";
+import Attendance from "../pages/Attendance";
 import Departments from "../../hr_CRM/pages/Deparments";
+import Recruitment from "../pages/Recruitment";
+import Todo from "../pages/Todo";
 
 export default function HrRoutes() {
   return (
@@ -26,7 +28,9 @@ export default function HrRoutes() {
         <Route path="departments" element={<Departments />} />
         <Route path="project" element={<Project />} />
         <Route path="leads" element={<HRLeads />} />
-        <Route path="attendence" element={<Attendance />} />
+        <Route path="attendance" element={<Attendance />} />
+        <Route path="recruitment" element={<Recruitment />}  />
+        <Route path="todo" element={<Todo />} /> 
 
       </Route>
     </Routes>
