@@ -220,6 +220,9 @@ import { useParams } from "react-router-dom";
 /* SOCIAL CRM */
 import SocialEntry from "../../socialCRM/SocialEntry";
 
+/* SALES CRM */
+import SalesEntry from "../../salesCRM/SalesEntry";
+
 /* HR CRM */
 import HrRoutes from "../../hr_CRM/routes/Hr.routes";
 
@@ -232,18 +235,14 @@ export default function CrmShell() {
     return <SocialEntry />;
   }
 
+  /* ================= SALES CRM ================= */
+  if (code === "sales") {
+    return <SalesEntry />;
+  }
+
   /* ================= HR CRM ================= */
   if (code === "hr") {
     return <HrRoutes />;
-  }
-
-  /* ================= SALES CRM ================= */
-  if (code === "sales") {
-    return (
-      <div className="p-10 text-center text-xl">
-        Sales CRM Coming Soon 🚀
-      </div>
-    );
   }
 
   /* ================= INVALID DOMAIN ================= */
