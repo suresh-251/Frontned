@@ -23,7 +23,7 @@ export const assignManager = async (userId, managerId) => {
 };
 
 export const getManagers = async () => {
-  const res = await api.get("/api/users/admin/managers");
+  const res = await api.get("/api/users/managers");
   return res.data; // ARRAY
 };
 

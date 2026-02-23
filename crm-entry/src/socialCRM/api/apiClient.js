@@ -32,7 +32,7 @@ api.interceptors.response.use(
 
     if (status === 401) {
       // Redirect to Social CRM login page instead of admin
-      window.location.href = "/crm/socialmedia/login";
+      window.location.href = "/crm/socialmedia/post/create";
       return;
     }
 

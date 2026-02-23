@@ -9,6 +9,12 @@ export const getAdminUsers = async (params) => {
   return res.data || [];
 };
 
+// export const getAllEmployees = async (params) => {
+//   const res = await api.get("/api/users", { params });
+//   return res.data || [];
+// };
+
+
 // If you expect paginated structure
 export const getUsers = async (params) => {
   const res = await api.get("/api/users", { params });
