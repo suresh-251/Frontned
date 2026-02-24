@@ -187,3 +187,5 @@ try {
 
   }
 );
+
+export default api;
