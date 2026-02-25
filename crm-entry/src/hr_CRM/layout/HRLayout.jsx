@@ -64,7 +64,7 @@ export default function HRLayout() {
     <button
       onClick={() => {
         localStorage.removeItem("accessToken");
-        window.location.href = "/crm/hr/login";
+        window.location.href = "/crm/login";
       }}
       className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 
                  rounded-xl bg-white text-red-600 font-semibold 

@@ -264,198 +264,208 @@
 
 
 
-
-import React, { useState, useEffect } from 'react';
-import { Card, Button, Table, Modal, Input, Select } from '../components/common';
-import useFacebookLeads from '../../socialCRM/hooks/useFacebookLeads'; // ✅ SAME AS HRLeADS
-import Toast from '../utils/toast';
-import { 
-  FaUsers, 
-  FaPlus, 
-  FaEnvelope, 
-  FaPhone, 
-  FaCheckCircle, 
-  FaTimesCircle,
-  FaFileImport
-} from 'react-icons/fa';
+import React, { useState, useEffect } from "react";
+import { Card, Button, Table, Modal, Input, Select } from "../components/common";
+import leadsAPI from "../api/leads.api";
+import useFacebookLeads from "../../socialCRM/hooks/useFacebookLeads";
+import Toast from "../utils/toast";
+import { FaPlus, FaFileImport } from "react-icons/fa";
 
 const Leads = () => {
+  /* ================= SALES CRM LEADS ================= */
+  const [salesLeads, setSalesLeads] = useState([]);
+  const [loadingSales, setLoadingSales] = useState(false);
 
-  // ✅ USING SAME HOOK AS HRLEADS
-  const { leads, loading, reload } = useFacebookLeads();
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [showAssigned, setShowAssigned] = useState(false);
-
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    source: '',
-    status: 'New'
-  });
+  const fetchSalesLeads = async () => {
+    try {
+      setLoadingSales(true);
+      const data = await leadsAPI.getAll();
+      setSalesLeads(data || []);
+    } catch (err) {
+      Toast.error("Failed to load SalesCRM leads");
+    } finally {
+      setLoadingSales(false);
+    }
+  };
 
   useEffect(() => {
-    reload({});
+    fetchSalesLeads();
   }, []);
 
-  // ✅ SAME ASSIGNED FILTER AS HRLEADS
-  const assignedLeads = (leads || []).filter(
-    (l) => l.assignedToUserId && l.assignedToUserName
+  /* ================= SOCIAL CRM ================= */
+  const { leads: socialLeads, reload } = useFacebookLeads();
+
+  /* ================= UI STATE ================= */
+  const [showImported, setShowImported] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  /* ================= IMPORT ASSIGNED ONLY ================= */
+  const handleImport = async () => {
+    if (!showImported) {
+      await reload({});
+    }
+    setShowImported(!showImported);
+  };
+
+  const assignedSocialLeads = (socialLeads || []).filter(
+    (lead) =>
+      lead.assignedToUserId !== null &&
+      lead.assignedToUserName !== null &&
+      lead.assignedToUserName !== ""
   );
 
-  const displayedLeads = showAssigned ? assignedLeads : leads || [];
+  // Prevent duplicates by ID
+  const mergedLeads = showImported
+    ? [
+        ...salesLeads,
+        ...assignedSocialLeads.filter(
+          (social) =>
+            !salesLeads.some((sales) => sales.id === social.id)
+        ),
+      ]
+    : salesLeads;
 
-  const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+  /* ================= ADD LEAD FORM ================= */
+  const [formData, setFormData] = useState({
+    appId: 0,
+    platform: 1,
+    pageId: "",
+    formId: "",
+    leadGenId: "",
+    campaignId: "",
+    adsetId: "",
+    adId: "",
+    status: "New",
+    processingStatus: 1,
+    retryCount: 0,
+    isDeadLetter: false,
+    assignedToUserId: null,
+    assignedToUserName: "",
+    customFieldsJson: "",
+    rawPayloadJson: "",
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value === "" ? null : value,
+    }));
   };
 
-  const getStatusBadge = (status) => {
-    const badges = {
-      'New': { bg: 'bg-gradient-to-r from-blue-500 to-blue-600', icon: '🆕', text: 'text-white' },
-      'Contacted': { bg: 'bg-gradient-to-r from-yellow-500 to-orange-500', icon: '📞', text: 'text-white' },
-      'Qualified': { bg: 'bg-gradient-to-r from-purple-500 to-pink-500', icon: '✅', text: 'text-white' },
-      'Converted': { bg: 'bg-gradient-to-r from-green-500 to-emerald-600', icon: '🎉', text: 'text-white' },
-      'Lost': { bg: 'bg-gradient-to-r from-red-500 to-red-600', icon: '❌', text: 'text-white' }
-    };
-
-    const badge = badges[status] || { bg: 'bg-gray-100', icon: '', text: 'text-gray-800' };
-
-    return (
-      <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold shadow-md ${badge.bg} ${badge.text}`}>
-        <span className="mr-1">{badge.icon}</span>
-        {status}
-      </span>
-    );
+  const handleCreate = async () => {
+    try {
+      await leadsAPI.create(formData);
+      Toast.success("Lead created successfully");
+      setIsModalOpen(false);
+      fetchSalesLeads();
+    } catch (err) {
+      Toast.error("Failed to create lead");
+    }
   };
 
+  /* ================= TABLE COLUMNS (COMPACT) ================= */
   const columns = [
-    { header: 'Name', accessor: 'name' },
-    { header: 'Email', accessor: 'email' },
-    { header: 'Phone', accessor: 'phone' },
-    { header: 'Status', render: (row) => getStatusBadge(row.status) },
-    { header: 'Assigned To', accessor: 'assignedToUserName' }
+    { header: "ID", accessor: "id" },
+    { header: "Page", accessor: "pageId" },
+    { header: "Form", accessor: "formId" },
+    { header: "LeadGen ID", accessor: "leadGenId" },
+    { header: "Status", accessor: "status" },
+    { header: "Assigned To", accessor: "assignedToUserName" },
+    {
+      header: "Created",
+      render: (row) =>
+        row.createdAt
+          ? new Date(row.createdAt).toLocaleDateString()
+          : "-"
+    }
   ];
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="space-y-6">
 
       {/* HEADER */}
-      <div className="bg-white rounded-2xl shadow-lg p-6 border border-blue-100 slide-in-right">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div className="flex items-center">
-            <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl shadow-xl mr-4">
-              <FaUsers className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                Leads Management
-              </h1>
-              <p className="text-gray-600 mt-2 text-sm">
-                {displayedLeads.length} Leads
-              </p>
-            </div>
-          </div>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">
+          Leads ({mergedLeads.length})
+        </h1>
 
-          <Button 
-            onClick={() => setIsModalOpen(true)} 
-            variant="primary" 
-            size="lg"
-          >
+        <div className="flex gap-3">
+          <Button variant="secondary" onClick={handleImport}>
+            <FaFileImport className="mr-2" />
+            {showImported ? "Hide Imported" : "Import Assigned Leads"}
+          </Button>
+
+          <Button variant="primary" onClick={() => setIsModalOpen(true)}>
             <FaPlus className="mr-2" />
-            Add New Lead
+            Add Lead
           </Button>
         </div>
       </div>
 
-      {/* TABLE SECTION */}
-      <Card className="border-2 border-blue-100">
-        <div className="mb-6 flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-              <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg mr-3">
-                <FaUsers className="text-white w-5 h-5" />
-              </div>
-              {showAssigned ? 'Assigned Leads' : 'All Leads'}
-            </h2>
-            <p className="text-sm text-gray-500 mt-2 ml-11">
-              {showAssigned
-                ? 'Showing only assigned leads'
-                : 'View and manage all leads'}
-            </p>
-          </div>
-
-          {/* ✅ IMPORT BUTTON */}
-          <Button
-            onClick={() => setShowAssigned(!showAssigned)}
-            variant="secondary"
-          >
-            <FaFileImport className="mr-2" />
-            {showAssigned ? 'Show All Leads' : 'Import Leads'}
-          </Button>
-        </div>
-
+      {/* TABLE */}
+      <Card className="overflow-x-auto">
         <Table
           columns={columns}
-          data={displayedLeads}
-          loading={loading}
-          emptyMessage={
-            showAssigned
-              ? "No assigned leads found."
-              : "No leads found."
-          }
+          data={mergedLeads}
+          loading={loadingSales}
+          emptyMessage="No leads found"
         />
       </Card>
 
-      {/* MODAL (UI Kept Same) */}
+      {/* ADD LEAD MODAL */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title="Add New Lead"
-        size="md"
+        size="lg"
         footer={
-          <div className="flex justify-end space-x-3">
+          <div className="flex justify-end gap-3">
             <Button variant="ghost" onClick={() => setIsModalOpen(false)}>
-              <FaTimesCircle className="mr-2" />
               Cancel
             </Button>
-            <Button variant="success">
-              <FaCheckCircle className="mr-2" />
-              Create Lead
+            <Button variant="success" onClick={handleCreate}>
+              Create
             </Button>
           </div>
         }
       >
-        <form className="space-y-4">
-          <Input
-            label="Full Name"
-            name="name"
-            value={formData.name}
-            onChange={handleInputChange}
-            required
-            icon={(props) => <FaUsers {...props} />}
+        <div className="grid grid-cols-2 gap-4">
+
+          <Input label="Platform" name="platform" onChange={handleChange} />
+          <Input label="Page ID" name="pageId" onChange={handleChange} />
+          <Input label="Form ID" name="formId" onChange={handleChange} />
+          <Input label="LeadGen ID" name="leadGenId" onChange={handleChange} />
+          <Input label="Campaign ID" name="campaignId" onChange={handleChange} />
+          <Input label="Adset ID" name="adsetId" onChange={handleChange} />
+          <Input label="Ad ID" name="adId" onChange={handleChange} />
+
+          <Select
+            label="Status"
+            name="status"
+            onChange={handleChange}
+            options={[
+              { label: "New", value: "New" },
+              { label: "Contacted", value: "Contacted" },
+              { label: "Qualified", value: "Qualified" },
+              { label: "Converted", value: "Converted" },
+              { label: "Lost", value: "Lost" },
+            ]}
           />
+
           <Input
-            label="Email"
-            name="email"
-            type="email"
-            value={formData.email}
-            onChange={handleInputChange}
-            required
-            icon={(props) => <FaEnvelope {...props} />}
+            label="Assigned User ID"  
+            name="assignedToUserId"
+            onChange={handleChange}
           />
+
           <Input
-            label="Phone"
-            name="phone"
-            value={formData.phone}
-            onChange={handleInputChange}
-            required
-            icon={(props) => <FaPhone {...props} />}
+            label="Assigned User Name"
+            name="assignedToUserName"
+            onChange={handleChange}
           />
-        </form>
+
+        </div>
       </Modal>
 
     </div>

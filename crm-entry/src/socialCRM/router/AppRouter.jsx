@@ -12,6 +12,8 @@ import ProtectedRoute from "./ProtectedRoute";
 import PageSubscriptions from "../pages/PageSubscriptions";
 import TestPage from "../pages/TestPage";
 
+import BrandGate from "../pages/BrandGate";
+
 export default function AppRouter() {
   return (
     <Routes>
@@ -22,7 +24,8 @@ export default function AppRouter() {
       <Route path="test" element={<TestPage />} />
       
       {/* Dashboard - No Protection, freely accessible */}
-      <Route element={<DashboardLayout />}>
+      <Route element={<BrandGate />}>
+       <Route element={<DashboardLayout />}>
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="post/create" element={<CreatePost />} />
         {/* <Route path="post/multi" element={<MultiPagePost />} /> */}
@@ -31,6 +34,7 @@ export default function AppRouter() {
         
         {/* 🔥 NEW PAGE */}
         <Route path="facebook/pages/subscriptions" element={<PageSubscriptions />} />
+      </Route>
       </Route>
     </Routes>
   );
