@@ -3,27 +3,27 @@ import api from "../api/apiClient";
 import { getInstagramDisplayName } from "../utils/instagramDisplayName";
 // import { getLinkedInOrgs } from "../api/linkedin.orgs.api";
 import { connectPlatform } from "../api/auth.api";
-
+ 
 export default function CreatePost() {
   const [mode, setMode] = useState("Text"); // Text | Image | Video
   const [showDropdown, setShowDropdown] = useState(false);
-
+ 
   const [fbPages, setFbPages] = useState([]);
   const [igAccounts, setIgAccounts] = useState([]);
 const [linkedInPages, setLinkedInPages] = useState([]);
 const [linkedInProfile, setLinkedInProfile] = useState(null);
-
+ 
   const [selectedFb, setSelectedFb] = useState([]);
   const [selectedIg, setSelectedIg] = useState([]);
   const [selectedLinkedIn, setSelectedLinkedIn] = useState([]);
-
+ 
   const [content, setContent] = useState("");
   const [file, setFile] = useState(null);
-
+ 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
-
+ 
   /* =========================
      LOAD FACEBOOK PAGES
      ========================= */
@@ -32,7 +32,7 @@ const [linkedInProfile, setLinkedInProfile] = useState(null);
       .then(res => setFbPages(res.data))
       .catch(() => {});
   }, []);
-
+ 
   /* =========================
      LOAD INSTAGRAM ACCOUNTS
      ========================= */
@@ -41,7 +41,7 @@ const [linkedInProfile, setLinkedInProfile] = useState(null);
       .then(res => setIgAccounts(res.data))
       .catch(() => {});
   }, []);
-
+ 
   /* =========================
      LOAD LINKEDIN ORGS
      ========================= */
@@ -50,7 +50,7 @@ const [linkedInProfile, setLinkedInProfile] = useState(null);
   //     .then(data => setLinkedInOrgs(data))
   //     .catch(() => {});
   // }, []);
-
+ 
   const toggle = (id, setter) => {
     setter(prev =>
       prev.includes(id)
@@ -73,40 +73,40 @@ const [linkedInProfile, setLinkedInProfile] = useState(null);
 /*=============================
 LINKEDIN profile
 ===========================*/
-// useEffect(() => {
-//   api.get("/linkedin/read/profile")
-//     .then(res => {
-//       setLinkedInProfile({
-//         id: res.data.sub,
-//         name: res.data.name,
-//         type: "profile"
-//       });
-//     })
-//     .catch(() => {});
-// }, []);
-
+useEffect(() => {
+  api.get("/linkedin/read/profile")
+    .then(res => {
+      setLinkedInProfile({
+        id: res.data.sub,
+        name: res.data.name,
+        type: "profile"
+      });
+    })
+    .catch(() => {});
+}, []);
+ 
   /* =========================
      GET SELECTED COUNT & NAMES
      ========================= */
   const getSelectedCount = () => {
     return selectedFb.length + selectedIg.length + selectedLinkedIn.length;
   };
-
+ 
   const getSelectedNames = () => {
     const names = [];
-    
+   
     selectedFb.forEach(id => {
       const page = fbPages.find(p => p.pageId === id);
       if (page) names.push({ name: page.name, platform: 'Facebook', icon: 'fb' });
     });
-    
+   
     selectedIg.forEach(id => {
       const account = igAccounts.find(a => a.instagramBusinessId === id);
       if (account) names.push({ name: getInstagramDisplayName(account), platform: 'Instagram', icon: 'ig' });
     });
-    
+   
     selectedLinkedIn.forEach(id => {
-
+ 
   // Profile
   if (linkedInProfile && id === linkedInProfile.id) {
     names.push({
@@ -116,7 +116,7 @@ LINKEDIN profile
       badge: 'Personal'
     });
   }
-
+ 
   // Pages
   const page = linkedInPages.find(p => p.id === id);
   if (page) {
@@ -128,18 +128,18 @@ LINKEDIN profile
     });
   }
 });
-
-    
+ 
+   
     return names;
   };
-
+ 
   /* =========================
      CONNECT PLATFORM
      ========================= */
   const handleConnect = (platform) => {
     connectPlatform(platform);
   };
-
+ 
   /* =========================
      SUBMIT (UNIFIED)
      ========================= */
@@ -148,40 +148,40 @@ LINKEDIN profile
       setError("Select at least one platform to post");
       return;
     }
-
+ 
     if (mode !== "Text" && !file) {
       setError("Select a media file");
       return;
     }
-
+ 
     try {
       setLoading(true);
       setError("");
       setResult(null);
-
+ 
       const form = new FormData();
-
+ 
       // Platforms
       if (selectedFb.length) form.append("Platforms", "Facebook");
       if (selectedIg.length) form.append("Platforms", "Instagram");
       if (selectedLinkedIn.length) form.append("Platforms", "LinkedIn");
-
+ 
       // Targets
       [...selectedFb, ...selectedIg, ...selectedLinkedIn].forEach(id =>
         form.append("TargetAccountIds", id)
       );
-
+ 
       form.append("Type", mode);
       form.append("Content", content || "");
-
+ 
       if (file) {
         form.append("MediaFiles", file);
       }
-
+ 
       const res = await api.post("/post", form, {
         headers: { "Content-Type": "multipart/form-data" }
       });
-
+ 
       setResult(res.data);
     } catch (e) {
       setError(e.response?.data?.message || "Post failed. Please try again.");
@@ -189,7 +189,7 @@ LINKEDIN profile
       setLoading(false);
     }
   };
-
+ 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-4xl mx-auto">
@@ -198,7 +198,7 @@ LINKEDIN profile
           <h1 className="text-3xl font-bold text-gray-900">Create Post</h1>
           <p className="text-gray-600 mt-1">Share your content across multiple platforms</p>
         </div>
-
+ 
         {/* Main Card - Meta Style */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
           {/* Post Type Selector */}
@@ -236,11 +236,11 @@ LINKEDIN profile
               </button>
             </div>
           </div>
-
+ 
           {/* Platform Selection - Dropdown Style */}
           <div className="p-4 border-b border-gray-200">
             <p className="text-sm font-medium text-gray-700 mb-3">Select where to post:</p>
-            
+           
             {/* Dropdown Button */}
             <div className="relative">
               <button
@@ -263,7 +263,7 @@ LINKEDIN profile
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-
+ 
               {/* Dropdown Menu */}
               {showDropdown && (
                 <div className="absolute z-10 w-full mt-2 bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-96 overflow-y-auto">
@@ -292,7 +292,7 @@ LINKEDIN profile
                       ))}
                     </div>
                   )}
-
+ 
                   {/* Instagram Accounts */}
                   {igAccounts.length > 0 && (
                     <div className="p-3 border-b border-gray-200">
@@ -318,7 +318,7 @@ LINKEDIN profile
                       ))}
                     </div>
                   )}
-
+ 
                   {/* LinkedIn Orgs */}
                   {/* LinkedIn Profile */}
 {linkedInProfile && (
@@ -331,7 +331,7 @@ LINKEDIN profile
         LinkedIn Profile
       </span>
     </div>
-
+ 
     <label className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
       <input
         type="checkbox"
@@ -348,7 +348,7 @@ LINKEDIN profile
     </label>
   </div>
 )}
-
+ 
 {/* LinkedIn Pages */}
 {linkedInPages.length > 0 && (
   <div className="p-3">
@@ -360,7 +360,7 @@ LINKEDIN profile
         LinkedIn Pages
       </span>
     </div>
-
+ 
     {linkedInPages.map(page => (
       <label
         key={page.id}
@@ -382,8 +382,8 @@ LINKEDIN profile
     ))}
   </div>
 )}
-
-
+ 
+ 
                   {/* No Accounts Available */}
                   {fbPages.length === 0 && igAccounts.length === 0 && !linkedInProfile &&
  linkedInPages.length === 0 && (
@@ -395,7 +395,7 @@ LINKEDIN profile
                 </div>
               )}
             </div>
-
+ 
             {/* Selected Platforms Pills */}
             {getSelectedCount() > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -430,14 +430,14 @@ LINKEDIN profile
     )}
   </>
 )}
-
+ 
                     <span className="truncate max-w-[150px]">{item.name}</span>
                   </div>
                 ))}
               </div>
             )}
           </div>
-
+ 
           {/* Connection buttons - Always Visible for Adding More Accounts */}
           <div className="px-4 pb-4">
             <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 border border-blue-200">
@@ -448,7 +448,7 @@ LINKEDIN profile
                 Add More Accounts
               </p>
               <div className="flex flex-wrap gap-3">
-                <button 
+                <button
                   onClick={() => handleConnect('facebook')}
                   className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm font-medium shadow-md hover:shadow-lg"
                 >
@@ -457,8 +457,8 @@ LINKEDIN profile
                   </svg>
                   <span>Connect Facebook</span>
                 </button>
-                
-                <button 
+               
+                <button
                   onClick={() => handleConnect('facebook')}
                   className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all text-sm font-medium shadow-md hover:shadow-lg"
                 >
@@ -467,8 +467,8 @@ LINKEDIN profile
                   </svg>
                   <span>Connect Instagram</span>
                 </button>
-                
-                <button 
+               
+                <button
                   onClick={() => handleConnect('linkedin')}
                   className="flex items-center gap-2 px-4 py-2.5 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-all text-sm font-medium shadow-md hover:shadow-lg"
                 >
@@ -480,7 +480,7 @@ LINKEDIN profile
               </div>
             </div>
           </div>
-
+ 
           {/* Content Area */}
           <div className="p-4">
             <textarea
@@ -490,7 +490,7 @@ LINKEDIN profile
               onChange={e => setContent(e.target.value)}
               className="w-full border-0 focus:outline-none focus:ring-0 text-gray-900 text-lg resize-none placeholder-gray-400"
             />
-
+ 
             {/* Media Upload */}
             {(mode === "Image" || mode === "Video") && (
               <div className="mt-4">
@@ -520,7 +520,7 @@ LINKEDIN profile
                 </label>
               </div>
             )}
-
+ 
             {/* Error Message */}
             {error && (
               <div className="mt-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
@@ -529,7 +529,7 @@ LINKEDIN profile
               </div>
             )}
           </div>
-
+ 
           {/* Footer with Actions */}
           <div className="border-t border-gray-200 p-4 flex items-center justify-between bg-gray-50 rounded-b-2xl">
             <div className="flex items-center gap-2">
@@ -544,7 +544,7 @@ LINKEDIN profile
                 </svg>
               </button>
             </div>
-
+ 
             <button
               onClick={submit}
               disabled={loading || (!selectedFb.length && !selectedIg.length && !selectedLinkedIn.length)}
@@ -564,7 +564,7 @@ LINKEDIN profile
             </button>
           </div>
         </div>
-
+ 
         {/* Results */}
         {result && (
           <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
@@ -588,14 +588,29 @@ LINKEDIN profile
                       </p>
                     </div>
                   </div>
-                  {r.postId && (
-                    <a
-                      href={`#`}
-                      className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                    >
-                      View Post →
-                    </a>
-                  )}
+                 {r.success && r.viewPostUrl && (
+  <div className="flex flex-col items-end gap-1">
+    <a
+      href={r.viewPostUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+    >
+      View Post →
+    </a>
+ 
+    {r.profileUrl && (
+      <a
+        href={r.profileUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-gray-500 hover:text-gray-700 text-xs"
+      >
+        Go to Account
+      </a>
+    )}
+  </div>
+)}
                 </div>
               ))}
             </div>
@@ -605,3 +620,5 @@ LINKEDIN profile
     </div>
   );
 }
+ 
+ 
