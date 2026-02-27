@@ -14,6 +14,8 @@ import Departments from "../../hr_CRM/pages/Deparments";
 import Recruitment from "../pages/Recruitment";
 import Todo from "../pages/Todo";
 
+// import Knowledge from "../pages/Knowledge";
+
 export default function HrRoutes() {
   return (
     <Routes>
@@ -29,6 +31,7 @@ export default function HrRoutes() {
         <Route path="project" element={<Project />} />
         <Route path="leads" element={<HRLeads />} />
         <Route path="attendance" element={<Attendance />} />
+        {/* <Route path="knowledge" element={<Knowledge />} /> */}
         <Route path="recruitment" element={<Recruitment />}  />
         <Route path="todo" element={<Todo />} /> 
 

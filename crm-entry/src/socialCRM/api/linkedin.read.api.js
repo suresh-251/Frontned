@@ -4,7 +4,7 @@ import api from "./apiClient";
  * LinkedIn Read APIs
  */
 
-// GET /api/linkedin/read/profile
+GET /api/linkedin/read/profile
 export const getLinkedInProfile = async () => {
   const response = await api.get("/linkedin/read/profile");
   return response.data;

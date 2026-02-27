@@ -6,6 +6,7 @@ import Leads from '../pages/Leads';
 import Deals from '../pages/Deals';
 import Accounts from '../pages/Accounts';
 import Activities from '../pages/Activities';
+import Contacts from '../pages/Contacts';
 
 const AppRouter = () => {
   return (
@@ -15,6 +16,7 @@ const AppRouter = () => {
         <Route path="leads" element={<Leads />} />
         <Route path="deals" element={<Deals />} />
         <Route path="accounts" element={<Accounts />} />
+         <Route path="contacts" element={<Contacts />} />
         <Route path="activities" element={<Activities />} />
       </Route>
       <Route path="*" element={<Navigate to="/crm/sales" replace />} />

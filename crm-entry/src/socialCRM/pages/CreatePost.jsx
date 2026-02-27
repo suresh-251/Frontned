@@ -73,17 +73,17 @@ const [linkedInProfile, setLinkedInProfile] = useState(null);
 /*=============================
 LINKEDIN profile
 ===========================*/
-useEffect(() => {
-  api.get("/linkedin/read/profile")
-    .then(res => {
-      setLinkedInProfile({
-        id: res.data.sub,
-        name: res.data.name,
-        type: "profile"
-      });
-    })
-    .catch(() => {});
-}, []);
+// useEffect(() => {
+//   api.get("/linkedin/read/profile")
+//     .then(res => {
+//       setLinkedInProfile({
+//         id: res.data.sub,
+//         name: res.data.name,
+//         type: "profile"
+//       });
+//     })
+//     .catch(() => {});
+// }, []);
 
   /* =========================
      GET SELECTED COUNT & NAMES

@@ -16,7 +16,7 @@ export default function AppRouter() {
   return (
     <Routes>
       {/* Login routes */}
-      <Route path="login" element={<Login />} />
+      {/* <Route path="login" element={<Login />} /> */}
       <Route path="oauth/callback/:platform" element={<OAuthCallback />} />
       <Route path="facebook/pages/select" element={<PageSelection />} />
       <Route path="test" element={<TestPage />} />

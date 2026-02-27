@@ -2,22 +2,14 @@ import hrApi from "./hr.api";
 
 /**
  * ✅ Get All Branches
- * GET: /api/Branch
  */
 export const getBranches = async () => {
   const response = await hrApi.get("/api/Branch");
-  return response.data;
+  return response.data; // Returns the array of branch objects
 };
 
 /**
  * ✅ Create Branch
- * POST: /api/Branch
- * Body:
- * {
- *   branchName: string,
- *   location: string,
- *   status: string
- * }
  */
 export const createBranch = async (branchData) => {
   const response = await hrApi.post("/api/Branch", branchData);
@@ -26,13 +18,7 @@ export const createBranch = async (branchData) => {
 
 /**
  * ✅ Update Branch
- * PUT: /api/Branch/{id}
- * Body:
- * {
- *   branchName: string,
- *   location: string,
- *   status: string
- * }
+ * Your Swagger shows it needs the ID in the URL
  */
 export const updateBranch = async (id, branchData) => {
   const response = await hrApi.put(`/api/Branch/${id}`, branchData);
@@ -40,12 +26,10 @@ export const updateBranch = async (id, branchData) => {
 };
 
 /**
- * ✅ Delete Branch
- * DELETE: /api/Branch/{id}
+ * ✅ Deactivate Branch (Delete)
+ * Per your Swagger, the DELETE method returns "Branch deactivated successfully"
  */
 export const deleteBranch = async (id) => {
   const response = await hrApi.delete(`/api/Branch/${id}`);
   return response.data;
 };
-
-
