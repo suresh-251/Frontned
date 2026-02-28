@@ -13,8 +13,11 @@ import Attendance from "../pages/Attendance";
 import Departments from "../../hr_CRM/pages/Deparments";
 import Recruitment from "../pages/Recruitment";
 import Todo from "../pages/Todo";
-
-// import Knowledge from "../pages/Knowledge";
+import Shift from "../pages/Shift";
+import OTApproval from "../pages/shift/OTApproval";
+import OvertimePolicy from "../pages/shift/OverTimePolicy";
+import OvertimeRecord from "../pages/shift/OvertimeRecord";
+import Knowledge from "../pages/Knowledge";
 
 export default function HrRoutes() {
   return (
@@ -29,9 +32,13 @@ export default function HrRoutes() {
         <Route path="branch" element={<Branch />} />
         <Route path="departments" element={<Departments />} />
         <Route path="project" element={<Project />} />
+        <Route path="overtimeApproval" element={<OTApproval />} />
+        <Route path="overtime-policy" element={<OvertimePolicy />} />
         <Route path="leads" element={<HRLeads />} />
         <Route path="attendance" element={<Attendance />} />
-        {/* <Route path="knowledge" element={<Knowledge />} /> */}
+        <Route path="shift" element={<Shift />} />
+        <Route path="overtime-record" element={<OvertimeRecord />} />
+        <Route path="knowledge" element={<Knowledge />} />
         <Route path="recruitment" element={<Recruitment />}  />
         <Route path="todo" element={<Todo />} /> 
 

@@ -17,6 +17,7 @@ const menuItems = [
   { name: "Employees", icon: Users, path: "/hr/employees" },
   { name: "Attendance", icon: Clock, path: "/hr/attendance" },
   { name: "Branches", icon: Building2, path: "/hr/branches" },
+  { name: "shift", icon: Building2, path: "/hr/shift" },
   { name: "Projects", icon: FolderKanban, path: "/hr/projects" },
   { name: "Recruitment", icon: UserPlus, path: "/hr/recruitment" },
   { name: "Knowledge", icon: BookOpen, path: "/hr/knowledge" },
