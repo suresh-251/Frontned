@@ -13,7 +13,7 @@ const Card = ({
 }) => {
   const baseStyles = 'bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden';
   const hoverStyles = hover ? 'hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer' : '';
-  const paddingStyles = padding ? 'p-6' : '';
+  const paddingStyles = padding ? 'p-4' : '';
   
   return (
     <div 
