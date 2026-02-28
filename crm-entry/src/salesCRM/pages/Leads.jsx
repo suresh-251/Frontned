@@ -554,7 +554,6 @@ const Leads = () => {
           <Button onClick={() => setIsAddOpen(true)} variant="primary">
             <FaPlus className="mr-2" />
             Add Lead
-            Add Lead
           </Button>
         )}
       </div>
