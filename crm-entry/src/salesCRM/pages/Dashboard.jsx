@@ -21,6 +21,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [deals, setDeals] = useState([]);
 
+  // Chart data
   const [revenueData, setRevenueData] = useState([
     { month: 'Jan', revenue: 45000, target: 50000 },
     { month: 'Feb', revenue: 52000, target: 55000 },
@@ -30,7 +31,14 @@ const Dashboard = () => {
     { month: 'Jun', revenue: 67000, target: 65000 },
   ]);
 
-  const [pipelineData, setPipelineData] = useState([]);
+  const [pipelineData, setPipelineData] = useState([
+    { name: 'Prospecting', value: 15, color: '#3B82F6' },
+    { name: 'Qualification', value: 25, color: '#8B5CF6' },
+    { name: 'Proposal', value: 20, color: '#EC4899' },
+    { name: 'Negotiation', value: 30, color: '#10B981' },
+    { name: 'Closed Won', value: 10, color: '#F59E0B' },
+  ]);
+
   const [activityData, setActivityData] = useState([
     { day: 'Mon', calls: 12, meetings: 5, emails: 20 },
     { day: 'Tue', calls: 15, meetings: 7, emails: 25 },
@@ -58,14 +66,15 @@ const Dashboard = () => {
       setDeals(dealsData);
       const totalValue = dealsData.reduce((sum, deal) => sum + (deal.value || 0), 0);
 
+      // Update pipeline data based on real deals
       const pipelineCount = {
-        Prospecting: 0,
-        Qualification: 0,
-        Proposal: 0,
-        Negotiation: 0,
+        'Prospecting': 0,
+        'Qualification': 0,
+        'Proposal': 0,
+        'Negotiation': 0,
         'Closed Won': 0
       };
-
+      
       dealsData.forEach(deal => {
         if (pipelineCount.hasOwnProperty(deal.stage)) {
           pipelineCount[deal.stage]++;
@@ -73,10 +82,10 @@ const Dashboard = () => {
       });
 
       setPipelineData([
-        { name: 'Prospecting', value: pipelineCount.Prospecting, color: '#3B82F6' },
-        { name: 'Qualification', value: pipelineCount.Qualification, color: '#8B5CF6' },
-        { name: 'Proposal', value: pipelineCount.Proposal, color: '#EC4899' },
-        { name: 'Negotiation', value: pipelineCount.Negotiation, color: '#10B981' },
+        { name: 'Prospecting', value: pipelineCount['Prospecting'], color: '#3B82F6' },
+        { name: 'Qualification', value: pipelineCount['Qualification'], color: '#8B5CF6' },
+        { name: 'Proposal', value: pipelineCount['Proposal'], color: '#EC4899' },
+        { name: 'Negotiation', value: pipelineCount['Negotiation'], color: '#10B981' },
         { name: 'Closed Won', value: pipelineCount['Closed Won'], color: '#F59E0B' },
       ]);
 
@@ -94,14 +103,11 @@ const Dashboard = () => {
     }
   };
 
-  const formatCurrency = (value) =>
-    new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(value);
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+  };
 
   const StatCard = ({ title, value, icon: Icon, gradient, isCurrency = false, trend, trendValue }) => (
-
     <div className={`relative overflow-hidden rounded-2xl bg-white shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100`}>
       {/* Gradient Background */}
       <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-5`}></div>
@@ -149,7 +155,6 @@ const Dashboard = () => {
   );
 
   return (
-
     <div className="space-y-6 fade-in">
       {/* Header */}
       <div className="slide-in-right bg-white rounded-2xl shadow-md p-4 border border-gray-100">
@@ -159,20 +164,65 @@ const Dashboard = () => {
               <FaChartLine className="text-blue-600 mr-4" />
               Sales Dashboard
             </h1>
-            <p className="text-gray-500 text-xs mt-1">
+            <p className="text-gray-600 mt-3 flex items-center text-lg">
+              <span className="inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm font-semibold mr-3">
+                <FaCheck className="mr-1" /> Live
+              </span>
               Real-time insights into your sales performance
             </p>
+          </div>
+          <div className="hidden lg:flex items-center space-x-3">
+            <div className="text-right">
+              <p className="text-sm text-gray-500">Current Month</p>
+              <p className="text-2xl font-bold text-gray-900">February 2026</p>
+            </div>
+            <div className="p-4 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl shadow-lg">
+              <FaTrophy className="w-8 h-8 text-yellow-300" />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Deals" value={stats.totalDeals} icon={FaChartLine} gradient="from-blue-500 to-blue-700" trend="up" trendValue="12.5" />
-        <StatCard title="Total Revenue" value={stats.totalValue} icon={FaDollarSign} gradient="from-green-500 to-emerald-700" isCurrency trend="up" trendValue="8.3" />
-        <StatCard title="Active Leads" value={stats.totalLeads} icon={FaUsers} gradient="from-purple-500 to-pink-700" trend="up" trendValue="15.2" />
-        <StatCard title="Total Accounts" value={stats.totalAccounts} icon={FaBuilding} gradient="from-orange-500 to-red-700" trend="down" trendValue="2.1" />
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard
+          title="Total Deals"
+          value={stats.totalDeals}
+          icon={FaChartLine}
+          gradient="from-blue-500 to-blue-700"
+          trend="up"
+          trendValue="12.5"
+        />
+        
+        <StatCard
+          title="Total Revenue"
+          value={stats.totalValue}
+          icon={FaDollarSign}
+          gradient="from-green-500 to-emerald-700"
+          isCurrency
+          trend="up"
+          trendValue="8.3"
+        />
+
+        <StatCard
+          title="Active Leads"
+          value={stats.totalLeads}
+          icon={FaUsers}
+          gradient="from-purple-500 to-pink-700"
+          trend="up"
+          trendValue="15.2"
+        />
+
+        <StatCard
+          title="Total Accounts"
+          value={stats.totalAccounts}
+          icon={FaBuilding}
+          gradient="from-orange-500 to-red-700"
+          trend="down"
+          trendValue="2.1"
+        />
       </div>
+
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Revenue Trend Chart */}
@@ -190,31 +240,76 @@ const Dashboard = () => {
           </div>
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={revenueData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Area type="monotone" dataKey="revenue" stroke="#3B82F6" fill="#93C5FD" />
-              <Area type="monotone" dataKey="target" stroke="#8B5CF6" fill="#C4B5FD" />
+              <defs>
+                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorTarget" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis dataKey="month" stroke="#6B7280" style={{ fontSize: '12px', fontWeight: '600' }} />
+              <YAxis stroke="#6B7280" style={{ fontSize: '12px', fontWeight: '600' }} />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#fff', 
+                  border: '2px solid #E5E7EB',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: '14px', fontWeight: '600' }} />
+              <Area type="monotone" dataKey="revenue" stroke="#3B82F6" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+              <Area type="monotone" dataKey="target" stroke="#8B5CF6" strokeWidth={3} fillOpacity={1} fill="url(#colorTarget)" />
             </AreaChart>
           </ResponsiveContainer>
         </Card>
 
-        <Card>
-          <h3 className="text-lg font-semibold mb-3">Deal Pipeline</h3>
-          <ResponsiveContainer width="100%" height={220}>
+        {/* Pipeline Distribution */}
+        <Card className="slide-in-up">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-2xl font-bold text-gray-900 flex items-center">
+                <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg mr-3">
+                  <FaChartLine className="text-white w-5 h-5" />
+                </div>
+                Deal Pipeline
+              </h3>
+              <p className="text-sm text-gray-500 mt-1 ml-12">Distribution by stage</p>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={300}>
             <PieChart>
-              <Pie data={pipelineData} dataKey="value" outerRadius={80}>
+              <Pie
+                data={pipelineData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                outerRadius={100}
+                fill="#8884d8"
+                dataKey="value"
+              >
                 {pipelineData.map((entry, index) => (
-                  <Cell key={index} fill={entry.color} />
+                  <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#fff', 
+                  border: '2px solid #E5E7EB',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+                }}
+              />
             </PieChart>
           </ResponsiveContainer>
         </Card>
       </div>
+
       {/* Charts Row 2 */}
       <div className="grid grid-cols-1 gap-6">
         {/* Activity Chart */}
