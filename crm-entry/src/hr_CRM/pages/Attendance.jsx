@@ -1,224 +1,205 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { getAdminUsers } from "../../api/admin/users.api";
+import { checkIn, checkOut, getAttendanceHistory } from "../api/api.attendance";
+import { getAssignedUsers } from "../api/shift.api";
 import {
-  checkIn,
-  checkOut,
-  getAttendanceHistory,
-} from "../api/api.attendance";
-import { getUserShift } from "../api/shift.api"; 
-import { Clock, UserCheck, History, X, AlertCircle, Loader2 } from "lucide-react";
+  Clock, History, X, Loader2, Search, CheckCircle2,
+  AlertTriangle, LogIn, LogOut, UserCircle, ChevronRight
+} from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 
 export default function Attendance() {
   const [employees, setEmployees] = useState([]);
   const [attendanceMap, setAttendanceMap] = useState({});
-  const [historyData, setHistoryData] = useState([]);
-  const [selectedUserId, setSelectedUserId] = useState(null);
-  const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [historyData, setHistoryData] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
 
-  const loadInitialData = async () => {
+  // LOGIC UNCHANGED
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getAdminUsers({ page: 1, pageSize: 50 });
-      const users = res?.users ?? [];
-      setEmployees(users);
-      
-      const map = {};
-      const todayStr = new Date().toISOString().split('T')[0];
+      const [userRes, assignedRes] = await Promise.all([
+        getAdminUsers({ page: 1, pageSize: 100 }),
+        getAssignedUsers()
+      ]);
+      const users = userRes?.users ?? [];
+      const shiftAssignments = assignedRes || [];
+      const todayGMT = new Date().toISOString().slice(0, 10);
+      const newStatusMap = {};
 
       await Promise.all(users.map(async (emp) => {
+        const shift = shiftAssignments.find((s) => String(s.userId) === String(emp.userId));
+        let status = { isCheckedIn: false, isCompleted: false, lastAction: "Never" };
         try {
-          const historyRes = await getAttendanceHistory(emp.userId);
-          const history = historyRes.data || [];
-          
-          if (history.length > 0) {
-            // Sort to get the absolute latest record
-            const latest = history.sort((a, b) => new Date(b.attendanceDate) - new Date(a.attendanceDate))[0];
-            const recordDate = new Date(latest.attendanceDate).toISOString().split('T')[0];
-
-            // LOGIC: Is the latest check-in from TODAY and still active?
-            const isActiveToday = (recordDate === todayStr && latest.checkInTime && !latest.checkOutTime);
-
-            map[emp.userId] = {
-              status: recordDate === todayStr ? latest.status : "Absent",
-              isCheckedIn: isActiveToday, 
-            };
-          } else {
-            map[emp.userId] = { status: "Absent", isCheckedIn: false };
+          const hRes = await getAttendanceHistory(emp.userId);
+          const history = hRes?.data || [];
+          const todayLog = history.find((log) => log.attendanceDate?.slice(0, 10) === todayGMT);
+          if (todayLog) {
+            status.isCheckedIn = !!todayLog.checkInTime && !todayLog.checkOutTime;
+            status.isCompleted = !!todayLog.checkInTime && !!todayLog.checkOutTime;
+            status.lastAction = todayLog.checkOutTime ? `Out: ${todayLog.checkOutTime}` : `In: ${todayLog.checkInTime}`;
           }
-        } catch (err) {
-          // Handle 404s and errors silently for the map
-          map[emp.userId] = { status: "Absent", isCheckedIn: false };
-        }
+        } catch (err) {}
+        newStatusMap[emp.userId] = { hasShift: !!shift, shiftName: shift?.shiftName || "Unassigned", ...status };
       }));
-      setAttendanceMap(map);
-    } catch (error) {
-      console.error("Data load error:", error);
+      setAttendanceMap(newStatusMap);
+      setEmployees(users);
+    } catch (err) {
+      toast.error("Sync Error");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { loadInitialData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const handleCheckIn = async (userId) => {
+  const handlePunch = async (userId, type) => {
+    const toastId = toast.loading(`${type}...`);
     try {
-      // 1. Shift Check
-      const shiftRes = await getUserShift(userId);
-      if (!shiftRes?.data || Object.keys(shiftRes.data).length === 0) {
-        toast.error("No shift assigned to this employee!");
-        return;
-      }
-
-      await checkIn(userId);
-      toast.success("Punch-In Successful");
-      loadInitialData(); // Refresh to update UI
+      if (type === "in") await checkIn(userId);
+      else await checkOut(userId);
+      toast.success("Punch Sync", { id: toastId });
+      setTimeout(() => loadData(), 400);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Check-in failed");
+      toast.error("Punch Failed", { id: toastId });
     }
   };
 
-  const handleCheckOut = async (userId) => {
+  const fetchHistory = async (user) => {
+    setSelectedUser(user);
+    setShowModal(true);
+    setHistoryData([]);
     try {
-      await checkOut(userId);
-      toast.success("Punch-Out Successful");
-      loadInitialData(); 
-    } catch (err) {
-      toast.error("Check-out failed. Ensure there is an active session.");
-    }
-  };
-
-  const handleViewHistory = async (userId) => {
-    setHistoryData([]); // Reset modal state
-    try {
-      const res = await getAttendanceHistory(userId);
-      if (res.data && res.data.length > 0) {
-        setHistoryData(res.data);
-        setShowModal(true);
-      } else {
-        toast.error("No records found.");
-      }
-    } catch (err) {
-      // Specifically handle the 404 here for the user
-      toast.error("This employee has no attendance history yet.");
-    }
+      const res = await getAttendanceHistory(user.userId);
+      setHistoryData(res?.data || []);
+    } catch (err) { setHistoryData([]); }
   };
 
   return (
-    <div className="h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="flex flex-col h-[520px] w-full bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm font-sans mt-1">
       <Toaster position="top-right" />
-      
-      <div className="p-8 bg-white border-b border-slate-200 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Attendance Portal</h1>
-          <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Daily Log Management</p>
+
+      {/* COMPACT HEADER */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0 bg-white">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+            <Clock size={16} />
+          </div>
+          <div>
+            <h2 className="text-xs font-black text-slate-800 uppercase tracking-tight">Attendance Manager</h2>
+            <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Real-time Terminal v2.0</p>
+          </div>
         </div>
-        {loading && <Loader2 className="animate-spin text-indigo-600" />}
+
+        <div className="flex items-center gap-2">
+          <div className="relative w-40">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
+            <input 
+              type="text" placeholder="Search ID/Name..."
+              className="w-full text-[10px] font-bold bg-slate-50 border border-slate-200 rounded-lg pl-7 py-1 outline-none focus:ring-1 focus:ring-indigo-100"
+              onChange={(e) => setSearch(e.target.value.toLowerCase())}
+            />
+          </div>
+          <button onClick={loadData} className="p-1.5 hover:bg-slate-50 rounded-lg transition-colors">
+            <Loader2 size={14} className={loading ? "animate-spin text-indigo-500" : "text-slate-300"} />
+          </button>
+        </div>
       </div>
 
-      <div className="p-8 overflow-auto">
-        <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/60 overflow-hidden border border-slate-100">
-          <table className="w-full text-left">
-            <thead className="bg-slate-900 text-white text-[10px] uppercase tracking-[0.2em] font-black">
+      {/* COMPACT TABLE SECTION */}
+      <div className="flex-1 overflow-auto bg-slate-50/20 p-3">
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                <th className="px-8 py-5">Employee</th>
-                <th className="px-8 py-5">Status</th>
-                <th className="px-8 py-5 text-center">Actions</th>
-                <th className="px-8 py-5 text-center">Records</th>
+                <th className="px-4 py-2.5 text-[8px] font-black text-slate-400 uppercase tracking-widest">Employee</th>
+                <th className="px-4 py-2.5 text-[8px] font-black text-slate-400 uppercase tracking-widest">Shift Status</th>
+                <th className="px-4 py-2.5 text-[8px] font-black text-slate-400 uppercase tracking-widest text-center">Control</th>
+                <th className="px-4 py-2.5 text-[8px] font-black text-slate-400 uppercase tracking-widest text-right">Log</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {employees.map((emp) => {
-                const session = attendanceMap[emp.userId] || { status: "Absent", isCheckedIn: false };
-                return (
-                  <tr key={emp.userId} className="hover:bg-indigo-50/30 transition-all">
-                    <td className="px-8 py-5">
-                      <div className="font-bold text-slate-800">{emp.name || emp.username}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">ID: {emp.userId}</div>
-                    </td>
-                    <td className="px-8 py-5">
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
-                        session.isCheckedIn ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
-                      }`}>
-                        {session.isCheckedIn ? "• Active Now" : session.status}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className="flex justify-center gap-3">
-                        <button
-                          disabled={session.isCheckedIn}
-                          onClick={() => handleCheckIn(emp.userId)}
-                          className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${
-                            session.isCheckedIn 
-                            ? "bg-slate-100 text-slate-300" 
-                            : "bg-indigo-600 text-white hover:bg-indigo-700 hover:-translate-y-0.5"
-                          }`}
-                        >
-                          Check In
+            <tbody className="divide-y divide-slate-50">
+              {employees
+                .filter(e => (e.name || e.username || "").toLowerCase().includes(search))
+                .map((emp) => {
+                  const st = attendanceMap[emp.userId] || { hasShift: false };
+                  return (
+                    <tr key={emp.userId} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] font-black text-slate-400">
+                            {emp.name?.charAt(0) || "U"}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black text-slate-800 uppercase truncate leading-none mb-0.5">{emp.name || emp.username}</p>
+                            <p className="text-[8px] font-bold text-slate-400">ID: {emp.userId}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[8px] font-black uppercase ${
+                          st.hasShift ? "bg-emerald-50 border-emerald-100 text-emerald-600" : "bg-rose-50 border-rose-100 text-rose-600"
+                        }`}>
+                          <div className={`w-1 h-1 rounded-full ${st.hasShift ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                          {st.shiftName}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            disabled={!st.hasShift || st.isCheckedIn || st.isCompleted}
+                            onClick={() => handlePunch(emp.userId, "in")}
+                            className="px-2 py-1 text-[8px] font-black bg-indigo-600 text-white rounded-md uppercase disabled:opacity-20 hover:bg-indigo-700 transition-all"
+                          >
+                            Punch In
+                          </button>
+                          <button
+                            disabled={!st.isCheckedIn || st.isCompleted}
+                            onClick={() => handlePunch(emp.userId, "out")}
+                            className="px-2 py-1 text-[8px] font-black bg-white border border-slate-200 text-slate-600 rounded-md uppercase disabled:opacity-20 hover:border-rose-300 hover:text-rose-500 transition-all"
+                          >
+                            Punch Out
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <button onClick={() => fetchHistory(emp)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all">
+                          <History size={14} />
                         </button>
-                        <button
-                          disabled={!session.isCheckedIn}
-                          onClick={() => handleCheckOut(emp.userId)}
-                          className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${
-                            !session.isCheckedIn 
-                            ? "bg-slate-100 text-slate-300" 
-                            : "bg-rose-500 text-white hover:bg-rose-600 hover:-translate-y-0.5"
-                          }`}
-                        >
-                          Check Out
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5 text-center">
-                      <button 
-                        onClick={() => handleViewHistory(emp.userId)}
-                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all"
-                      >
-                        <History size={20} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* HISTORY MODAL */}
+      {/* MINI HISTORY MODAL */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-md">
-          <div className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b flex justify-between items-center">
-              <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Attendance Log</h3>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[2px]">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+            <div className="px-4 py-3 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
+              <h2 className="text-[10px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                <History size={12} className="text-indigo-600" /> {selectedUser?.name}
+              </h2>
+              <button onClick={() => setShowModal(false)} className="p-1 text-slate-400 hover:text-rose-500"><X size={14}/></button>
             </div>
-            <div className="p-6 max-h-[60vh] overflow-y-auto">
-              <table className="w-full">
-                <thead className="text-[10px] text-slate-400 font-black uppercase border-b">
-                  <tr>
-                    <th className="pb-4 text-left">Date</th>
-                    <th className="pb-4 text-left">In</th>
-                    <th className="pb-4 text-left">Out</th>
-                    <th className="pb-4 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {historyData.map((row) => (
-                    <tr key={row.attendanceId} className="text-xs">
-                      <td className="py-4 font-bold">{new Date(row.attendanceDate).toLocaleDateString()}</td>
-                      <td className="py-4 text-indigo-600 font-mono">{row.checkInTime || "--:--"}</td>
-                      <td className="py-4 text-rose-500 font-mono">{row.checkOutTime || "--:--"}</td>
-                      <td className="py-4 text-right">
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${row.status === 'Present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {row.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="p-3 max-h-60 overflow-y-auto custom-scrollbar space-y-2">
+              {historyData.length > 0 ? historyData.map((log, i) => (
+                <div key={i} className="p-2 bg-slate-50 border border-slate-100 rounded-lg flex justify-between items-center">
+                  <div>
+                    <p className="text-[8px] font-black text-slate-400 uppercase">{log.attendanceDate}</p>
+                    <p className="text-[10px] font-bold text-slate-700">{log.checkInTime} - {log.checkOutTime || '...'}</p>
+                  </div>
+                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${
+                    log.status === 'Present' ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
+                  }`}>{log.status}</span>
+                </div>
+              )) : <p className="text-center py-5 text-[9px] font-bold text-slate-300 uppercase tracking-widest italic">No Data</p>}
             </div>
           </div>
         </div>

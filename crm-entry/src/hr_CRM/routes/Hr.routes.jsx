@@ -18,6 +18,9 @@ import OTApproval from "../pages/shift/OTApproval";
 import OvertimePolicy from "../pages/shift/OverTimePolicy";
 import OvertimeRecord from "../pages/shift/OvertimeRecord";
 import Knowledge from "../pages/Knowledge";
+import DeptRole from "../pages/dept/DeptRole";
+import DeptBudget from "../pages/dept/DeptBudget";
+import BudgetChange from "../pages/dept/BudgetChange";
 
 export default function HrRoutes() {
   return (
@@ -34,6 +37,7 @@ export default function HrRoutes() {
         <Route path="project" element={<Project />} />
         <Route path="overtimeApproval" element={<OTApproval />} />
         <Route path="overtime-policy" element={<OvertimePolicy />} />
+        <Route path="department-role" element={<DeptRole />} />
         <Route path="leads" element={<HRLeads />} />
         <Route path="attendance" element={<Attendance />} />
         <Route path="shift" element={<Shift />} />
@@ -41,6 +45,8 @@ export default function HrRoutes() {
         <Route path="knowledge" element={<Knowledge />} />
         <Route path="recruitment" element={<Recruitment />}  />
         <Route path="todo" element={<Todo />} /> 
+        <Route path="department-budget" element={<DeptBudget />} /> 
+        <Route path="budget-change" element={<BudgetChange />} /> 
 
       </Route>
     </Routes>
