@@ -4,7 +4,14 @@ import { getAvailablePages } from "../api/facebook.pages.api";
 import { getLeadForms } from "../api/facebook.leads.api";
 import useUsers from "../hooks/useUsers";
 import * as XLSX from "xlsx";
-
+import * as signalR from "@microsoft/signalr";
+ 
+/* =========================
+   HUB URL (LOCAL + PROD)
+   ========================= */
+const HUB_URL =
+  "https://crm.metagensoft.com/hubs/leads";
+ 
 export default function Leads() {
   const {
     leads,
@@ -14,31 +21,64 @@ export default function Leads() {
     changeStatus,
     assignLead
   } = useFacebookLeads();
-
+ 
   const [pages, setPages] = useState([]);
   const [forms, setForms] = useState([]);
   const users = useUsers();
-
+ 
   const [remarkMap, setRemarkMap] = useState({});
   const [selectedLead, setSelectedLead] = useState(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
-
-  // Export options
+ 
   const [exportFriendlyLabels, setExportFriendlyLabels] = useState(true);
   const [exportFromDate, setExportFromDate] = useState("");
   const [exportToDate, setExportToDate] = useState("");
-
-  /* 🔥 LOAD ALL LEADS ON FIRST RENDER */
+ 
+  /* =========================
+     INITIAL LOAD
+     ========================= */
   useEffect(() => {
     reload({});
   }, []);
-
-  /* LOAD PAGES */
+ 
+  /* =========================
+     SIGNALR REAL-TIME
+     ========================= */
+useEffect(() => {
+  const connection = new signalR.HubConnectionBuilder()
+    .withUrl(HUB_URL, {
+      accessTokenFactory: () =>
+        localStorage.getItem("accessToken")
+    })
+    .withAutomaticReconnect()
+    .build();
+ 
+  connection.on("LeadUpdated", (data) => {
+    console.log("🔥 LeadUpdated event:", data);
+ 
+    // 🔥 only silent reload (no loading spinner)
+    reload({});
+  });
+ 
+  connection.start()
+    .then(() => console.log("✅ Connected to LeadsHub"))
+    .catch(err => console.error("SignalR connection failed:", err));
+ 
+  return () => {
+    connection.stop();
+  };
+}, []);
+ 
+  /* =========================
+     LOAD PAGES
+     ========================= */
   useEffect(() => {
     getAvailablePages().then(setPages);
   }, []);
-
-  /* LOAD FORMS (ONLY WHEN PAGE SELECTED) */
+ 
+  /* =========================
+     LOAD FORMS
+     ========================= */
   useEffect(() => {
     if (!filters.pageId) {
       setForms([]);
@@ -46,7 +86,12 @@ export default function Leads() {
     }
     getLeadForms(filters.pageId).then(setForms);
   }, [filters.pageId]);
-
+ 
+  /* =========================
+     REST OF YOUR COMPONENT
+     (No need to change table logic)
+     ========================= */
+ 
   /* SELECT LEADS */
   const toggleLeadSelection = (id) => {
     setSelectedLeadIds(prev =>
@@ -55,11 +100,11 @@ export default function Leads() {
         : [...prev, id]
     );
   };
-
+ 
   const selectAllVisible = (checked) => {
     setSelectedLeadIds(checked ? leads.map(l => l.id) : []);
   };
-
+ 
   /* =========================
      EXPORT TO EXCEL
      ========================= */
@@ -68,29 +113,29 @@ export default function Leads() {
       alert("No leads to export");
       return;
     }
-
+ 
     let exportLeads =
       mode === "selected"
         ? leads.filter(l => selectedLeadIds.includes(l.id))
         : leads;
-
+ 
     if (exportFromDate) {
       exportLeads = exportLeads.filter(
         l => new Date(l.createdAt) >= new Date(exportFromDate)
       );
     }
-
+ 
     if (exportToDate) {
       exportLeads = exportLeads.filter(
         l => new Date(l.createdAt) <= new Date(exportToDate)
       );
     }
-
+ 
     if (!exportLeads.length) {
       alert("No leads match criteria");
       return;
     }
-
+ 
     const rows = exportLeads.map(l => {
       const row = {
         Name: l.name || "",
@@ -98,9 +143,13 @@ export default function Leads() {
         Phone: l.phone || "",
         Status: l.status || "",
         AssignedTo: l.assignedToUserName || "",
-        CreatedAt: new Date(l.createdAt).toLocaleString()
+        CreatedAt: l.metaCreatedAt
+  ? new Date(l.metaCreatedAt).toLocaleString()
+  : l.syncedAt
+  ? new Date(l.syncedAt).toLocaleString()
+  : ""
       };
-
+ 
       if (l.fields) {
         Object.entries(l.fields).forEach(([key, value]) => {
           const label = exportFriendlyLabels
@@ -111,10 +160,10 @@ export default function Leads() {
           row[label] = value;
         });
       }
-
+ 
       return row;
     });
-
+ 
     // 🧹 remove empty columns
     const usedColumns = {};
     rows.forEach(r => {
@@ -122,17 +171,17 @@ export default function Leads() {
         if (v !== "" && v != null) usedColumns[k] = true;
       });
     });
-
+ 
     const cleanedRows = rows.map(r => {
       const obj = {};
       Object.keys(usedColumns).forEach(k => (obj[k] = r[k]));
       return obj;
     });
-
+ 
     const worksheet = XLSX.utils.json_to_sheet(cleanedRows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
-
+ 
     XLSX.writeFile(
       workbook,
       mode === "selected"
@@ -140,7 +189,7 @@ export default function Leads() {
         : "facebook-leads-all.xlsx"
     );
   };
-
+ 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
@@ -149,7 +198,7 @@ export default function Leads() {
           <h1 className="text-3xl font-bold text-gray-900">Leads</h1>
           <p className="text-gray-600 mt-1">Manage and track your Facebook leads</p>
         </div>
-
+ 
         {/* Filters Card */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 mb-6">
           <div className="flex flex-wrap gap-4 items-center">
@@ -171,7 +220,7 @@ export default function Leads() {
                 ))}
               </select>
             </div>
-
+ 
             {/* Form Filter */}
             <div className="flex-1 min-w-[200px]">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -192,7 +241,7 @@ export default function Leads() {
               </select>
             </div>
           </div>
-
+ 
           {!filters.pageId && (
             <div className="mt-4 flex items-center gap-2 text-sm text-gray-600 bg-blue-50 px-4 py-2 rounded-lg">
               <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -202,7 +251,7 @@ export default function Leads() {
             </div>
           )}
         </div>
-
+ 
         {/* Export Options Card */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -211,7 +260,7 @@ export default function Leads() {
             </svg>
             Export Options
           </h3>
-          
+         
           <div className="flex flex-wrap gap-4 items-end">
             {/* Export Buttons */}
             <button
@@ -223,7 +272,7 @@ export default function Leads() {
               </svg>
               Export Full Table
             </button>
-
+ 
             <button
               onClick={() => exportToExcel("selected")}
               disabled={selectedLeadIds.length === 0}
@@ -234,7 +283,7 @@ export default function Leads() {
               </svg>
               Export Selected ({selectedLeadIds.length})
             </button>
-
+ 
             {/* Friendly Names Checkbox */}
             <label className="flex items-center gap-2 cursor-pointer px-4 py-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
               <input
@@ -245,7 +294,7 @@ export default function Leads() {
               />
               <span className="text-sm font-medium text-gray-700">Friendly field names</span>
             </label>
-
+ 
             {/* Date Filters */}
             <div className="flex gap-3">
               <div>
@@ -269,7 +318,7 @@ export default function Leads() {
             </div>
           </div>
         </div>
-
+ 
         {/* Leads Table Card */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
           {loading && (
@@ -280,7 +329,7 @@ export default function Leads() {
               </div>
             </div>
           )}
-
+ 
           {!loading && leads.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 px-4">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -292,7 +341,7 @@ export default function Leads() {
               <p className="text-gray-400 text-sm mt-1">Try adjusting your filters</p>
             </div>
           )}
-
+ 
           {!loading && leads.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -311,12 +360,12 @@ export default function Leads() {
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Phone</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Assigned To</th>
-                    
+                   
                     {/* ✅ CREATED AT HEADER */}
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">
                       Created At
                     </th>
-
+ 
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Remark</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
                   </tr>
@@ -366,16 +415,16 @@ export default function Leads() {
     value={l.assignedToUserId ?? ""}
     onChange={e => {
       const value = e.target.value;
-
+ 
       // If Unassigned selected
         if (!value) {
           assignLead(l.id, null, null, remarkMap[l.id]);
           return;
         }
-
+ 
       const userId = Number(value);
         const user = users.find(u => u.userId === userId);
-
+ 
       // Directly pass userId instead of whole object (cleaner)
   assignLead(
     l.id,
@@ -394,12 +443,16 @@ export default function Leads() {
     ))}
   </select>
 </td>
-
+ 
                       {/* ✅ CREATED AT CELL */}
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {new Date(l.createdAt).toLocaleString()}
-                      </td>
-
+                          {l.metaCreatedAt
+                            ? new Date(l.metaCreatedAt).toLocaleString()
+                            : l.syncedAt
+                            ? new Date(l.syncedAt).toLocaleString()
+                            : "-"}
+                        </td>
+ 
                       <td className="px-6 py-4">
                         <input
                           type="text"
@@ -437,7 +490,7 @@ export default function Leads() {
           )}
         </div>
       </div>
-
+ 
       {/* Details Modal */}
       {selectedLead && (
         <div
@@ -465,7 +518,7 @@ export default function Leads() {
                 </svg>
               </button>
             </div>
-
+ 
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
               {selectedLead.fields && Object.keys(selectedLead.fields).length > 0 ? (
@@ -490,7 +543,7 @@ export default function Leads() {
                 </div>
               )}
             </div>
-
+ 
             {/* Modal Footer */}
             <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
               <button
