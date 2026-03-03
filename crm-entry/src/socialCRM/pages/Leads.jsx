@@ -6,11 +6,12 @@ import useUsers from "../hooks/useUsers";
 import * as XLSX from "xlsx";
 import * as signalR from "@microsoft/signalr";
  
-/* =========================
-   HUB URL (LOCAL + PROD)
-   ========================= */
-const HUB_URL =
-  "https://crm.metagensoft.com/hubs/leads";
+
+import { BASE_URL } from "../api/axios";
+ 
+const HUB_URL = BASE_URL.replace("/api", "") + "/hubs/leads";
+ 
+
  
 export default function Leads() {
   const {
