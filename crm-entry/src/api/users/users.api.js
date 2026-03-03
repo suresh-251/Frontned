@@ -5,6 +5,25 @@ export const updateUser = async (userId, payload) => {
   return res.data;
 };
 
+// GET: Retrieves detailed information about a specific user
+export const getUserById = async (userId) => {
+  const res = await api.get(`/api/users/${userId}`);
+  return res.data;
+};
+
+// PATCH: Updates ONLY the profile object details (Permission: USER_UPDATE_PROFILE)
+export const updateUserProfile = async (userId, profileData) => {
+  const res = await api.patch(`/api/users/${userId}/profile`, profileData);
+  return res.data;
+};
+
+export const updateUserStatus = async (userId, status) => {
+  const res = await api.patch(`/api/users/${userId}/status`, {
+    status, // Must be: Active / Inactive / Locked / Exited
+  });
+  return res.data;
+};
+
 export const lockUser = async (userId, reason = "Locked by admin") => {
   const res = await api.put(`/api/users/${userId}/lock`, { reason });
   return res.data;

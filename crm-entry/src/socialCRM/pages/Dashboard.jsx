@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, cloneElement } from "react";
 import useFacebookDashboard from "../hooks/useFacebookDashboard";
 import api from "../api/apiClient";
 import { connectPlatform } from "../api/auth.api";
@@ -9,264 +9,202 @@ import {
   FiUsers,
   FiFileText,
   FiSettings,
+  FiActivity,
+  FiInfo,
+  FiFacebook,
+  FiInstagram,
+  FiLinkedin,
+  FiPlus
 } from "react-icons/fi";
 
 export default function Dashboard() {
   const stats = useFacebookDashboard();
   const navigate = useNavigate();
 
-  const [showChannels, setShowChannels] = useState(false);
-  const [showAddAccounts, setShowAddAccounts] = useState(false);
-
   const [fbPages, setFbPages] = useState([]);
   const [igAccounts, setIgAccounts] = useState([]);
   const [linkedInPages, setLinkedInPages] = useState([]);
   const [linkedInProfile, setLinkedInProfile] = useState(null);
 
-  const channelRef = useRef(null);
-  const addRef = useRef(null);
-
-  /* ================= LOAD CONNECTED ACCOUNTS (ORIGINAL LOGIC SAFE) ================= */
   useEffect(() => {
     api.get("/facebook/pages").then(res => setFbPages(res.data)).catch(() => {});
     api.get("/instagram/accounts").then(res => setIgAccounts(res.data)).catch(() => {});
     api.get("/linkedin/orgs").then(res => setLinkedInPages(res.data)).catch(() => {});
     api.get("/linkedin/read/profile")
-      .then(res =>
-        setLinkedInProfile({
-          id: res.data.sub,
-          name: res.data.name,
-        })
-      )
+      .then(res => setLinkedInProfile({ id: res.data.sub, name: res.data.name }))
       .catch(() => {});
-  }, []);
-
-  /* ================= CLOSE DROPDOWN ================= */
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (channelRef.current && !channelRef.current.contains(e.target))
-        setShowChannels(false);
-      if (addRef.current && !addRef.current.contains(e.target))
-        setShowAddAccounts(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   if (!stats) return null;
 
-  const leadStats = [
-    { label: "New", value: stats.newLeads, color: "bg-blue-500" },
-    { label: "Contacted", value: stats.contactedLeads, color: "bg-yellow-500" },
-    { label: "Qualified", value: stats.qualifiedLeads, color: "bg-green-500" },
-    { label: "Lost", value: stats.lostLeads, color: "bg-red-500" },
-  ];
-
   return (
-    <div className="h-[calc(100vh-70px)] bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 px-6 py-4 overflow-hidden">
+    <div className="w-full min-h-screen bg-[#F8FAFC] p-6 animate-in fade-in duration-500">
+      
+      {/* HEADER: Integrated directly into the layout */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Dashboard</h1>
+        <p className="text-xs text-slate-500 font-medium">Welcome back! Here is what's happening with your brands today.</p>
+      </div>
 
-      <div className="max-w-7xl mx-auto h-full flex flex-col gap-5">
+      <div className="grid grid-cols-12 gap-6">
+        
+        {/* LEFT SECTION: Brand Health & Growth */}
+        <div className="col-span-12 lg:col-span-8 space-y-6">
+          
+          {/* BRAND HEALTH TABLE */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white">
+              <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                Brand Health <FiInfo className="text-slate-300" size={14} />
+              </h3>
+            </div>
 
-        {/* ===== HEADER ===== */}
-         <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-1">
-  Dashboard
-</h1>
-<p className="text-gray-600 flex items-center gap-2 text-sm leading-tight">
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-  Real-time overview of your social media performance
-</p>
+            {/* SCROLLABLE TABLE BODY */}
+            <div className="overflow-y-auto max-h-[300px] custom-scrollbar">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider sticky top-0 z-10 border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-3">Channel</th>
+                    <th className="px-6 py-4">Followers</th>
+                    <th className="px-6 py-4">Reach</th>
+                    <th className="px-6 py-4">Leads</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {fbPages.map(p => <MetricRow key={p.pageId} name={p.name} type="Facebook" icon={<FiFacebook/>} stats={stats} color="text-blue-600" />)}
+                  {igAccounts.map(a => <MetricRow key={a.instagramBusinessId} name={getInstagramDisplayName(a)} type="Instagram" icon={<FiInstagram/>} stats={stats} color="text-pink-500" />)}
+                  {linkedInProfile && <MetricRow name={linkedInProfile.name} type="LinkedIn" icon={<FiLinkedin/>} stats={stats} color="text-blue-800" />}
+                  {/* Demo rows to show scrollability */}
+                  {[1, 2, 3].map(i => <MetricRow key={i} name={`Branch Account ${i}`} type="Global" icon={<FiActivity/>} stats={stats} color="text-slate-400" />)}
+                </tbody>
+              </table>
+            </div>
 
-        {/* ===== TOP SECTION ===== */}
-        <div className="flex items-center gap-6 relative">
-
-          {/* CONNECTED CHANNELS BUTTON */}
-          <div className="relative" ref={channelRef}>
-            <button
-              onClick={() => {
-                setShowChannels(!showChannels);
-                setShowAddAccounts(false);
-              }}
-              className="px-6 py-2.5 bg-white border border-gray-300 rounded-lg shadow-sm hover:shadow-md transition font-semibold"
-            >
-              Connected Channels
-            </button>
-
-            {showChannels && (
-              <div className="absolute top-12 left-0 w-80 bg-white rounded-xl shadow-2xl border p-4 z-50 max-h-80 overflow-auto">
-
-                <h4 className="font-semibold mb-3 text-gray-700">
-                  Connected Accounts
-                </h4>
-
-                {/* Facebook */}
-                {fbPages.length > 0 && (
-                  <>
-                    <p className="text-blue-600 text-xs font-bold mb-1">FACEBOOK</p>
-                    {fbPages.map(p => (
-                      <div key={p.pageId} className="p-2 hover:bg-gray-100 rounded cursor-pointer text-sm">
-                        {p.name}
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {/* Instagram */}
-                {igAccounts.length > 0 && (
-                  <>
-                    <p className="text-pink-600 text-xs font-bold mt-3 mb-1">INSTAGRAM</p>
-                    {igAccounts.map(a => (
-                      <div key={a.instagramBusinessId} className="p-2 hover:bg-gray-100 rounded cursor-pointer text-sm">
-                        {getInstagramDisplayName(a)}
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {/* LinkedIn Profile */}
-                {linkedInProfile && (
-                  <>
-                    <p className="text-blue-800 text-xs font-bold mt-3 mb-1">LINKEDIN PROFILE</p>
-                    <div className="p-2 hover:bg-gray-100 rounded cursor-pointer text-sm">
-                      {linkedInProfile.name}
-                    </div>
-                  </>
-                )}
-
-                {/* LinkedIn Pages */}
-                {linkedInPages.length > 0 && (
-                  <>
-                    <p className="text-indigo-600 text-xs font-bold mt-3 mb-1">LINKEDIN PAGES</p>
-                    {linkedInPages.map(p => (
-                      <div key={p.id} className="p-2 hover:bg-gray-100 rounded cursor-pointer text-sm">
-                        {p.name}
-                      </div>
-                    ))}
-                  </>
-                )}
-
+            {/* CONNECT CHANNELS BAR (ZOHO STYLE) */}
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Connect New:</span>
+              <div className="flex gap-5">
+                <SocialLinkBtn icon={<FiFacebook />} label="Facebook" color="hover:text-blue-600" onClick={() => connectPlatform("facebook")} />
+                <SocialLinkBtn icon={<FiInstagram />} label="Instagram" color="hover:text-pink-500" onClick={() => connectPlatform("facebook")} />
+                <SocialLinkBtn icon={<FiLinkedin />} label="LinkedIn" color="hover:text-blue-800" onClick={() => connectPlatform("linkedin")} />
               </div>
-            )}
+            </div>
           </div>
 
-          {/* ADD BUTTON */}
-          <div className="relative" ref={addRef}>
-            <button
-              onClick={() => {
-                setShowAddAccounts(!showAddAccounts);
-                setShowChannels(false);
-              }}
-              className="w-11 h-11 flex items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-2xl shadow-md hover:scale-110 transition"
-            >
-              +
-            </button>
-
-            {showAddAccounts && (
-              <div className="absolute top-12 left-0 w-72 bg-white rounded-xl shadow-2xl border p-4 z-50">
-                <h4 className="font-semibold mb-3">Add Account</h4>
-
-                <button
-                  onClick={() => connectPlatform("facebook")}
-                  className="w-full py-2 bg-blue-600 text-white rounded-lg mb-2"
-                >
-                  Connect Facebook
-                </button>
-
-                <button
-                  onClick={() => connectPlatform("facebook")}
-                  className="w-full py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg mb-2"
-                >
-                  Connect Instagram
-                </button>
-
-                <button
-                  onClick={() => connectPlatform("linkedin")}
-                  className="w-full py-2 bg-blue-800 text-white rounded-lg"
-                >
-                  Connect LinkedIn
-                </button>
+          {/* BRAND GROWTH GRAPH CARD */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Growth Analytics</h4>
+                <p className="text-2xl font-black text-slate-800 tracking-tight">+14.2%</p>
               </div>
-            )}
+              <div className="bg-emerald-50 text-emerald-600 px-2 py-1 rounded text-[10px] font-bold uppercase">Trending</div>
+            </div>
+            
+            <div className="h-32 w-full mt-2">
+              <svg viewBox="0 0 400 100" className="w-full h-full preserve-3d">
+                <defs>
+                  <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity="0.2" />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d="M0,80 C50,85 80,40 120,45 C160,50 200,20 250,30 C300,40 350,10 400,15 L400,100 L0,100 Z" fill="url(#chartGradient)" />
+                <path d="M0,80 C50,85 80,40 120,45 C160,50 200,20 250,30 C300,40 350,10 400,15" fill="none" stroke="#6366f1" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+            </div>
           </div>
-
-          <div className="flex-1" />
-
-          {/* SPECIAL TOTAL LEADS CARD */}
-          <div className="relative bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 text-white px-6 py-3 rounded-lg shadow-md 
-                transform transition duration-300 hover:scale-105 hover:shadow-xl hover:from-indigo-500 hover:to-pink-500">
-  <div className="flex items-center justify-between">
-    <p className="text-xs uppercase tracking-wide opacity-80">Total Leads</p>
-    <span className="w-6 h-6 flex items-center justify-center rounded-md bg-white/30 text-xs font-semibold animate-pulse">
-      🚀
-    </span>
-  </div>
-  <p className="text-2xl font-bold mt-1">{stats.totalLeads}</p>
-
-  {/* Decorative animated accent */}
-  <div className="absolute -bottom-2 -right-2 w-12 h-12 bg-white/20 rounded-full blur-md animate-bounce"></div>
-</div>
-
         </div>
 
-        {/* ===== MAIN CONTENT ===== */}
-        <div className="flex-1 grid grid-cols-3 gap-5">
-
-          {/* LEAD STATUS */}
-          <div className="col-span-2 bg-white rounded-xl shadow p-5 flex flex-col justify-center">
-            <h2 className="text-lg font-semibold mb-4">Lead Status</h2>
-
-            <div className="space-y-4">
-              {leadStats.map((item, i) => (
-                <div key={i}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>{item.label}</span>
-                    <span>{item.value}</span>
-                  </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className={`${item.color} h-full`}
-                      style={{
-                        width:
-                          stats.totalLeads > 0
-                            ? `${(item.value / stats.totalLeads) * 100}%`
-                            : "0%",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* QUICK ACTIONS */}
-          <div className="bg-white rounded-xl shadow p-5">
-            <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-
+        {/* RIGHT SECTION: Quick Actions (2x2) & Live Stream */}
+        <div className="col-span-12 lg:col-span-4 space-y-6">
+          
+          {/* QUICK ACTIONS 2x2 GRID */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <h3 className="text-slate-800 font-bold text-[10px] uppercase tracking-widest mb-5">Quick Actions</h3>
             <div className="grid grid-cols-2 gap-4">
-
-              <ActionCard icon={<FiEdit size={18} />} label="Create Post" onClick={() => navigate("/crm/socialmedia/post/create")} />
-              <ActionCard icon={<FiUsers size={18} />} label="View Leads" onClick={() => navigate("/crm/socialmedia/leads")} />
-              <ActionCard icon={<FiFileText size={18} />} label="Manage Forms" onClick={() => navigate("/crm/socialmedia/leads/forms")} />
-              <ActionCard icon={<FiSettings size={18} />} label="Settings" onClick={() => navigate("/crm/socialmedia/facebook/pages/subscriptions")} />
-
+              <CompactAction icon={<FiEdit />} label="Post" color="bg-blue-600" onClick={() => navigate("/crm/socialmedia/post/create")} />
+              <CompactAction icon={<FiUsers />} label="Leads" color="bg-indigo-600" onClick={() => navigate("/crm/socialmedia/leads")} />
+              <CompactAction icon={<FiFileText />} label="Forms" color="bg-emerald-600" onClick={() => navigate("/crm/socialmedia/leads/forms")} />
+              <CompactAction icon={<FiSettings />} label="Config" color="bg-slate-700" onClick={() => navigate("/crm/socialmedia/facebook/pages/subscriptions")} />
             </div>
           </div>
+
+          {/* ACTIVITY STREAM */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-slate-800 font-bold text-[10px] uppercase tracking-widest">Recent Activity</h3>
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
+            </div>
+            <div className="space-y-6">
+              <ActivityItem text="Facebook Sync" time="2m ago" />
+              <ActivityItem text="New Lead Received" time="15m ago" />
+              <ActivityItem text="Instagram Updated" time="1h ago" />
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
   );
 }
 
-/* ===== ACTION CARD ===== */
-function ActionCard({ icon, label, onClick }) {
+/* ================= COMPONENT HELPERS ================= */
+
+function MetricRow({ name, type, icon, stats, color }) {
   return (
-    <div
+    <tr className="hover:bg-slate-50/80 transition-colors group">
+      <td className="px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className={`text-lg ${color} transition-transform group-hover:scale-110`}>{icon}</div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-700 leading-tight">{name}</p>
+            <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">{type}</p>
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-4 text-[11px] font-bold text-slate-600 tracking-tight">1.2k</td>
+      <td className="px-6 py-4 text-[11px] font-bold text-slate-600 tracking-tight">458</td>
+      <td className="px-6 py-4">
+        <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+          {stats.totalLeads}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+function SocialLinkBtn({ icon, label, color, onClick }) {
+  return (
+    <button 
       onClick={onClick}
-      className="cursor-pointer bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-lg p-4 flex flex-col items-center justify-center shadow-md hover:shadow-xl hover:-translate-y-1 transition"
+      className={`flex items-center gap-2 text-slate-300 ${color} transition-all hover:scale-105`}
     >
-      <div className="mb-2">{icon}</div>
-      <p className="text-sm font-medium text-center">{label}</p>
+      {cloneElement(icon, { size: 16 })}
+      <span className="text-[9px] font-black uppercase tracking-tighter">{label}</span>
+    </button>
+  );
+}
+
+function CompactAction({ icon, label, color, onClick }) {
+  return (
+    <button 
+      onClick={onClick}
+      className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:shadow-lg transition-all active:scale-95 group"
+    >
+      <div className={`w-10 h-10 rounded-lg ${color} text-white flex items-center justify-center shadow-md mb-2 group-hover:-translate-y-1 transition-transform`}>
+        {cloneElement(icon, { size: 18 })}
+      </div>
+      <span className="text-[10px] font-black text-slate-600 uppercase tracking-tighter">{label}</span>
+    </button>
+  );
+}
+
+function ActivityItem({ text, time }) {
+  return (
+    <div className="flex items-center justify-between border-l-2 border-slate-100 pl-4 py-1">
+      <p className="text-[11px] font-bold text-slate-600">{text}</p>
+      <span className="text-[9px] font-bold text-slate-300 uppercase">{time}</span>
     </div>
   );
 }

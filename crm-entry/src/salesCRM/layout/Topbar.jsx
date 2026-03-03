@@ -37,13 +37,6 @@ const Topbar = ({ toggleSidebar, sidebarOpen }) => {
 
       {/* Right side */}
       <div className="flex items-center space-x-3">
-        {/* Quick Actions */}
-        <button className="hidden lg:flex items-center px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all transform hover:scale-105">
-          <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          <span className="text-sm font-semibold">New Lead</span>
-        </button>
 
         {/* Notifications */}
         <button className="relative p-2 text-gray-600 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-all">

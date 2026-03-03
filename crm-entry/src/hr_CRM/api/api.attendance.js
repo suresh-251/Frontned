@@ -15,7 +15,25 @@ export const getTotalHours = async (userId) => {
   return hrApi.get(`/api/Attendance/total-hours?userId=${userId}`);
 };
 
-// GET: /api/Attendance/history/1
+/**
+ * GET: /api/Attendance/history/1
+ * FINAL ATTEMPT AT SILENCING CONSOLE:
+ * We return a default empty object in the catch block 
+ * and ensure validateStatus is applied correctly.
+ */
 export const getAttendanceHistory = async (userId) => {
-  return hrApi.get(`/api/Attendance/history/${userId}`);
+  if (!userId) return { data: [] };
+
+  return hrApi.get(`/api/Attendance/history/${userId}`, {
+    // Tells Axios: 404 is NOT an error. Do not log it as a failure.
+    validateStatus: (status) => (status >= 200 && status < 300) || status === 404
+  })
+  .then(response => {
+    if (response.status === 404) return { data: [] };
+    return response;
+  })
+  .catch(() => {
+    // Catch-all to prevent the red "Uncaught" error
+    return { data: [] };
+  });
 };

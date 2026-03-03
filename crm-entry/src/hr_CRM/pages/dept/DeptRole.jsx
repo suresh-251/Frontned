@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { getDepartmentRoles, createDepartmentRole, deleteDepartmentRole } from "../../api/dept/deptRole.api";
 import { getDepartments } from "../../api/hr.dept";
-import { ShieldCheck, Plus, Search, Trash2, Edit2, Loader2, X, Star, Briefcase } from "lucide-react";
+import { ShieldCheck, Plus, Search, Trash2, Loader2, X, Star, MapPin } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 
 export default function DeptRole() {
@@ -12,206 +12,155 @@ export default function DeptRole() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [formData, setFormData] = useState({
-    roleName: "",
-    requiredSkillLevel: "",
-    performanceLevel: "",
-    departmentId: ""
+    roleName: "", requiredSkillLevel: "", performanceLevel: "", departmentId: ""
   });
 
   const fetchData = async () => {
-    setLoading(true);
     try {
-      const [roleRes, deptRes] = await Promise.all([
-        getDepartmentRoles(),
-        getDepartments()
-      ]);
+      const [roleRes, deptRes] = await Promise.all([getDepartmentRoles(), getDepartments()]);
       setRoles(roleRes.data || []);
       setDepartments(deptRes.data || []);
-    } catch (err) {
-      toast.error("Failed to sync role data");
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { toast.error("Sync failed"); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { fetchData(); }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const tid = toast.loading("Saving role...");
+    const tid = toast.loading("Saving...");
     try {
-      const payload = { ...formData, departmentId: parseInt(formData.departmentId) };
-      await createDepartmentRole(payload);
-      toast.success("Role created successfully", { id: tid });
+      await createDepartmentRole({ ...formData, departmentId: parseInt(formData.departmentId) });
+      toast.success("Role Created", { id: tid });
       setShowModal(false);
       setFormData({ roleName: "", requiredSkillLevel: "", performanceLevel: "", departmentId: "" });
       fetchData();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Error creating role", { id: tid });
-    }
+    } catch (err) { toast.error("Submission failed", { id: tid }); }
   };
 
   const handleDelete = async (id) => {
-    if(!window.confirm("Are you sure?")) return;
+    if (!window.confirm("Delete this role?")) return;
     try {
       await deleteDepartmentRole(id);
-      toast.success("Role deleted");
+      toast.success("Deleted");
       fetchData();
-    } catch (err) {
-      toast.error("Could not delete role");
-    }
+    } catch (err) { toast.error("Error deleting"); }
   };
 
   const filteredRoles = roles.filter(r => 
-    r.roleName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.departmentName?.toLowerCase().includes(searchTerm.toLowerCase())
+    r.roleName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="space-y-6">
-      <Toaster position="top-right" />
+    // Max-width restricted to 800px to keep columns tight
+    <div className="p-4 max-w-[850px] mx-auto">
+      <Toaster />
 
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      {/* TIGHT HEADER */}
+      <div className="flex justify-between items-end mb-4 px-1">
         <div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight">Department Roles</h1>
-          <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-1">Designations & Skills</p>
+          <h1 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Designations</h1>
+          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Skill & Performance Matrix</p>
         </div>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-6 py-3.5 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95"
-        >
-          <Plus size={18} /> Create New Role
-        </button>
-      </div>
-
-      {/* TABLE SECTION */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
-        <div className="p-6 border-b border-slate-100 bg-slate-50/30">
-          <div className="relative max-w-md">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <div className="flex gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
             <input 
               type="text" 
-              placeholder="Search roles or departments..."
-              className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all"
-              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Filter..." 
+              className="pl-7 pr-2 py-1 bg-slate-100 border-none rounded-md text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none w-32" 
+              onChange={(e) => setSearchTerm(e.target.value)} 
             />
           </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Role Name</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Department</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Skill Level</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                <tr>
-                  <td colSpan="4" className="py-24 text-center">
-                    <Loader2 className="animate-spin mx-auto text-indigo-600 mb-4" size={32} />
-                    <span className="text-sm font-black text-slate-400 uppercase tracking-widest">Loading Roles...</span>
-                  </td>
-                </tr>
-              ) : filteredRoles.map((role) => (
-                <tr key={role.departmentRoleId} className="hover:bg-slate-50/80 transition-colors group">
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-4">
-                      <div className="w-11 h-11 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center font-bold">
-                        <ShieldCheck size={20} />
-                      </div>
-                      <span className="font-black text-slate-700">{role.roleName}</span>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
-                    <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-tighter">
-                      {role.departmentName || `ID: ${role.departmentId}`}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
-                      <Star size={14} className="text-amber-400 fill-amber-400" />
-                      {role.requiredSkillLevel}
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 transition-all"><Edit2 size={16}/></button>
-                      <button onClick={() => handleDelete(role.departmentRoleId)} className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-rose-600 transition-all"><Trash2 size={16}/></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <button onClick={() => setShowModal(true)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-[10px] font-black uppercase flex items-center gap-1 hover:bg-indigo-700 transition-all">
+            <Plus size={12} /> New Role
+          </button>
         </div>
       </div>
 
-      {/* CREATE MODAL */}
-      {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-8 pt-8 pb-4 flex justify-between items-center">
-              <h2 className="text-xl font-black text-slate-800 tracking-tight">Create Designation</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all"><X size={20}/></button>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-8 grid grid-cols-2 gap-5">
-              <div className="col-span-2">
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Role Title</label>
-                <input 
-                  required
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold text-slate-700"
-                  placeholder="e.g. Senior Developer"
-                  value={formData.roleName}
-                  onChange={(e) => setFormData({...formData, roleName: e.target.value})}
-                />
-              </div>
+      {/* COMPACT TABLE - Snap-to-column layout */}
+      <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
+        <table className="w-full table-fixed text-left text-[11px]">
+          <thead className="bg-slate-50 border-b font-bold text-slate-500 uppercase tracking-tighter">
+            <tr>
+              <th className="px-3 py-2 w-[40%]">Role Title & Branch</th>
+              <th className="px-3 py-2 w-[25%]">Skill Level</th>
+              <th className="px-3 py-2 w-[25%]">Performance</th>
+              <th className="px-3 py-2 w-[10%] text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <tr><td colSpan="4" className="py-8 text-center"><Loader2 className="animate-spin mx-auto text-indigo-600" size={16} /></td></tr>
+            ) : filteredRoles.map((role) => {
+              const dept = departments.find(d => d.id === role.departmentId);
+              return (
+                <tr key={role.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-3 py-2">
+                    <div className="font-black text-slate-800 truncate">{role.roleName}</div>
+                    <div className="text-[9px] text-slate-400 font-bold flex items-center gap-0.5 truncate uppercase">
+                      <MapPin size={8}/> {dept?.departmentName || "General"}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="flex items-center gap-1 text-amber-600 font-bold">
+                      <Star size={10} className="fill-amber-500 text-amber-500" /> {role.requiredSkillLevel}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-slate-500 font-medium truncate italic">
+                    {role.performanceLevel || "Standard"}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button onClick={() => handleDelete(role.id)} className="text-slate-300 hover:text-rose-500 transition-colors">
+                      <Trash2 size={13}/>
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
 
+      {/* SLIM DIALOG MODAL */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-[1px] p-4">
+          <div className="bg-white w-full max-w-[280px] rounded-xl shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="p-3 border-b flex justify-between items-center bg-slate-50 rounded-t-xl">
+              <h2 className="text-[10px] font-black text-slate-700 uppercase">Role Details</h2>
+              <button onClick={() => setShowModal(false)}><X size={14}/></button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-4 space-y-3">
               <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Department</label>
-                <select 
-                  required
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold text-slate-700 appearance-none"
-                  value={formData.departmentId}
-                  onChange={(e) => setFormData({...formData, departmentId: e.target.value})}
-                >
-                  <option value="">Select Dept</option>
+                <label className="text-[9px] font-black uppercase text-slate-400 ml-0.5">Title</label>
+                <input required className="w-full mt-0.5 p-2 bg-slate-50 border rounded text-[11px] font-bold outline-none" 
+                  value={formData.roleName} onChange={(e) => setFormData({...formData, roleName: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-[9px] font-black uppercase text-slate-400 ml-0.5">Dept (Location)</label>
+                <select required className="w-full mt-0.5 p-2 bg-slate-50 border rounded text-[11px] font-bold outline-none"
+                  value={formData.departmentId} onChange={(e) => setFormData({...formData, departmentId: e.target.value})}>
+                  <option value="">Select...</option>
                   {departments.map(d => (
-                    <option key={d.id} value={d.id}>{d.departmentName}</option>
+                    <option key={d.id} value={d.id}>{d.departmentName} — {d.location || 'Branch'}</option>
                   ))}
                 </select>
               </div>
-
-              <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Skill Level</label>
-                <input 
-                  required
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold text-slate-700"
-                  placeholder="e.g. Expert"
-                  value={formData.requiredSkillLevel}
-                  onChange={(e) => setFormData({...formData, requiredSkillLevel: e.target.value})}
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[9px] font-black uppercase text-slate-400">Skill</label>
+                  <input required className="w-full mt-0.5 p-2 bg-slate-50 border rounded text-[11px] font-bold" 
+                    value={formData.requiredSkillLevel} onChange={(e) => setFormData({...formData, requiredSkillLevel: e.target.value})} />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase text-slate-400">Perf.</label>
+                  <input className="w-full mt-0.5 p-2 bg-slate-50 border rounded text-[11px] font-bold" 
+                    value={formData.performanceLevel} onChange={(e) => setFormData({...formData, performanceLevel: e.target.value})} />
+                </div>
               </div>
-
-              <div className="col-span-2">
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Performance Criteria</label>
-                <input 
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold text-slate-700"
-                  placeholder="e.g. High Performance"
-                  value={formData.performanceLevel}
-                  onChange={(e) => setFormData({...formData, performanceLevel: e.target.value})}
-                />
-              </div>
-
-              <div className="col-span-2 flex gap-4 pt-4">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest">Cancel</button>
-                <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100">Save Role</button>
-              </div>
+              <button type="submit" className="w-full py-2 bg-indigo-600 text-white rounded-lg font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 shadow-md">
+                Confirm
+              </button>
             </form>
           </div>
         </div>

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { requestBudgetChange, getBudgetChangeHistory } from "../../api/dept/budgetChange.api";
-import { getDepartments } from "../../api/hr.dept";
-import { History, Plus, Search, Loader2, X, AlertCircle, MessageSquare, DollarSign } from "lucide-react";
+import { requestBudgetChange, getBudgetChangeHistory, getDepartments } from "../../api/dept/budgetChange.api";
+import { History, Plus, Loader2, X, MapPin, DollarSign } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 
 export default function BudgetChange() {
@@ -10,182 +9,124 @@ export default function BudgetChange() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   
-  const [formData, setFormData] = useState({
-    departmentId: "",
-    requestedAmount: "",
-    reason: ""
-  });
+  const [formData, setFormData] = useState({ departmentId: "", requestedAmount: "", reason: "" });
 
   const fetchData = async () => {
-    setLoading(true);
     try {
-      // Using try-catch for each to prevent one failure from blocking the other
-      const deptRes = await getDepartments();
-      setDepartments(deptRes.data || []);
-      
-      const histRes = await getBudgetChangeHistory();
+      const [histRes, deptRes] = await Promise.all([getBudgetChangeHistory(), getDepartments()]);
       setHistory(histRes.data || []);
-    } catch (err) {
-      console.error("Fetch Error:", err);
-    } finally {
-      setLoading(false);
-    }
+      setDepartments(deptRes.data || []);
+    } catch (err) { toast.error("Sync Error"); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { fetchData(); }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const tid = toast.loading("Submitting request...");
+    const tid = toast.loading("Sending...");
     try {
-      const payload = {
+      await requestBudgetChange({
+        ...formData,
         departmentId: parseInt(formData.departmentId),
         requestedAmount: parseFloat(formData.requestedAmount),
-        reason: formData.reason
-      };
-      await requestBudgetChange(payload);
-      toast.success("Change request submitted", { id: tid });
+        status: "Pending",
+        requestedDate: new Date().toISOString(),
+        requestDate: new Date().toISOString()
+      });
+      toast.success("Submitted", { id: tid });
       setShowModal(false);
-      setFormData({ departmentId: "", requestedAmount: "", reason: "" });
       fetchData();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Submission failed", { id: tid });
-    }
+    } catch (err) { toast.error(err.response?.status === 403 ? "Forbidden" : "Failed", { id: tid }); }
   };
 
   return (
-    <div className="space-y-6">
-      <Toaster position="top-right" />
+    <div className="p-2 max-w-5xl mx-auto">
+      <Toaster px-4 py-2 />
 
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight">Budget Adjustments</h1>
-          <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-1">Request & History Tracking</p>
-        </div>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-6 py-3.5 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95"
-        >
-          <Plus size={18} /> Request Change
+      {/* TIGHT HEADER */}
+      <div className="flex justify-between items-center mb-3">
+        <h1 className="text-sm font-black text-slate-800 uppercase tracking-tighter flex items-center gap-2">
+          <History size={14} className="text-indigo-600"/> Budget Adjustment Log
+        </h1>
+        <button onClick={() => setShowModal(true)} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center gap-1">
+          <Plus size={12} /> New Request
         </button>
       </div>
 
-      {/* HISTORY TABLE */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
-        <div className="p-6 border-b border-slate-100 bg-slate-50/30 flex justify-between items-center">
-           <h3 className="text-sm font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-             <History size={16}/> Modification Log
-           </h3>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Department</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Requested Amt</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Reasoning</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                <tr>
-                  <td colSpan="4" className="py-24 text-center">
-                    <Loader2 className="animate-spin mx-auto text-indigo-600 mb-4" size={32} />
-                    <span className="text-sm font-black text-slate-400 uppercase tracking-widest">Retrieving Log...</span>
-                  </td>
-                </tr>
-              ) : history.length > 0 ? (
-                history.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-8 py-5">
-                      <span className="font-black text-slate-700">{item.departmentName || `ID: ${item.departmentId}`}</span>
+      {/* COMPACT TABLE */}
+      <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
+        <table className="w-full text-left text-[11px]">
+          <thead className="bg-slate-50 border-b font-bold text-slate-500 uppercase">
+            <tr>
+              <th className="px-3 py-2">Dept / Location</th>
+              <th className="px-3 py-2">Amount</th>
+              <th className="px-3 py-2">Reason</th>
+              <th className="px-3 py-2 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <tr><td colSpan="4" className="py-10 text-center"><Loader2 className="animate-spin mx-auto text-indigo-600" size={18} /></td></tr>
+            ) : history.length > 0 ? (
+              history.map((item) => {
+                const dept = departments.find(d => d.id === item.departmentId);
+                return (
+                  <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-3 py-2 font-bold text-slate-800">
+                      {dept?.departmentName || `ID: ${item.departmentId}`}
+                      <div className="text-[9px] text-slate-400 font-medium flex items-center gap-0.5"><MapPin size={8}/> {dept?.location || "N/A"}</div>
                     </td>
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-1 text-indigo-600 font-black">
-                        <DollarSign size={14}/>
-                        {item.requestedAmount?.toLocaleString()}
-                      </div>
-                    </td>
-                    <td className="px-8 py-5 max-w-xs">
-                      <div className="flex items-start gap-2">
-                        <MessageSquare size={14} className="text-slate-300 mt-1 shrink-0" />
-                        <p className="text-sm text-slate-500 font-medium leading-relaxed italic line-clamp-2">
-                          "{item.reason || 'No justification provided'}"
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5 text-right">
-                      <span className="px-4 py-1.5 bg-amber-50 text-amber-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-100">
-                        Pending Approval
+                    <td className="px-3 py-2 font-black text-indigo-600">${item.requestedAmount?.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-slate-500 italic max-w-[150px] truncate">"{item.reason}"</td>
+                    <td className="px-3 py-2 text-right">
+                      <span className={`px-2 py-0.5 rounded-md font-black uppercase text-[9px] ${item.status === 'Approved' ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
+                        {item.status || 'Pending'}
                       </span>
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="4" className="py-20 text-center text-slate-300 font-bold uppercase text-xs tracking-widest">No change requests found</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                );
+              })
+            ) : (
+              <tr><td colSpan="4" className="py-6 text-center text-slate-300 font-bold uppercase text-[10px]">No History</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* REQUEST MODAL */}
+      {/* SLIM MODAL */}
       {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-8 pt-8 pb-4 flex justify-between items-center">
-              <h2 className="text-xl font-black text-slate-800 tracking-tight">Request Budget Change</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all"><X size={20}/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-[2px] p-4">
+          <div className="bg-white w-full max-w-[320px] rounded-2xl shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
+              <h2 className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Submit Request</h2>
+              <button onClick={() => setShowModal(false)}><X size={16}/></button>
             </div>
-            
-            <form onSubmit={handleSubmit} className="p-8 space-y-5">
+            <form onSubmit={handleSubmit} className="p-4 space-y-3">
               <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Target Department</label>
-                <select 
-                  required
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold text-slate-700 appearance-none"
-                  onChange={(e) => setFormData({...formData, departmentId: e.target.value})}
-                >
-                  <option value="">Select Department</option>
-                  {departments.map(d => <option key={d.id} value={d.id}>{d.departmentName}</option>)}
+                <label className="text-[9px] font-black uppercase text-slate-400">Department</label>
+                <select required className="w-full mt-1 p-2 bg-slate-50 border rounded-lg text-[11px] font-bold outline-none"
+                  value={formData.departmentId} onChange={(e) => setFormData({...formData, departmentId: e.target.value})}>
+                  <option value="">Select Dept (Location)</option>
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id}>{d.departmentName} — {d.location || "Branch"}</option>
+                  ))}
                 </select>
               </div>
-
-              <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Additional Amount ($)</label>
-                <input 
-                  required type="number"
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold text-slate-700"
-                  placeholder="e.g. 5000"
-                  onChange={(e) => setFormData({...formData, requestedAmount: e.target.value})}
-                />
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="text-[9px] font-black uppercase text-slate-400">Add. Amount ($)</label>
+                  <input required type="number" className="w-full mt-1 p-2 bg-slate-50 border rounded-lg text-[11px] font-bold" 
+                    onChange={(e) => setFormData({...formData, requestedAmount: e.target.value})} />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase text-slate-400">Reason</label>
+                  <textarea required rows="2" className="w-full mt-1 p-2 bg-slate-50 border rounded-lg text-[11px] font-bold resize-none" 
+                    onChange={(e) => setFormData({...formData, reason: e.target.value})} />
+                </div>
               </div>
-
-              <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Justification / Reason</label>
-                <textarea 
-                  required
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold text-slate-700 resize-none"
-                  rows="4"
-                  placeholder="Explain why this budget increase is required..."
-                  onChange={(e) => setFormData({...formData, reason: e.target.value})}
-                />
-              </div>
-
-              <div className="bg-amber-50 p-4 rounded-2xl flex gap-3 items-start border border-amber-100">
-                <AlertCircle size={18} className="text-amber-600 shrink-0" />
-                <p className="text-[10px] font-bold text-amber-700 leading-normal">
-                  Note: All budget change requests are subject to audit and require final approval from the Finance Department.
-                </p>
-              </div>
-
-              <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">
-                Send Request
+              <button type="submit" className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md active:scale-95">
+                Confirm
               </button>
             </form>
           </div>

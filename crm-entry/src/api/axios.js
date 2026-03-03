@@ -42,7 +42,7 @@ api.interceptors.response.use(
 
     if (originalRequest._retry) {
       localStorage.clear();
-      window.location.href = "/login";
+      // window.location.href = "/login";
       return Promise.reject(error);
     }
 
@@ -77,7 +77,7 @@ api.interceptors.response.use(
       isRefreshing = false;
       refreshPromise = null;
       localStorage.clear();
-      window.location.href = "/login";
+      // window.location.href = "/login";
       return Promise.reject(refreshError);
     }
   }

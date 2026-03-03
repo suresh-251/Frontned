@@ -1,10 +1,7 @@
 import hrApi from "../hr.api";
 
-// UPDATE: Added /get-all to the path
-export const getDepartmentBudgets = () => hrApi.get("/api/DepartmentBudget/get-all");
+// Fetch all budgets
+export const getDepartmentBudgets = () => hrApi.get("/api/DepartmentBudget");
 
-// For creating/updating
-export const createDepartmentBudget = (data) => hrApi.post("/api/DepartmentBudget", data);
-
-// If you need to fetch by a specific ID
-export const getBudgetByDept = (deptId) => hrApi.get(`/api/DepartmentBudget/${deptId}`);
+// Create budget allocation - Ensuring data is passed as a flat object
+export const createDepartmentBudget = (payload) => hrApi.post("/api/DepartmentBudget", payload);
