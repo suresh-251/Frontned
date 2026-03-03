@@ -7,7 +7,7 @@ import * as XLSX from "xlsx";
 import * as signalR from "@microsoft/signalr";
  
 
-import { BASE_URL } from "../api/axios";
+import { BASE_URL } from "../api/apiClient";
  
 const HUB_URL = BASE_URL.replace("/api", "") + "/hubs/leads";
  
