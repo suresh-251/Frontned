@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, MapPin, Briefcase, 
   Fingerprint, UserPlus, CheckSquare, LogOut, 
   ChevronDown, Menu, Building2, BookOpen, Clock, 
-  ShieldCheck, FileText, ClipboardCheck, Wallet, History
+  FolderKanban, ClipboardCheck
 } from "lucide-react";
 import { jwtDecode } from "jwt-decode";
 import Topbar from "./Topbar";
@@ -14,14 +14,16 @@ export default function HRLayout() {
   const [isBranchOpen, setIsBranchOpen] = useState(false);
   const [isDeptOpen, setIsDeptOpen] = useState(false);
   const [isShiftOpen, setIsShiftOpen] = useState(false);
+  const [isRecruitOpen, setIsRecruitOpen] = useState(false);
   const [user, setUser] = useState({ name: "User", role: "HR" });
   const location = useLocation();
 
   useEffect(() => {
     const path = location.pathname;
     if (path.includes('branch') || path.includes('employees')) setIsBranchOpen(true);
-    if (path.includes('department-budget') || path.includes('budget-change') || path.includes('department-role')) setIsDeptOpen(true);
+    if (path.includes('department')) setIsDeptOpen(true);
     if (path.includes('shift') || path.includes('overtime')) setIsShiftOpen(true);
+    if (path.includes('recruitment') || path.includes('onboarding')) setIsRecruitOpen(true);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -39,9 +41,7 @@ export default function HRLayout() {
 
   const linkClass = (isActive) =>
     `flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12.5px] font-medium transition-all duration-200 ${
-      isActive
-        ? "bg-indigo-50 text-indigo-600"
-        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+      isActive ? "bg-indigo-50 text-indigo-600" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
     } ${isCollapsed ? "justify-center px-0 mx-auto w-10" : ""}`;
 
   const subLinkClass = (isActive) =>
@@ -51,11 +51,7 @@ export default function HRLayout() {
 
   return (
     <div className="h-screen w-screen bg-[#F8FAFC] flex overflow-hidden font-sans text-slate-900">
-      
-      {/* SIDEBAR - Fixed narrow width at 210px */}
       <aside className={`${isCollapsed ? "w-[60px]" : "w-[210px]"} bg-white border-r border-slate-200 flex flex-col z-20 transition-all duration-300 shadow-sm`}>
-        
-        {/* Header */}
         <div className="p-3 mb-2 flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex items-center gap-2">
@@ -73,15 +69,12 @@ export default function HRLayout() {
           </button>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto custom-scrollbar">
-          
           <NavLink to="/crm/hr/dashboard" className={({isActive}) => linkClass(isActive)}>
             <LayoutDashboard size={18} />
             {!isCollapsed && <span>Dashboard</span>}
           </NavLink>
 
-          {/* Branch Dropdown */}
           <div className="space-y-0.5">
             <div className={`${linkClass(isBranchOpen)} cursor-pointer`} onClick={() => !isCollapsed && setIsBranchOpen(!isBranchOpen)}>
               <MapPin size={18} />
@@ -96,17 +89,30 @@ export default function HRLayout() {
             )}
           </div>
 
-          <NavLink to="/crm/hr/recruitment" className={({isActive}) => linkClass(isActive)}>
-            <UserPlus size={18} />
-            {!isCollapsed && <span>Recruitment</span>}
-          </NavLink>
+          <div className="space-y-0.5">
+            <div className={`${linkClass(isRecruitOpen)} cursor-pointer`} onClick={() => !isCollapsed && setIsRecruitOpen(!isRecruitOpen)}>
+              <UserPlus size={18} />
+              {!isCollapsed && <span className="flex-1">Recruitment</span>}
+              {!isCollapsed && <ChevronDown size={12} className={`transition-transform ${isRecruitOpen ? "rotate-180" : ""}`} />}
+            </div>
+            {!isCollapsed && isRecruitOpen && (
+              <div className="ml-3 pl-3 border-l border-slate-100 flex flex-col">
+                <NavLink to="/crm/hr/recruitment" className={({isActive}) => subLinkClass(isActive)}>Recruitment List</NavLink>
+                <NavLink to="/crm/hr/onboarding" className={({isActive}) => subLinkClass(isActive)}>Onboarding</NavLink>
+              </div>
+            )}
+          </div>
 
           <NavLink to="/crm/hr/attendance" className={({isActive}) => linkClass(isActive)}>
             <Fingerprint size={18} />
             {!isCollapsed && <span>Attendance</span>}
           </NavLink>
 
-          {/* Departments Dropdown */}
+          <NavLink to="/crm/hr/project" className={({isActive}) => linkClass(isActive)}>
+            <FolderKanban size={18} />
+            {!isCollapsed && <span>Project</span>}
+          </NavLink>
+
           <div className="space-y-0.5">
             <div className={`${linkClass(isDeptOpen)} cursor-pointer`} onClick={() => !isCollapsed && setIsDeptOpen(!isDeptOpen)}>
               <Building2 size={18} />
@@ -123,7 +129,6 @@ export default function HRLayout() {
             )}
           </div>
 
-          {/* Shift Dropdown */}
           <div className="space-y-0.5">
             <div className={`${linkClass(isShiftOpen)} cursor-pointer`} onClick={() => !isCollapsed && setIsShiftOpen(!isShiftOpen)}>
               <Clock size={18} />
@@ -151,7 +156,6 @@ export default function HRLayout() {
           </NavLink>
         </nav>
 
-        {/* User Footer */}
         <div className="p-2 border-t border-slate-100">
           <button
             onClick={() => { localStorage.removeItem("accessToken"); window.location.href = "/crm/hr/login"; }}
@@ -163,7 +167,6 @@ export default function HRLayout() {
         </div>
       </aside>
 
-      {/* Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Topbar userData={user} />
         <main className="flex-1 overflow-y-auto p-4 bg-[#F8FAFC]">

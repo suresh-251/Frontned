@@ -1,14 +1,7 @@
 import hrApi from "./hr.api";
 
 /**
- * ===============================
- * 📌 PROJECT API - HR CRM
- * ===============================
- */
-
-/**
  * ✅ Get All Projects
- * GET: /api/Project
  */
 export const getProjects = async () => {
   try {
@@ -22,34 +15,14 @@ export const getProjects = async () => {
 
 /**
  * ✅ Create Project
- * POST: /api/Project
- *
- * Body:
- * {
- *   projectName: string,
- *   duration: string,
- *   status: string,
- *   managerId: number,
- *   departmentId: number
- * }
  */
-
-/* ================= GET DEPARTMENTS ================= */
-export const getDepartments = async () => {
-  try {
-    const response = await hrApi.get("/api/Department");
-    return response.data;
-  } catch (error) {
-    console.error("Error fetching departments:", error);
-    throw error;
-  }
-};
-
-
-
 export const createProject = async (projectData) => {
   try {
-    const response = await hrApi.post("/api/Project", projectData);
+    const response = await hrApi.post("/api/Project", {
+      ...projectData,
+      managerId: parseInt(projectData.managerId),
+      departmentId: parseInt(projectData.departmentId)
+    });
     return response.data;
   } catch (error) {
     console.error("Error creating project:", error);
@@ -59,14 +32,14 @@ export const createProject = async (projectData) => {
 
 /**
  * ✅ Update Project
- * PUT: /api/Project/{id}
  */
 export const updateProject = async (id, projectData) => {
   try {
-    const response = await hrApi.put(
-      `/api/Project/${id}`,
-      projectData
-    );
+    const response = await hrApi.put(`/api/Project/${id}`, {
+      ...projectData,
+      managerId: parseInt(projectData.managerId),
+      departmentId: parseInt(projectData.departmentId)
+    });
     return response.data;
   } catch (error) {
     console.error("Error updating project:", error);
@@ -76,7 +49,6 @@ export const updateProject = async (id, projectData) => {
 
 /**
  * ✅ Delete Project
- * DELETE: /api/Project/{id}
  */
 export const deleteProject = async (id) => {
   try {

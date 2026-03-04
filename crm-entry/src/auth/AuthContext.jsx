@@ -1,105 +1,156 @@
-
-
 import { createContext, useContext, useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
-
+ 
 const AuthContext = createContext(null);
-
+ 
 export const AuthProvider = ({ children }) => {
+ 
   const [accessToken, setAccessToken] = useState(null);
   const [user, setUser] = useState(null);
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Original states from your code
+ 
   const [pwdResetRequired, setPwdResetRequired] = useState(false);
   const [pwdResetCompleted, setPwdResetCompleted] = useState(false);
   const [authChecking, setAuthChecking] = useState(false);
-
-  // 🔁 Restore session on refresh
+ 
+ 
+  /*
+  --------------------------------------------------
+  SESSION RESTORE ON PAGE LOAD
+  --------------------------------------------------
+  */
+ 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (token && token !== "null" && token !== "undefined") {
-      try {
-        setSession(token);
-      } catch {
-        logout();
-      }
-    }
-    setLoading(false);
-  }, []);
-
-  // ⏱️ Auto logout on expiry
-  useEffect(() => {
-    if (!accessToken) return;
-    try {
-      const { exp } = jwtDecode(accessToken);
-      const timeout = exp * 1000 - Date.now();
-      if (timeout <= 0) {
-        logout();
+ 
+    const initAuth = async () => {
+ 
+      const token = localStorage.getItem("accessToken");
+ 
+      if (!token) {
+        setLoading(false);
         return;
       }
-      const timer = setTimeout(logout, timeout);
-      return () => clearTimeout(timer);
-    } catch (e) {
-      logout();
-    }
-  }, [accessToken]);
-
+ 
+      try {
+ 
+        const { exp } = jwtDecode(token);
+ 
+        // ACCESS TOKEN STILL VALID
+        if (exp * 1000 > Date.now()) {
+          setSession(token);
+          setLoading(false);
+          return;
+        }
+ 
+        // ACCESS TOKEN EXPIRED → TRY REFRESH
+        const res = await fetch("/api/token/refresh", {
+          method: "POST",
+          credentials: "include",
+        });
+ 
+        if (!res.ok) {
+          logout();
+          setLoading(false);
+          return;
+        }
+ 
+        const data = await res.json();
+ 
+        if (!data?.accessToken) {
+          logout();
+          setLoading(false);
+          return;
+        }
+ 
+        setSession(data.accessToken);
+ 
+      } catch (err) {
+ 
+        logout();
+ 
+      }
+ 
+      setLoading(false);
+ 
+    };
+ 
+    initAuth();
+ 
+  }, []);
+ 
+ 
+ 
+  /*
+  --------------------------------------------------
+  SET SESSION
+  --------------------------------------------------
+  */
+ 
   const setSession = (token) => {
+ 
     if (!token || token.split(".").length !== 3) {
       throw new Error("Invalid JWT");
     }
-
+ 
     localStorage.setItem("accessToken", token);
     setAccessToken(token);
-
+ 
     const decoded = jwtDecode(token);
+ 
     setUser(decoded);
-
-    // Original logic for password resets
+ 
     setPwdResetRequired(decoded.pwd_reset_required === "true");
     setPwdResetCompleted(decoded.pwd_reset_completed === "true");
-
-    // Original logic for permissions
+ 
     const perms = Array.isArray(decoded?.perm)
       ? decoded.perm
       : decoded?.perm
       ? [decoded.perm]
       : [];
+ 
     setPermissions(perms);
-
-    // --- NEW ROLE-BASED REDIRECT LOGIC ---
-    // Extract role from JWT (Assuming key is 'role')
-    const userRole = (decoded.role || "").toUpperCase();
-    
-    if (userRole === "HR") return "/crm/hr";
-    if (userRole === "SALES") return "/crm/sales";
-    if (userRole === "SOCIAL_MEDIA") return "/crm/socialmedia";
-    
-    return "/"; // Default fallback
+ 
   };
-
+ 
+ 
+  /*
+  --------------------------------------------------
+  LOGOUT
+  --------------------------------------------------
+  */
+ 
   const logout = () => {
+ 
     localStorage.clear();
+ 
     setAccessToken(null);
     setUser(null);
     setPermissions([]);
+ 
     setPwdResetRequired(false);
     setPwdResetCompleted(false);
     setAuthChecking(false);
+ 
   };
-
+ 
+ 
   const isAuthenticated = !!accessToken;
-
-  // Your original Admin check logic
+ 
+ 
+  /*
+  --------------------------------------------------
+  ADMIN CHECK
+  --------------------------------------------------
+  */
+ 
   const isAdmin = permissions.some((p) =>
     [
-      "CRM_FULL_ACCESS",
-      
+      "CRM_FULL_ACCESS"
     ].includes(p)
   );
-
+ 
+ 
   return (
     <AuthContext.Provider
       value={{
@@ -121,5 +172,5 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
-
+ 
 export const useAuth = () => useContext(AuthContext);

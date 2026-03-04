@@ -21,6 +21,7 @@ import Knowledge from "../pages/Knowledge";
 import DeptRole from "../pages/dept/DeptRole";
 import DeptBudget from "../pages/dept/DeptBudget";
 import BudgetChange from "../pages/dept/BudgetChange";
+import Onboarding from "../pages/Onboarding";
 
 export default function HrRoutes() {
   return (
@@ -39,6 +40,7 @@ export default function HrRoutes() {
         <Route path="overtime-policy" element={<OvertimePolicy />} />
         <Route path="department-role" element={<DeptRole />} />
         <Route path="leads" element={<HRLeads />} />
+        <Route path="onboarding" element={<Onboarding />} />
         <Route path="attendance" element={<Attendance />} />
         <Route path="shift" element={<Shift />} />
         <Route path="overtime-record" element={<OvertimeRecord />} />

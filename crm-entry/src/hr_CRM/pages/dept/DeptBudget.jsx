@@ -1,239 +1,304 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { 
+  Wallet, X, Search, Building2, Plus, 
+  Loader2, Eye, TrendingUp, CircleDollarSign, 
+  MapPin, Calendar, Layers 
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import toast, { Toaster } from "react-hot-toast";
+
+// API IMPORTS
 import { createDepartmentBudget, getDepartmentBudgets } from "../../api/dept/deptBudget.api";
 import { getDepartments } from "../../api/hr.dept";
-import { Wallet, Plus, Loader2, X, BookOpen, HardDrive } from "lucide-react";
-import toast, { Toaster } from "react-hot-toast";
+import { getBranches } from "../../api/api.branch";
 
 export default function DeptBudget() {
   const [budgets, setBudgets] = useState([]);
-  const [departments, setDepartments] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [allDepartments, setAllDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const [formData, setFormData] = useState({
-    departmentId: "",
-    totalAnnualBudget: "",
-    trainingBudget: "",
-    resourceBudget: "",
-    year: new Date().getFullYear()
+  const [selectedBranchId, setSelectedBranchId] = useState("");
+  const [modalBranchId, setModalBranchId] = useState("");
+
+  const [form, setForm] = useState({
+    departmentId: "", totalAnnualBudget: "",
+    trainingBudget: "", resourceBudget: "", year: new Date().getFullYear(),
   });
 
-  const fetchData = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const [budRes, deptRes] = await Promise.all([
+      const [budRes, deptRes, branchRes] = await Promise.all([
         getDepartmentBudgets(),
-        getDepartments()
+        getDepartments(),
+        getBranches()
       ]);
-      // The API returns 'id' as the primary key in GET
-      setBudgets(budRes.data || []);
-      setDepartments(deptRes.data || []);
-    } catch (err) {
-      console.error(err);
-      toast.error("Financial sync failed. Check permissions.");
+      setBudgets(Array.isArray(budRes) ? budRes : budRes?.data || []);
+      setAllDepartments(Array.isArray(deptRes) ? deptRes : deptRes?.data || []);
+      setBranches(Array.isArray(branchRes) ? branchRes : branchRes?.data || []);
+    } catch {
+      toast.error("Sync Error");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
+
+  const resetForm = () => {
+    setForm({
+      departmentId: "", totalAnnualBudget: "",
+      trainingBudget: "", resourceBudget: "", year: new Date().getFullYear(),
+    });
+    setModalBranchId("");
+  };
+
+  const modalFilteredDepts = useMemo(() => {
+    if (!modalBranchId) return [];
+    return allDepartments.filter(d => Number(d.branchId) === Number(modalBranchId));
+  }, [modalBranchId, allDepartments]);
+
+  const filteredBudgets = useMemo(() => {
+    return budgets.filter(b => {
+      const dept = allDepartments.find(d => d.departmentId === b.departmentId);
+      const matchesBranch = !selectedBranchId || Number(dept?.branchId) === Number(selectedBranchId);
+      const matchesSearch = !searchTerm || dept?.departmentName?.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesBranch && matchesSearch;
+    });
+  }, [selectedBranchId, searchTerm, budgets, allDepartments]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Validation: Ensure budgets add up or are logical
-    if (parseFloat(formData.trainingBudget) + parseFloat(formData.resourceBudget) > parseFloat(formData.totalAnnualBudget)) {
-      toast.error("Sub-budgets exceed Total Annual Budget!");
-      return;
-    }
-
-    const tid = toast.loading("Allocating funds...");
+    setSubmitting(true);
     try {
       const payload = {
-        departmentId: parseInt(formData.departmentId),
-        totalAnnualBudget: parseFloat(formData.totalAnnualBudget),
-        trainingBudget: parseFloat(formData.trainingBudget),
-        resourceBudget: parseFloat(formData.resourceBudget),
-        year: parseInt(formData.year)
+        departmentId: Number(form.departmentId),
+        totalAnnualBudget: Number(form.totalAnnualBudget),
+        trainingBudget: Number(form.trainingBudget),
+        resourceBudget: Number(form.resourceBudget),
+        year: Number(form.year)
       };
-
       await createDepartmentBudget(payload);
-      toast.success("Budget Allocated Successfully", { id: tid });
-      setShowModal(false);
-      
-      // Reset Form
-      setFormData({
-        departmentId: "",
-        totalAnnualBudget: "",
-        trainingBudget: "",
-        resourceBudget: "",
-        year: new Date().getFullYear()
-      });
-      
-      fetchData();
-    } catch (err) {
-      const status = err.response?.status;
-      if (status === 403) {
-        toast.error("Access Denied: You don't have permission to create budgets.", { id: tid });
-      } else {
-        toast.error(err.response?.data?.message || "Allocation failed", { id: tid });
-      }
+      toast.success("Budget Allocated Successfully");
+      setCreateOpen(false);
+      loadData();
+    } catch {
+      toast.error("Allocation Failed");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="max-w-7xl mx-auto h-screen flex flex-col bg-white font-sans">
       <Toaster position="top-right" />
 
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      {/* HEADER SECTION */}
+      <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 shrink-0">
         <div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight">Fiscal Management</h1>
-          <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-1">Budget Overview</p>
+          <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 tracking-tight uppercase">
+            <Wallet size={22} className="text-indigo-600" /> Dept Budgets
+          </h2>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Financial Allocations</p>
         </div>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-6 py-3.5 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95"
-        >
-          <Plus size={18} /> New Allocation
-        </button>
+
+        <div className="flex items-center gap-3">
+          <select 
+            className="text-[11px] font-bold bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none"
+            value={selectedBranchId}
+            onChange={(e) => setSelectedBranchId(e.target.value)}
+          >
+            <option value="">All Branches</option>
+            {branches.map(b => <option key={b.branchId} value={b.branchId}>{b.branchName}</option>)}
+          </select>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
+            <input 
+              type="text" placeholder="Search departments..." value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="text-[11px] font-bold bg-slate-50 border border-slate-200 rounded-xl pl-9 py-2 w-48 outline-none focus:ring-2 focus:ring-indigo-50"
+            />
+          </div>
+
+          <button 
+            onClick={() => { resetForm(); setCreateOpen(true); }}
+            className="bg-indigo-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
+          >
+            + New Allocation
+          </button>
+        </div>
       </div>
 
-      {/* BUDGET CARDS GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+      {/* TABLE SECTION */}
+      <div className="flex-1 overflow-auto px-8 py-4">
         {loading ? (
-          <div className="col-span-full py-20 text-center">
-            <Loader2 className="animate-spin mx-auto text-indigo-600" size={40} />
-            <p className="mt-4 text-slate-500 font-bold">Loading Ledger...</p>
-          </div>
-        ) : budgets.length === 0 ? (
-          <div className="col-span-full py-20 text-center bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200">
-            <p className="text-slate-400 font-bold uppercase tracking-widest">No budget allocations found</p>
-          </div>
+          <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-500" /></div>
         ) : (
-          budgets.map((b) => (
-            <div key={b.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm hover:shadow-xl transition-all group">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center font-bold">
-                  <Wallet size={24} />
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-3 py-1 rounded-full uppercase">FY {b.year}</span>
-                  <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase ${
-                    b.status === 'Approved' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
-                  }`}>
-                    {b.status}
-                  </span>
-                </div>
-              </div>
-
-              <h3 className="text-xl font-black text-slate-800 mb-1">
-                {departments.find(d => d.id === b.departmentId)?.departmentName || `Dept ID: ${b.departmentId}`}
-              </h3>
-              
-              <div className="flex items-baseline gap-2 mb-6">
-                <span className="text-2xl font-black text-indigo-600">
-                  ${b.totalAnnualBudget?.toLocaleString()}
-                </span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Annual Total</span>
-              </div>
-
-              <div className="space-y-4">
-                {/* Training */}
-                <div>
-                  <div className="flex justify-between text-[10px] font-black uppercase mb-1.5">
-                    <span className="text-slate-400 flex items-center gap-1"><BookOpen size={10}/> Training</span>
-                    <span className="text-slate-700">${b.trainingBudget?.toLocaleString()}</span>
-                  </div>
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-indigo-500 rounded-full" 
-                      style={{ width: `${(b.trainingBudget / b.totalAnnualBudget) * 100}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Resources */}
-                <div>
-                  <div className="flex justify-between text-[10px] font-black uppercase mb-1.5">
-                    <span className="text-slate-400 flex items-center gap-1"><HardDrive size={10}/> Resources</span>
-                    <span className="text-slate-700">${b.resourceBudget?.toLocaleString()}</span>
-                  </div>
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-emerald-500 rounded-full" 
-                      style={{ width: `${(b.resourceBudget / b.totalAnnualBudget) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))
+          <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Department</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Breakdown</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Year</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Budget</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredBudgets.map((b) => {
+                  const dept = allDepartments.find(d => d.departmentId === b.departmentId);
+                  const branch = branches.find(br => br.branchId === dept?.branchId);
+                  return (
+                    <tr key={b.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="px-4 py-3">
+                        <p className="text-[12px] font-black text-slate-700 uppercase">{dept?.departmentName || 'Unknown Dept'}</p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                           <MapPin size={10} className="text-slate-300"/>
+                           <p className="text-[9px] font-bold text-slate-400 uppercase">{branch?.branchName || 'HQ'}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-4">
+                          <div className="text-[10px]">
+                            <span className="text-slate-400 font-bold uppercase mr-1">T:</span>
+                            <span className="text-slate-600 font-black">${b.trainingBudget?.toLocaleString()}</span>
+                          </div>
+                          <div className="text-[10px]">
+                            <span className="text-slate-400 font-bold uppercase mr-1">R:</span>
+                            <span className="text-slate-600 font-black">${b.resourceBudget?.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black uppercase rounded-md border border-slate-200">
+                          FY {b.year}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                           <TrendingUp size={12} className="text-emerald-500"/>
+                           <span className="text-[12px] font-black text-slate-800">${b.totalAnnualBudget?.toLocaleString()}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => setSelected(b)} className="p-1.5 hover:bg-white rounded-lg border border-transparent hover:border-slate-100 text-slate-400 hover:text-indigo-600 transition-all"><Eye size={14}/></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      {/* ALLOCATION MODAL */}
-      {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-8 pt-8 pb-4 flex justify-between items-center border-b border-slate-50">
-              <h2 className="text-xl font-black text-slate-800 tracking-tight">Financial Allocation</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all"><X size={20}/></button>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-8 space-y-4">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Target Department</label>
-                  <select 
-                    required
-                    className="w-full mt-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold text-slate-700"
-                    value={formData.departmentId}
-                    onChange={(e) => setFormData({...formData, departmentId: e.target.value})}
-                  >
-                    <option value="">Select Department</option>
-                    {departments.map(d => (
-                      <option key={d.id} value={d.id}>{d.departmentName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Annual Cap ($)</label>
-                    <input required type="number" className="w-full mt-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" 
-                      placeholder="e.g. 50000" value={formData.totalAnnualBudget} onChange={(e) => setFormData({...formData, totalAnnualBudget: e.target.value})} />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Training ($)</label>
-                    <input required type="number" className="w-full mt-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" 
-                      placeholder="10000" value={formData.trainingBudget} onChange={(e) => setFormData({...formData, trainingBudget: e.target.value})} />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Resources ($)</label>
-                    <input required type="number" className="w-full mt-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" 
-                      placeholder="40000" value={formData.resourceBudget} onChange={(e) => setFormData({...formData, resourceBudget: e.target.value})} />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Fiscal Year</label>
-                  <input required type="number" className="w-full mt-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" 
-                    value={formData.year} onChange={(e) => setFormData({...formData, year: e.target.value})} />
-                </div>
+      {/* VIEW MODAL */}
+      <AnimatePresence>
+        {selected && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 p-6">
+              <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-50">
+                <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em]">Financial Audit</h3>
+                <button onClick={() => setSelected(null)} className="text-slate-300 hover:text-red-500"><X size={16}/></button>
               </div>
-
-              <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all mt-6">
-                Confirm Allocation
-              </button>
-            </form>
+              <div className="grid grid-cols-2 gap-y-5 gap-x-2">
+                <MiniInfo label="Total Allocation" value={`$${selected.totalAnnualBudget?.toLocaleString()}`} icon={<CircleDollarSign size={10}/>}/>
+                <MiniInfo label="Fiscal Year" value={selected.year} icon={<Calendar size={10}/>}/>
+                <MiniInfo label="Training Budget" value={`$${selected.trainingBudget?.toLocaleString()}`} icon={<Layers size={10}/>}/>
+                <MiniInfo label="Resource Budget" value={`$${selected.resourceBudget?.toLocaleString()}`} icon={<Building2 size={10}/>}/>
+              </div>
+              <div className="mt-8 pt-4 border-t border-slate-50 flex justify-end">
+                <button onClick={() => setSelected(null)} className="px-6 py-2 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest">Close Record</button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
+
+      {/* ALLOCATION MODAL */}
+      <AnimatePresence>
+        {createOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden">
+               <div className="px-8 py-4 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+                  <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Budget Allocation Panel</h3>
+                  <button onClick={() => setCreateOpen(false)}><X size={18} className="text-slate-400"/></button>
+               </div>
+               <form onSubmit={handleSubmit} className="p-8 grid grid-cols-3 gap-x-5 gap-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Branch Source</label>
+                    <select 
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold outline-none" 
+                      value={modalBranchId} 
+                      onChange={e => {
+                        setModalBranchId(e.target.value);
+                        setForm({...form, departmentId: ""});
+                      }}
+                    >
+                      <option value="">Select Branch</option>
+                      {branches.map(b => <option key={b.branchId} value={b.branchId}>{b.branchName}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Target Department</label>
+                    <select 
+                      required
+                      disabled={!modalBranchId}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold outline-none disabled:opacity-50" 
+                      value={form.departmentId} 
+                      onChange={e => setForm({...form, departmentId: e.target.value})}
+                    >
+                      <option value="">{modalBranchId ? "Pick Department" : "Waiting..."}</option>
+                      {modalFilteredDepts.map(d => <option key={d.departmentId} value={d.departmentId}>{d.departmentName}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Year Input - Directly enterable text without arrows */}
+                  <InputField label="Fiscal Year" type="text" value={form.year} onChange={e => setForm({...form, year: e.target.value.replace(/\D/g, '')})} placeholder="YYYY" />
+                  
+                  {/* Budget Inputs - Directly enterable text without arrows */}
+                  <InputField label="Total Annual Budget ($)" type="text" value={form.totalAnnualBudget} onChange={e => setForm({...form, totalAnnualBudget: e.target.value.replace(/\D/g, '')})} placeholder="e.g. 50000" />
+                  <InputField label="Training Budget ($)" type="text" value={form.trainingBudget} onChange={e => setForm({...form, trainingBudget: e.target.value.replace(/\D/g, '')})} placeholder="e.g. 5000" />
+                  <InputField label="Resource Budget ($)" type="text" value={form.resourceBudget} onChange={e => setForm({...form, resourceBudget: e.target.value.replace(/\D/g, '')})} placeholder="e.g. 10000" />
+
+                  <div className="col-span-3 pt-6 flex justify-end gap-3 border-t border-slate-50 mt-2">
+                    <button type="button" onClick={() => setCreateOpen(false)} className="px-6 py-2 text-[10px] font-black uppercase text-slate-400">Cancel</button>
+                    <button type="submit" disabled={submitting} className="px-10 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-lg">
+                        {submitting ? "Allocating..." : "Confirm Budget"}
+                    </button>
+                  </div>
+               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+
+const InputField = ({ label, ...props }) => (
+  <div className="space-y-1">
+    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">{label}</label>
+    <input {...props} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold outline-none focus:ring-1 focus:ring-indigo-300 transition-all appearance-none" />
+  </div>
+);
+
+const MiniInfo = ({ label, value, icon }) => (
+  <div className="overflow-hidden">
+    <div className="flex items-center gap-1 text-indigo-500 mb-0.5">
+      {icon}
+      <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">{label}</p>
+    </div>
+    <p className="text-[10px] font-bold text-slate-700 truncate pl-4">{value || '—'}</p>
+  </div>
+);
