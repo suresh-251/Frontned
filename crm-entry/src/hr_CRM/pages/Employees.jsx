@@ -144,7 +144,7 @@ export default function Employees() {
       </div>
 
       {/* TABLE SECTION */}
-      <div className="flex-1 overflow-auto px-8 py-4">
+      <div className="flex-1 overflow-auto px-8 ">
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-500" /></div>
         ) : (
@@ -163,7 +163,7 @@ export default function Employees() {
                 <tbody className="divide-y divide-slate-50">
                   {currentData.map((u) => (
                     <tr key={u.userId} className="hover:bg-slate-50/50 transition-colors group">
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-2">
                         <div className="flex items-center gap-3">
                            <div className="h-9 w-9 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 font-bold uppercase border border-indigo-100">{u.username?.charAt(0)}</div>
                            <div>

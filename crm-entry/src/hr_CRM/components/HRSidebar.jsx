@@ -15,7 +15,9 @@ const menuItems = [
   { name: "Recruitment", icon: UserPlus, path: "/hr/recruitment" },
   { name: "Onboarding", icon: ClipboardCheck, path: "/hr/onboarding" },
   { name: "Knowledge", icon: BookOpen, path: "/hr/knowledge" },
-  { name: "Todo", icon: CheckSquare, path: "/hr/todo" }
+  { name: "Todo", icon: CheckSquare, path: "/hr/todo" },
+  { name: "Leads", icon: Users, path: "/hr/leads" },
+  
 ];
 
 export default function HRSidebar({ collapsed, setCollapsed }) {
@@ -23,7 +25,7 @@ export default function HRSidebar({ collapsed, setCollapsed }) {
     <aside
       className={`${
         collapsed ? "w-20" : "w-64"
-      } bg-white/5 backdrop-blur-xl border-r border-white/10 
+      } bg-white/5 backdrop-blur-xl border-r border-blue/10 
       transition-all duration-300 ease-in-out flex flex-col`}
     >
       <div className="flex items-center justify-between p-4">

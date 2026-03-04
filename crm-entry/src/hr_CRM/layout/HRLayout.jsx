@@ -75,6 +75,16 @@ export default function HRLayout() {
             {!isCollapsed && <span>Dashboard</span>}
           </NavLink>
 
+          <NavLink 
+    to="/crm/hr/leads" 
+    className={({ isActive }) => linkClass(isActive)}
+  >
+    <Users size={18} />
+    {!isCollapsed && <span>Leads</span>}
+  </NavLink>
+
+
+
           <div className="space-y-0.5">
             <div className={`${linkClass(isBranchOpen)} cursor-pointer`} onClick={() => !isCollapsed && setIsBranchOpen(!isBranchOpen)}>
               <MapPin size={18} />
