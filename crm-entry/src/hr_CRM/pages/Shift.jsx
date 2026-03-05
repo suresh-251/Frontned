@@ -7,10 +7,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import { getShifts, createShift, getAssignedUsers, assignShiftToUser } from "../api/shift.api";
 import { getDepartments } from "../api/hr.dept";
+import { getAdminUsers } from "../../api/admin/users.api";
 
 export default function Shift() {
   const [shifts, setShifts] = useState([]);
   const [assignedUsers, setAssignedUsers] = useState([]);
+  const [userLookup, setUserLookup] = useState({}); // New state to map ID -> Username
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showAddShift, setShowAddShift] = useState(false);
@@ -27,11 +29,20 @@ export default function Shift() {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [sData, aData, dData] = await Promise.all([
+      const [sData, aData, dData, uData] = await Promise.all([
         getShifts(),
         getAssignedUsers(),
-        getDepartments()
+        getDepartments(),
+        getAdminUsers({ page: 1, pageSize: 100 }) // Fetch user details
       ]);
+
+      // Create a lookup object: { "userId": "userName" }
+      const lookup = {};
+      (uData?.users || []).forEach(user => {
+        lookup[user.userId] = user.username || user.name;
+      });
+
+      setUserLookup(lookup);
       setShifts(sData || []);
       setAssignedUsers(aData || []);
       setDepartments(dData || []);
@@ -75,7 +86,7 @@ export default function Shift() {
     <div className="max-w-7xl mx-auto space-y-4 p-2 font-sans">
       <Toaster position="top-right" />
 
-      {/* COMPACT HEADER (toplook standard) */}
+      {/* COMPACT HEADER */}
       <div className="flex items-center justify-between px-1">
         <div>
           <h2 className="text-xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
@@ -100,13 +111,10 @@ export default function Shift() {
         </div>
       </div>
 
-      {/* CONTENT GRID */}
       <div className="grid grid-cols-12 gap-4">
-        
         {/* LEFT: Shift Templates */}
         <div className="col-span-12 lg:col-span-7 space-y-2">
           <SectionHeader title="Shift Templates" count={shifts.length} />
-          
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200">
@@ -124,16 +132,12 @@ export default function Shift() {
                     <tr 
                       key={s.shiftId} 
                       onClick={() => setSelectedShiftId(s.shiftId)}
-                      className={`cursor-pointer transition-all ${
-                        selectedShiftId === s.shiftId 
-                        ? "bg-indigo-50/50" 
-                        : "hover:bg-slate-50/50"
-                      }`}
+                      className={`cursor-pointer transition-all ${selectedShiftId === s.shiftId ? "bg-indigo-50/50" : "hover:bg-slate-50/50"}`}
                     >
                       <td className="px-5 py-3.5 relative">
                         {selectedShiftId === s.shiftId && <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-600" />}
                         <p className="text-[12px] font-black text-slate-700 uppercase leading-none mb-0.5">{s.shiftName}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">ID: {s.shiftId}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">ID: {s.shiftId}</p>
                       </td>
                       <td className="px-5 py-3.5 text-center">
                         <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 uppercase">
@@ -151,7 +155,7 @@ export default function Shift() {
           </div>
         </div>
 
-        {/* RIGHT: Dynamic Staff List */}
+        {/* RIGHT: Dynamic Staff List with Username Mapping */}
         <div className="col-span-12 lg:col-span-5 space-y-2">
           <div className="flex items-center justify-between">
             <SectionHeader 
@@ -170,25 +174,33 @@ export default function Shift() {
 
           <div className="space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar pr-1">
             {displayedUsers.length > 0 ? (
-              displayedUsers.map((user, idx) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  key={idx} 
-                  className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-black text-[11px] border border-indigo-100">
-                      {user.userId}
+              displayedUsers.map((user, idx) => {
+                const username = userLookup[user.userId] || "Loading...";
+                return (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={idx} 
+                    className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:border-indigo-200 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`h-9 w-9 rounded-lg flex items-center justify-center font-black text-[11px] border uppercase ${username === "Loading..." ? "bg-slate-50 text-slate-300 border-slate-100" : "bg-indigo-50 text-indigo-600 border-indigo-100"}`}>
+                        {username.charAt(0)}
+                      </div>
+                      <div>
+                        {/* FIXED: Displays username mapped from getAdminUsers */}
+                        <p className="text-[11px] font-black text-slate-800 uppercase leading-none mb-0.5">
+                          {username}
+                        </p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">
+                          UID: #{user.userId} • {user.shiftName}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] font-black text-slate-800 uppercase leading-none mb-0.5">Employee Assignment</p>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase">UID: #{user.userId} • {user.shiftName}</p>
-                    </div>
-                  </div>
-                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                </motion.div>
-              ))
+                    <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  </motion.div>
+                );
+              })
             ) : (
               <div className="flex flex-col items-center justify-center py-16 bg-slate-50/50 rounded-xl border border-dashed border-slate-300 text-slate-300">
                 <Users size={32} className="mb-2 opacity-20" />
@@ -199,7 +211,7 @@ export default function Shift() {
         </div>
       </div>
 
-      {/* MODAL SYSTEM */}
+      {/* MODALS */}
       <AnimatePresence>
         {showAddShift && (
           <Modal title="New Shift Definition" onClose={() => setShowAddShift(false)}>
