@@ -14,18 +14,21 @@ const Deals = () => {
     contactId: '',
     title: '',
     value: '',
-    stage: 'Prospecting',
+    stage: 'New',
     expectedCloseDate: '',
     assignedEmployeeId: ''
   });
 
   const stages = [
-    'Prospecting',
+    'New',
+    'Prospect',
     'Qualification',
+    'Qualified',
     'Proposal',
+    'ProposalSent',
     'Negotiation',
-    'Closed Won',
-    'Closed Lost'
+    'ClosedWon',
+    'ClosedLost'
   ];
 
   useEffect(() => {
@@ -86,7 +89,7 @@ const Deals = () => {
       contactId: '',
       title: '',
       value: '',
-      stage: 'Prospecting',
+      stage: 'Proposal',
       expectedCloseDate: '',
       assignedEmployeeId: ''
     });
@@ -123,23 +126,119 @@ const Deals = () => {
     }
   };
 
+  const formatStatus = (status) => {
+    if (!status) return "—";
+    return status.replace(/([A-Z])/g, ' $1').trim();
+  };
+
+  const formatLabel = (key) => {
+    if (!key) return "";
+    return key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, str => str.toUpperCase())
+      .trim();
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+    } catch (err) {
+      return "—";
+    }
+  };
+
+  const getSafeValue = (obj, path, defaultValue = "—") => {
+    if (!obj || !path) return defaultValue;
+    
+    const parts = path.split('.');
+    let current = obj;
+    
+    for (const part of parts) {
+      if (current == null) return defaultValue;
+      current = current[part];
+    }
+    
+    return current ?? defaultValue;
+  };
+
+  const formatValue = (key, value) => {
+    if (!value) return "—";
+
+    if (key.toLowerCase().includes("date") || key === "createdAt") {
+      try {
+        const date = new Date(value);
+        return date.toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true
+        })
+        .replace("am", "AM")
+        .replace("pm", "PM");
+      } catch {
+        return "—";
+      }
+    }
+
+    if (key === "value") {
+      return `₹ ${Number(value).toLocaleString("en-IN")}`;
+    }
+
+    if (typeof value === "object") {
+      return "—";
+    }
+
+    return value;
+  };
+
+  const hiddenFields = ["lead"];
+
   const columns = [
-    { header: "ID", accessor: "id" },
-    { header: "Title", accessor: "title" },
-    { header: "Value", accessor: "value" },
+    { header: "Deal ID", accessor: "id" },
+    {
+      header: "Lead Name",
+      render: (row) => getSafeValue(row, 'leadName')
+    },
+    {
+      header: "Phone",
+      render: (row) => getSafeValue(row, 'phone')
+    },
+    {
+      header: "Value",
+      render: (row) => {
+        const val = getSafeValue(row, 'value');
+        return val !== "—" ? `₹ ${Number(val).toLocaleString("en-IN")}` : val;
+      }
+    },
     {
       header: "Stage",
-      render: (row) => (
-        <select
-          value={row.stage}
-          onChange={(e) => handleUpdateStage(row, e.target.value)}
-          className="border px-2 py-1 rounded"
-        >
-          {stages.map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      )
+      render: (row) => {
+        const stage = getSafeValue(row, 'stage');
+        return stage !== "—" ? formatStatus(stage) : stage;
+      }
+    },
+    {
+      header: "Status",
+      render: (row) => {
+        const status = getSafeValue(row, 'status');
+        return status !== "—" ? formatStatus(status) : status;
+      }
+    },
+    {
+      header: "Expected Close Date",
+      render: (row) => formatDate(row.expectedCloseDate)
+    },
+    {
+      header: "Score",
+      render: (row) => getSafeValue(row, 'score')
     },
     {
       header: "Actions",
@@ -160,7 +259,7 @@ const Deals = () => {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Deals</h1>
-        <Button onClick={() => setIsModalOpen(true)}>Add Deal</Button>
+        {/* Add Deal button hidden for now */}
       </div>
 
       <Card>
@@ -185,7 +284,10 @@ const Deals = () => {
             name="stage"
             value={formData.stage}
             onChange={handleInputChange}
-            options={stages.map(s => ({ value: s, label: s }))}
+            options={stages.map(s => ({
+              value: s,
+              label: formatStatus(s)
+            }))}
           />
 
           <Input
@@ -218,17 +320,22 @@ const Deals = () => {
         title="Deal Details"
       >
         {selectedDeal && (
-          <div className="space-y-2">
-            {Object.entries(selectedDeal).map(([key, value]) => (
-              <div key={key} className="flex justify-between border-b py-1">
-                <span className="font-semibold">{key}</span>
-                <span>{String(value)}</span>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+            {Object.entries(selectedDeal)
+              .filter(([key]) => !hiddenFields.includes(key))
+              .map(([key, value]) => (
+                <React.Fragment key={key}>
+                  <div className="text-sm font-semibold text-gray-600">
+                    {formatLabel(key)}
+                  </div>
+                  <div className="text-sm text-gray-800 break-words">
+                    {formatValue(key, value)}
+                  </div>
+                </React.Fragment>
+              ))}
           </div>
         )}
       </Modal>
-
     </div>
   );
 };

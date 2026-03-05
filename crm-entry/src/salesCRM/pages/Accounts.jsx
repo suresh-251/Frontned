@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, Button, Table, Modal, Input, Select } from '../components/common';
 import accountsAPI from '../api/accounts.api';
 

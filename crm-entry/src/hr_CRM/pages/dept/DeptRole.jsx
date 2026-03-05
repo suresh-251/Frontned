@@ -116,115 +116,116 @@ export default function DeptRole() {
   );
 
   return (
-    <div className="w-full h-screen flex flex-col bg-white">
+    <div className="max-w-7xl mx-auto space-y-4 p-2 font-sans">
       <Toaster position="top-right" />
 
-      {/* COMPACT HEADER (Matches Recruitment Style) */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 shrink-0">
+      {/* COMPACT HEADER (toplook standard) */}
+      <div className="flex items-center justify-between px-1">
         <div>
-          <h2 className="text-base font-black text-slate-800 flex items-center gap-2 tracking-tighter uppercase">
-            <ShieldCheck size={18} className="text-indigo-600" /> Designations
+          <h2 className="text-xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+            <ShieldCheck size={22} className="text-indigo-600" /> Designations
           </h2>
-          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Role Architecture</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Role Architecture</p>
         </div>
 
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             <input 
               type="text" placeholder="Search roles..." value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="text-[10px] font-bold bg-slate-50 border border-slate-200 rounded-lg pl-8 py-1.5 w-44 outline-none focus:ring-1 focus:ring-indigo-200"
+              className="text-xs font-bold bg-white border border-slate-200 rounded-lg pl-9 pr-4 py-2 w-44 outline-none focus:ring-2 focus:ring-indigo-50 transition-all"
             />
           </div>
 
           <button 
             onClick={() => { closeAndReset(); setShowModal(true); }}
-            className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-[9px] font-black uppercase shadow-sm hover:bg-indigo-700 transition-all"
+            className="bg-indigo-600 text-white py-2 px-4 rounded-lg text-xs font-bold shadow-sm hover:bg-indigo-700 transition-all flex items-center gap-2"
           >
-            + New Role
+            <Plus size={14} strokeWidth={3} /> New Role
           </button>
         </div>
       </div>
 
-      {/* FITTED TABLE SECTION */}
-      <div className="flex-1 overflow-auto px-6 py-4">
-        {loading && roles.length === 0 ? (
-          <div className="flex justify-center py-10"><Loader2 className="animate-spin text-indigo-500" size={20} /></div>
-        ) : (
-          <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/50 border-b border-slate-100">
-                  <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Role Designation</th>
-                  <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Skill Lvl</th>
-                  <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Performance</th>
-                  <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+      {/* TABLE SECTION */}
+      {loading && roles.length === 0 ? (
+        <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-500" size={24} /></div>
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-5 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">Role Designation</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Skill Lvl</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Performance</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredRoles.map((role) => (
+                <tr key={role.departmentRoleId} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-5 py-2.5">
+                    <p className="text-[12px] font-black text-slate-700 uppercase leading-none mb-0.5">{role.roleName}</p>
+                    <div className="flex items-center gap-1">
+                      <MapPin size={10} className="text-indigo-500"/>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">{role.departmentName}</p>
+                    </div>
+                  </td>
+                  <td className="px-5 py-2.5 text-center">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 font-black text-[9px] uppercase">
+                      <Star size={10} className="fill-amber-600" /> {role.requiredSkillLevel}
+                    </span>
+                  </td>
+                  <td className="px-5 py-2.5 text-center">
+                    <span className="text-slate-600 font-black bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 text-[9px] uppercase">
+                      {role.performanceLevel || "Standard"}
+                    </span>
+                  </td>
+                  <td className="px-5 py-2.5 text-right">
+                    <div className="flex justify-end gap-1.5">
+                      <button onClick={() => handleEditClick(role)} className="p-1.5 bg-indigo-50 rounded-md text-indigo-600 hover:bg-indigo-100 transition-colors">
+                        <Edit3 size={13}/>
+                      </button>
+                      <button onClick={() => handleDelete(role)} className="p-1.5 bg-rose-50 rounded-md text-rose-600 hover:bg-rose-100 transition-colors">
+                        <Trash2 size={13}/>
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filteredRoles.map((role) => (
-                  <tr key={role.departmentRoleId} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-4 py-2">
-                      <p className="text-[11px] font-black text-slate-700 uppercase">{role.roleName}</p>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <MapPin size={9} className="text-indigo-400"/>
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tight">{role.departmentName}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 rounded border border-amber-100 font-black text-[8px] uppercase">
-                        <Star size={8} className="fill-amber-600" /> {role.requiredSkillLevel}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      <span className="text-slate-600 font-black bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[8px] uppercase">
-                        {role.performanceLevel || "Standard"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleEditClick(role)} className="p-1.5 hover:bg-white rounded-md border border-transparent hover:border-slate-100 text-slate-400 hover:text-indigo-600 transition-all">
-                          <Edit3 size={14}/>
-                        </button>
-                        <button onClick={() => handleDelete(role)} className="p-1.5 hover:bg-white rounded-md border border-transparent hover:border-slate-100 text-slate-400 hover:text-red-500 transition-all">
-                          <Trash2 size={14}/>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      {/* COMPACT MODAL (Matches Budget Registry Style) */}
+      {/* COMPACT MODAL */}
       <AnimatePresence>
         {showModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden border border-slate-100">
-               <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                  <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">
-                    {editingId ? "Modify Role" : "Create Role"}
-                  </h3>
-                  <button onClick={closeAndReset}><X size={14} className="text-slate-400 hover:text-red-500"/></button>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
+               <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={16} className="text-indigo-600" />
+                    <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">
+                      {editingId ? "Modify Role" : "Create Role"}
+                    </h3>
+                  </div>
+                  <button onClick={closeAndReset} className="text-slate-400 hover:text-red-500 transition-colors"><X size={18}/></button>
                </div>
                
-               <form onSubmit={handleSubmit} className="p-6 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+               <form onSubmit={handleSubmit} className="p-5 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Branch</label>
-                      <select required className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-indigo-300"
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Branch</label>
+                      <select required className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-50 transition-all cursor-pointer"
                         value={modalBranchId} onChange={(e) => { setModalBranchId(e.target.value); setFormData({...formData, departmentId: ""}); }}>
                         <option value="">Select...</option>
                         {branches.map(b => <option key={b.branchId} value={b.branchId}>{b.branchName}</option>)}
                       </select>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Department</label>
-                      <select required disabled={!modalBranchId} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-50"
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Department</label>
+                      <select required disabled={!modalBranchId} className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-50 transition-all disabled:opacity-50 cursor-pointer"
                         value={formData.departmentId} onChange={(e) => setFormData({...formData, departmentId: e.target.value})}>
                         <option value="">Select...</option>
                         {modalFilteredDepts.map(d => <option key={d.departmentId} value={d.departmentId}>{d.departmentName}</option>)}
@@ -239,7 +240,7 @@ export default function DeptRole() {
                     onChange={e => setFormData({...formData, roleName: e.target.value})} 
                   />
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     <InputField 
                       label="Skill Level" 
                       placeholder="Expert"
@@ -254,11 +255,11 @@ export default function DeptRole() {
                     />
                   </div>
 
-                  <div className="pt-4 flex justify-end gap-2">
-                    <button type="button" onClick={closeAndReset} className="px-4 py-1.5 text-[9px] font-black uppercase text-slate-400">Discard</button>
-                    <button type="submit" className="px-6 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-lg shadow-md hover:bg-indigo-700 transition-all">
-                      {editingId ? "Update" : "Save Role"}
+                  <div className="pt-2 flex flex-col gap-2">
+                    <button type="submit" className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-indigo-700 transition-all active:scale-95">
+                      {editingId ? "Update Framework" : "Save Role"}
                     </button>
+                    <button type="button" onClick={closeAndReset} className="w-full py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">Discard changes</button>
                   </div>
                </form>
             </motion.div>
@@ -269,10 +270,9 @@ export default function DeptRole() {
   );
 }
 
-// Shared Component to maintain consistency with Recruitment/Budget pages
 const InputField = ({ label, ...props }) => (
   <div className="space-y-1">
-    <label className="text-[8px] font-black text-slate-400 uppercase ml-1">{label}</label>
-    <input {...props} className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-indigo-300" />
+    <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">{label}</label>
+    <input {...props} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-50 focus:border-indigo-300 transition-all" />
   </div>
 );

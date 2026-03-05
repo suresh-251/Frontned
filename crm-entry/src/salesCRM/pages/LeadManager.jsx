@@ -8,46 +8,54 @@ import {
   FaExchangeAlt, FaArrowUp, FaChartLine, FaUserTie,
   FaStar, FaSpinner, FaCalendarAlt, FaSms, FaTimesCircle,
   FaChevronRight, FaChevronLeft, FaPencilAlt,
-  FaSave, FaEye,
+  FaSave, FaEye, FaUserCheck,
 } from "react-icons/fa";
+import { useAuth } from "../../auth/AuthContext";
+
+// 5. Conversational English Helper
+const formatStatus = (status) => {
+  if (!status) return "—";
+  return status.replace(/([A-Z])/g, ' $1').trim();
+};
 
 const STATUS_OPTIONS = [
-  "FreshLead","Contacted","FollowUp","Interested","Negotiation",
-  "NotInterested","UnableToContact","JunkLead","ReEngagement","ActiveClient","Lost",
+  "FreshLead", "Contacted", "FollowUp", "Interested", "Negotiation",
+  "NotInterested", "UnableToContact", "JunkLead", "ReEngagement", "ActiveClient", "Lost",
 ];
 const LOCKED_STATUSES = ["Negotiation"];
-const STATUS_COLOR_MAP = {
-  "FreshLead":"bg-cyan-50 text-cyan-700 border-cyan-200",
-  "Contacted":"bg-violet-50 text-violet-700 border-violet-200",
-  "FollowUp":"bg-orange-50 text-orange-700 border-orange-200",
-  "Interested":"bg-amber-50 text-amber-700 border-amber-200",
-  "Negotiation":"bg-blue-50 text-blue-700 border-blue-200",
-  "NotInterested":"bg-gray-50 text-gray-600 border-gray-200",
-  "UnableToContact":"bg-rose-50 text-rose-700 border-rose-200",
-  "JunkLead":"bg-red-50 text-red-700 border-red-200",
-  "ReEngagement":"bg-purple-50 text-purple-700 border-purple-200",
-  "ActiveClient":"bg-green-50 text-green-700 border-green-200",
-  "Lost":"bg-slate-50 text-slate-600 border-slate-200",
-};
-const getStatusColor = (s) => STATUS_COLOR_MAP[s] || "bg-gray-50 text-gray-600 border-gray-200";
+const getStatusColor = (s) => "bg-gray-50 text-gray-600 border-gray-200";
 
 const authHeader = () => ({
   "Content-Type": "application/json",
-  Authorization: `Bearer ${localStorage.getItem("token")}`,
+  Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
 });
 
 const api = {
   getLeads: () => fetch("/api/Leads", { headers: authHeader() }).then(r => r.json()),
-  updateStatus: (id, status) =>
-    fetch(`/api/Leads/${id}/status`, {
-      method: "PUT", headers: authHeader(), body: JSON.stringify({ status }),
-    }).then(r => r.json()),
+  // 5. Fixed Endpoint and Method to match standard Lead updates
+  updateStatus: (id, status) => {
+    // LeadManager previously hit /api/Leads/:id/status
+    // But Leads.jsx uses PATCH to /api/Leads/:id for status
+    return fetch(`/api/LeadManager/${id}/status`, {
+      method: "PATCH", headers: authHeader(), body: JSON.stringify(status),
+    }).then(r => r.json());
+  },
   updateRemark: (id, remarks) =>
     fetch(`/api/Leads/${id}`, {
       method: "PATCH", headers: authHeader(), body: JSON.stringify({ remarks }),
     }).then(r => r.json()),
+  // 3. API for updating follow-up date
+  updateFollowUp: (id, nextFollowUpAt, remark) =>
+    fetch(`/api/LeadManager/${id}/followup`, {
+      method: "PATCH",
+      headers: authHeader(),
+      body: JSON.stringify({
+        nextFollowUpAt,
+        remark,
+      }),
+    }).then(r => r.json()),
   getDashboard: () => fetch("/api/LeadManager/dashboard", { headers: authHeader() }).then(r => r.json()),
-  getConversionRate: () => fetch("/api/LeadManager/performance/Convertionrate", { headers: authHeader() }).then(r => r.json()),
+  getConversionRate: (userId) => fetch(`/api/LeadManager/performance/conversionrate?userId=${userId}`, { headers: authHeader() }).then(r => r.json()),
   reassignLead: (leadId, newUserId) =>
     fetch(`/api/LeadManager/reassign/${leadId}`, {
       method: "PUT", headers: authHeader(), body: JSON.stringify({ newUserId: Number(newUserId) }),
@@ -125,8 +133,9 @@ const StatusDropdown = ({ leadId, currentStatus, onStatusChange }) => {
     <div className="relative" ref={ref}>
       <button onClick={() => !isLocked && setOpen(o => !o)} disabled={updating || isLocked}
         title={isLocked ? "Status locked at Negotiation" : "Change status"}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-opacity ${getStatusColor(currentStatus)} ${updating ? "opacity-50 cursor-wait" : isLocked ? "opacity-80 cursor-not-allowed" : "hover:opacity-80 cursor-pointer"}`}>
-        {updating ? "Saving…" : currentStatus || "—"}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${getStatusColor(currentStatus)} ${updating ? "opacity-50 cursor-wait" : isLocked ? "opacity-80 cursor-not-allowed" : "hover:opacity-80 cursor-pointer"}`}>
+        {/* 5. Conversational English display */}
+        {updating ? "Saving…" : formatStatus(currentStatus) || "—"}
         {!isLocked && <FaChevronDown className="w-2.5 h-2.5 opacity-60 flex-shrink-0" />}
         {isLocked && (
           <svg className="w-2.5 h-2.5 opacity-60 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -139,7 +148,7 @@ const StatusDropdown = ({ leadId, currentStatus, onStatusChange }) => {
           {STATUS_OPTIONS.map(status => (
             <button key={status} onClick={() => handleSelect(status)}
               className={`w-full text-left px-4 py-2 text-xs transition-colors flex items-center justify-between hover:bg-gray-50 text-gray-700 ${status === currentStatus ? "font-semibold bg-gray-50" : ""}`}>
-              {status}
+              {formatStatus(status)}
               {status === currentStatus && <FaCheck className="w-3 h-3 opacity-50" />}
             </button>
           ))}
@@ -168,7 +177,7 @@ const FilterPanel = ({ open, onClose, filters, setFilters }) => {
           </label>
           {STATUS_OPTIONS.map(s => (
             <label key={s} className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer hover:text-indigo-600">
-              <input type="radio" name="status" checked={filters.status === s} onChange={() => setFilters(f => ({ ...f, status: s }))} /> {s}
+              <input type="radio" name="status" checked={filters.status === s} onChange={() => setFilters(f => ({ ...f, status: s }))} /> {formatStatus(s)}
             </label>
           ))}
         </div>
@@ -257,8 +266,8 @@ const EscalateModal = ({ lead, onClose, onSuccess }) => {
           <div><p className="text-sm font-semibold text-gray-800">{lead.name || "—"}</p><p className="text-xs text-gray-500">Status: {lead.status || "—"}</p></div>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Reason (optional)</label>
-          <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Describe why this lead needs escalation..." rows={3}
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Reason</label>
+          <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Describe why this lead needs escalation...(optional)" rows={3}
             className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 resize-none" />
         </div>
         <div className="flex justify-end gap-2 pt-2">
@@ -319,6 +328,89 @@ const EditRemarkModal = ({ lead, onClose, onSave }) => {
   );
 };
 
+const FollowUpModal = ({ lead, onClose, onSuccess }) => {
+  const [date, setDate] = useState(
+    lead.followUpDate
+      ? new Date(lead.followUpDate).toISOString().slice(0, 16)
+      : ""
+  );
+  const [remark, setRemark] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async () => {
+    if (!date) return Toast.error("Select follow-up date");
+
+    try {
+      setLoading(true);
+
+      const isoDate = new Date(date).toISOString();
+
+      await api.updateFollowUp(lead.id, isoDate, remark);
+
+      Toast.success("Follow-up updated");
+      console.log('patch:', isoDate)
+      onSuccess();
+      onClose();
+    } catch {
+      Toast.error("Failed to update follow-up");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={`Follow-Up — ${lead.name || `Lead #${lead.id}`}`}
+    >
+      <div className="space-y-4">
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500 uppercase">
+            Next Follow-up
+          </label>
+          <input
+            type="datetime-local"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500 uppercase">
+            Reason
+          </label>
+          <textarea
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            rows={3}
+            placeholder="Optional note about this follow-up..."
+            className="px-3 py-2 text-sm border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm bg-gray-100 rounded-lg"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={loading}
+            className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg disabled:opacity-50"
+          >
+            {loading ? "Saving..." : "Save"}
+          </button>
+        </div>
+
+      </div>
+    </Modal>
+  );
+};
 const StatCard = ({ icon: Icon, label, value, subtext, color = "bg-gray-100" }) => (
   <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm flex items-start gap-4">
     <div className={`p-3 rounded-xl ${color}`}><Icon className="w-5 h-5 text-white" /></div>
@@ -333,12 +425,26 @@ const StatCard = ({ icon: Icon, label, value, subtext, color = "bg-gray-100" }) 
 // Contact Type column: video, phone, email, whatsapp
 const ContactTypeActions = ({ lead }) => (
   <div className="flex items-center gap-0.5">
-    <button title="Video Call" className="p-1.5 rounded-md hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors">
-      <FaVideo className="w-3.5 h-3.5" />
-    </button>
+    {lead.zoomLink ? (
+      <a href={lead.zoomLink} target="_blank" rel="noreferrer" title="Join Zoom Call"
+        className="p-1.5 rounded-md hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors">
+        <FaVideo className="w-3.5 h-3.5" />
+      </a>
+    ) : lead.email ? (
+      <a href={`https://zoom.us/start/videomeeting?email=${encodeURIComponent(lead.email)}`}
+        target="_blank" rel="noreferrer" title="Start Zoom with Email"
+        className="p-1.5 rounded-md hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors">
+        <FaVideo className="w-3.5 h-3.5 " />
+      </a>
+    ) : (
+      <button disabled title="No contact info for video call"
+        className="p-1.5 rounded-md text-gray-300 cursor-not-allowed">
+        <FaVideo className="w-3.5 h-3.5" />
+      </button>
+    )}
     {lead.phone && (
       <a href={`tel:${lead.phone}`} title="Call" className="p-1.5 rounded-md hover:bg-green-50 text-green-500 hover:text-green-700 transition-colors">
-        <FaPhone className="w-3.5 h-3.5" />
+        <FaPhone className="w-3.5 h-3.5 scale-x-[-1]" />
       </a>
     )}
     {lead.email && (
@@ -355,19 +461,8 @@ const ContactTypeActions = ({ lead }) => (
   </div>
 );
 
-// Actions column: reassign + escalate only
-const RowActions = ({ lead, onReassign, onEscalate }) => (
-  <div className="flex items-center gap-0.5">
-    <button title="Reassign Lead" onClick={() => onReassign(lead)} className="p-1.5 rounded-md hover:bg-amber-50 text-amber-500 hover:text-amber-700 transition-colors">
-      <FaExchangeAlt className="w-3.5 h-3.5" />
-    </button>
-    <button title="Escalate Lead" onClick={() => onEscalate(lead)} className="p-1.5 rounded-md hover:bg-rose-50 text-rose-400 hover:text-rose-600 transition-colors">
-      <FaArrowUp className="w-3.5 h-3.5" />
-    </button>
-  </div>
-);
-
 const LeadManager = () => {
+  const { user } = useAuth();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dashboard, setDashboard] = useState(null);
@@ -384,6 +479,7 @@ const LeadManager = () => {
   const filterRef = useRef();
   const [reassignLead, setReassignLead] = useState(null);
   const [escalateLead, setEscalateLead] = useState(null);
+  const [followUpLead, setFollowUpLead] = useState(null);
   const [viewRemarkLead, setViewRemarkLead] = useState(null);
   const [editRemarkLead, setEditRemarkLead] = useState(null);
 
@@ -395,10 +491,14 @@ const LeadManager = () => {
   };
   const fetchDashboard = async () => {
     try {
-      const [dash, conv] = await Promise.allSettled([api.getDashboard(), api.getConversionRate()]);
+      const userId = user?.sub || user?.id; // Get current user ID
+      const [dash, conv] = await Promise.allSettled([
+        api.getDashboard(),
+        api.getConversionRate(userId)
+      ]);
       if (dash.status === "fulfilled") setDashboard(dash.value);
       if (conv.status === "fulfilled") setConversionRate(conv.value);
-    } catch {}
+    } catch { }
   };
   useEffect(() => { fetchLeads(); fetchDashboard(); }, []);
 
@@ -407,6 +507,15 @@ const LeadManager = () => {
   const handleRemarkSave = (leadId, newRemark) =>
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, remarks: newRemark, comments: newRemark } : l));
 
+  // 3. Handle inline follow-up date change
+  const handleFollowUpUpdate = async (leadId, date) => {
+    try {
+      await api.updateFollowUp(leadId, date);
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, followUpDate: date } : l));
+      Toast.success("Follow-up date updated");
+    } catch { Toast.error("Failed to update date"); }
+  };
+
   const formatDate = (val) => !val ? "—" : new Date(val).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   const formatDateTime = (val) => !val ? null : new Date(val).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -414,9 +523,9 @@ const LeadManager = () => {
     if (filters.status && lead.status !== filters.status) return false;
     if (filters.whatsappOnly && !lead.whatsappEnabled) return false;
     if (filters.assignedUserId && String(lead.assignedToUserId) !== filters.assignedUserId) return false;
-    if (followUpFrom && lead.nextFollowUpDate && new Date(lead.nextFollowUpDate) < new Date(followUpFrom)) return false;
-    if (followUpTo && lead.nextFollowUpDate && new Date(lead.nextFollowUpDate) > new Date(followUpTo)) return false;
-    if (excludeNoFollowup && !lead.nextFollowUpDate) return false;
+    if (followUpFrom && lead.followUpDate && new Date(lead.followUpDate) < new Date(followUpFrom)) return false;
+    if (followUpTo && lead.followUpDate && new Date(lead.followUpDate) > new Date(followUpTo)) return false;
+    if (excludeNoFollowup && !lead.followUpDate) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (lead.name || "").toLowerCase().includes(q) || (lead.phone || "").toLowerCase().includes(q) ||
@@ -436,7 +545,6 @@ const LeadManager = () => {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-screen-2xl mx-auto px-6 py-6 space-y-5">
-        {/* Tabs */}
         <div className="flex gap-1 border-b border-gray-200">
           {[{ key: "manage", label: "Manage Leads", icon: FaUsers }, { key: "dashboard", label: "Dashboard", icon: FaTachometerAlt }].map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setActiveTab(key)}
@@ -448,33 +556,35 @@ const LeadManager = () => {
 
         {activeTab === "manage" && (
           <div className="space-y-4">
-            {/* Top bar */}
-            <div className="flex items-center gap-3 flex-wrap bg-white border border-gray-100 rounded-xl px-4 py-3 shadow-sm">
+            {/* 4. Redesigned Top bar with proper labels and placeholders */}
+            <div className="flex items-center gap-4 flex-wrap bg-white border border-gray-100 rounded-xl px-5 py-4 shadow-sm">
               <h1 className="text-base font-bold text-gray-800 whitespace-nowrap">Manage Leads</h1>
-              <div className="w-px h-5 bg-gray-200 hidden sm:block" />
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-gray-500 bg-gray-100 rounded-md px-2 py-1 whitespace-nowrap">Follow-up</span>
-                <div className="relative">
+              <div className="w-px h-8 bg-gray-200 hidden sm:block mx-1" />
+
+              <div className="flex items-center gap-4 flex-wrap flex-1">
+                <div className="relative group min-w-[180px]">
+                  <label className="absolute -top-2 left-2.5 bg-white px-1 text-[10px] font-bold text-gray-400 group-focus-within:text-indigo-500 transition-colors uppercase tracking-wider">Follow-up From</label>
                   <input type="date" value={followUpFrom} onChange={e => setFollowUpFrom(e.target.value)}
-                    className="pl-3 pr-8 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600 w-36 transition-colors" />
+                    className="w-full pl-3 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-white hover:border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 text-gray-700 transition-all" />
                 </div>
-                <span className="text-xs font-bold text-gray-400">→</span>
-                <div className="relative">
+                <div className="relative group min-w-[180px]">
+                  <label className="absolute -top-2 left-2.5 bg-white px-1 text-[10px] font-bold text-gray-400 group-focus-within:text-indigo-500 transition-colors uppercase tracking-wider">To Follow-up</label>
                   <input type="date" value={followUpTo} onChange={e => setFollowUpTo(e.target.value)}
-                    className="pl-3 pr-8 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600 w-36 transition-colors" />
+                    className="w-full pl-3 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-white hover:border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 text-gray-700 transition-all" />
                 </div>
                 {(followUpFrom || followUpTo) && (
-                  <button onClick={() => { setFollowUpFrom(""); setFollowUpTo(""); }} title="Clear"
-                    className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors border border-gray-200 bg-white">
-                    <FaTimes className="w-2.5 h-2.5" />
+                  <button onClick={() => { setFollowUpFrom(""); setFollowUpTo(""); }}
+                    className="p-2 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors" title="Clear Dates">
+                    <FaTimes className="w-3 h-3" />
                   </button>
                 )}
               </div>
-              <div className="ml-auto relative" ref={filterRef}>
+
+              <div className="relative" ref={filterRef}>
                 <button onClick={() => setFilterPanelOpen(o => !o)}
-                  className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${activeFilterCount > 0 ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600"}`}>
+                  className={`relative flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-semibold transition-all ${activeFilterCount > 0 ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600"}`}>
                   <FaFilter className="w-3 h-3" /> Filters
-                  {activeFilterCount > 0 && <span className="w-4 h-4 rounded-full bg-red-400 text-white text-[10px] flex items-center justify-center font-bold">{activeFilterCount}</span>}
+                  {activeFilterCount > 0 && <span className="ml-1.5 w-4 h-4 rounded-full bg-white text-indigo-600 text-[10px] flex items-center justify-center font-bold">{activeFilterCount}</span>}
                 </button>
                 <FilterPanel open={filterPanelOpen} onClose={() => setFilterPanelOpen(false)} filters={filters} setFilters={setFilters} />
               </div>
@@ -494,11 +604,6 @@ const LeadManager = () => {
                 <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all font-medium">
                   <FaFileExport className="w-3 h-3" /> Export
                 </button>
-                {/* Bulk SMS disabled — no selection logic. To enable: add selectedLeadIds state + POST /api/Leads/bulk-sms */}
-                <button disabled title="Select leads first to send Bulk SMS"
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg font-medium opacity-50 cursor-not-allowed text-gray-400">
-                  <FaSms className="w-3 h-3" /> Bulk SMS
-                </button>
                 <button onClick={fetchLeads} title="Refresh" className="p-1.5 text-gray-400 hover:text-indigo-600 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 transition-all">
                   <FaSync className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
                 </button>
@@ -510,90 +615,128 @@ const LeadManager = () => {
               </div>
             </div>
 
-            {/* Filter chips */}
-            {activeFilterCount > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-gray-400">Active filters:</span>
-                {filters.status && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-medium">Status: {filters.status}<button onClick={() => setFilters(f => ({ ...f, status: "" }))}><FaTimes className="w-2.5 h-2.5" /></button></span>}
-                {filters.whatsappOnly && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium">WhatsApp Only<button onClick={() => setFilters(f => ({ ...f, whatsappOnly: false }))}><FaTimes className="w-2.5 h-2.5" /></button></span>}
-                {filters.assignedUserId && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">User #{filters.assignedUserId}<button onClick={() => setFilters(f => ({ ...f, assignedUserId: "" }))}><FaTimes className="w-2.5 h-2.5" /></button></span>}
-                {followUpFrom && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-medium">From: {followUpFrom}<button onClick={() => setFollowUpFrom("")}><FaTimes className="w-2.5 h-2.5" /></button></span>}
-                {followUpTo && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-medium">To: {followUpTo}<button onClick={() => setFollowUpTo("")}><FaTimes className="w-2.5 h-2.5" /></button></span>}
-              </div>
-            )}
-
             {/* Table */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      {["#","Name","Contact Type","Actions","Deposits","Phone","Assigned To","Status","Last Contact","Next Follow-up","Created","Remarks"].map(h => (
-                        <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                          {h === "Next Follow-up" ? <span className="flex items-center gap-1">{h} <FaChevronDown className="w-2.5 h-2.5 text-gray-400" /></span> : h}
-                        </th>
-                      ))}
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">#</th>
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Name</th>
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Contact</th>
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Phone</th>
+                      {/* 1. Assigned To Header */}
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Assigned To</th>
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Status</th>
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Last Contact</th>
+                      {/* 3. Removed chevron from header */}
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center" title="Next Follow-up">
+                        Follow-Up
+                      </th>
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Created</th>
+                      <th className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Remarks</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {loading ? (
                       Array.from({ length: 7 }).map((_, i) => (
                         <tr key={i} className="animate-pulse">
-                          {Array.from({ length: 12 }).map((_, j) => <td key={j} className="px-3 py-4"><div className="h-4 bg-gray-100 rounded w-3/4" /></td>)}
+                          {Array.from({ length: 11 }).map((_, j) => <td key={j} className="px-3 py-4"><div className="h-4 bg-gray-100 rounded w-3/4" /></td>)}
                         </tr>
                       ))
                     ) : paginatedLeads.length === 0 ? (
-                      <tr><td colSpan={12} className="text-center py-16 text-gray-400"><FaUsers className="w-8 h-8 mx-auto mb-3 opacity-30" /><p className="text-sm">No leads found</p></td></tr>
+                      <tr><td colSpan={11} className="text-center py-16 text-gray-400"><FaUsers className="w-8 h-8 mx-auto mb-3 opacity-30" /><p className="text-sm">No leads found</p></td></tr>
                     ) : paginatedLeads.map(lead => {
-                      const nextFollowUp = formatDateTime(lead.nextFollowUpDate);
-                      const isPastFollowUp = lead.nextFollowUpDate && new Date(lead.nextFollowUpDate) < new Date();
-                      const hasRemark = !!(lead.remarks || lead.comments);
                       return (
-                        <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors">
+                        <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors group/row">
                           <td className="px-3 py-3.5"><span className="text-indigo-600 font-semibold text-xs">{lead.id}</span></td>
                           <td className="px-3 py-3.5 font-medium text-indigo-600 hover:underline cursor-pointer whitespace-nowrap text-xs">{lead.name || "/"}</td>
                           <td className="px-3 py-3.5"><ContactTypeActions lead={lead} /></td>
-                          <td className="px-3 py-3.5"><RowActions lead={lead} onReassign={setReassignLead} onEscalate={setEscalateLead} /></td>
-                          <td className="px-3 py-3.5 text-gray-600 text-xs">{lead.deposits != null ? Number(lead.deposits).toFixed(2) : "0.00"}</td>
-                          <td className="px-3 py-3.5 whitespace-nowrap">
-                            {lead.phone ? (
-                              <div className="flex items-center gap-1.5">
-                                <a href={`tel:${lead.phone}`} className="text-indigo-500 hover:underline text-xs font-medium">{lead.phone}</a>
+                          <td className="px-3 py-3.5 whitespace-nowrap text-xs text-indigo-500 font-medium">{lead.phone || "—"}</td>
+
+                          {/* 1 & 2. Assigned To Column with ID and Hover Actions */}
+                          <td className="px-3 py-3.5 relative group/assigned">
+                            <div className="flex items-center gap-1.5">
+                              {lead.assignedToUserName ? (
+                                <>
+                                  <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold flex-shrink-0">
+                                    {lead.assignedToUserName.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-xs text-gray-700 font-medium truncate">{lead.assignedToUserName}</span>
+                                    <span className="text-[9px] text-gray-400 font-mono">UID: {lead.assignedToUserId || lead.assignedTo || lead.assigned || "N/A"}</span>
+                                  </div>
+                                </>
+                              ) : lead.assignedToUserId || lead.assignedTo || lead.assigned ? (
+                                <>
+                                  <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold flex-shrink-0">
+                                    U
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-xs text-gray-700 font-medium truncate">User #{lead.assignedToUserId || lead.assignedTo || lead.assigned}</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <span className="text-xs text-gray-300 italic">Unassigned</span>
+                              )}
+
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover/assigned:opacity-100 transition-opacity ml-1">
+                                <button title="Reassign" onClick={() => setReassignLead(lead)} className="p-1 rounded hover:bg-amber-50 text-amber-500 transition-colors">
+                                  <FaExchangeAlt className="w-3.6 h-3.6" />
+                                </button>
+                                <button title="Escalate" onClick={() => setEscalateLead(lead)} className="p-1 rounded hover:bg-rose-50 text-rose-400 transition-colors">
+                                  <FaArrowUp className="w-3.6 h-3.6" />
+                                </button>
                               </div>
-                            ) : <span className="text-gray-400 text-xs">—</span>}
+                            </div>
                           </td>
-                          <td className="px-3 py-3.5">
-                            {lead.assignedToUserId ? (
-                              <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-300 to-indigo-500 flex items-center justify-center text-white text-xs font-bold shadow flex-shrink-0" title={lead.assignedToUserName || `User #${lead.assignedToUserId}`}>
-                                  {lead.assignedToUserName ? lead.assignedToUserName.charAt(0).toUpperCase() : String(lead.assignedToUserId).charAt(0)}
-                                </div>
-                                <span className="text-xs text-gray-700 font-medium truncate max-w-[80px]">{lead.assignedToUserName || `User #${lead.assignedToUserId}`}</span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0"><FaUserTie className="w-3.5 h-3.5 text-gray-300" /></div>
-                                <span className="text-xs text-gray-400">Unassigned</span>
-                              </div>
-                            )}
-                          </td>
+
                           <td className="px-3 py-3.5"><StatusDropdown leadId={lead.id} currentStatus={lead.status} onStatusChange={handleStatusChange} /></td>
-                          <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">{formatDate(lead.lastContactDate || lead.lastContactedAt)}</td>
+                          <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">{formatDate(lead.lastContact)}</td>
+
+                          {/* 3. Inline Calendar for Follow-up */}
                           <td className="px-3 py-3.5">
-                            {nextFollowUp
-                              ? <span className={`inline-block text-xs font-medium px-2 py-1 rounded-md whitespace-nowrap ${isPastFollowUp ? "bg-red-50 text-red-600 border border-red-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>{nextFollowUp}</span>
-                              : <span className="inline-block text-xs px-2 py-1 rounded-md bg-gray-100 text-gray-400 border border-gray-200">No</span>}
+                            <div className="flex items-center justify-between group/follow">
+
+                              {/* Date Display */}
+                              <div className="flex flex-col">
+                                <span className="text-xs text-gray-700 font-medium">
+                                  {lead.followUpDate
+                                    ? formatDate(lead.followUpDate)
+                                    : "No follow-up"}
+                                </span>
+
+                                {/* View Button */}
+                                {lead.followUpDate && (
+                                  <button
+                                    onClick={() => setFollowUpLead(lead)}
+                                    className="text-[10px] text-indigo-500 hover:underline text-left"
+                                  >
+                                    View
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Edit icon appears on hover */}
+                              <button
+                                onClick={() => setFollowUpLead(lead)}
+                                title="Edit Follow-up"
+                                className="opacity-0 group-hover/row:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-indigo-50 text-indigo-400 hover:text-indigo-600"
+                              >
+                                <FaPencilAlt className="w-3.5 h-3.5" />
+                              </button>
+
+                            </div>
                           </td>
+
                           <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">{formatDate(lead.createdAt)}</td>
                           <td className="px-3 py-3.5">
                             <div className="flex items-center gap-1">
-                              {/* fa-solid fa-pencil */}
                               <button title="Edit remark" onClick={() => setEditRemarkLead(lead)} className="p-1.5 rounded-md hover:bg-indigo-50 text-indigo-400 hover:text-indigo-600 transition-colors">
                                 <FaPencilAlt className="w-3.5 h-3.5" />
                               </button>
-                              {/* fa-regular fa-eye */}
-                              <button title={hasRemark ? "View remark" : "No remark yet"} onClick={() => setViewRemarkLead(lead)}
-                                className={`p-1.5 rounded-md transition-colors ${hasRemark ? "hover:bg-amber-50 text-amber-500 hover:text-amber-700" : "text-gray-300 hover:bg-gray-50 hover:text-gray-400"}`}>
+                              <button title={!!(lead.remarks || lead.comments) ? "View remark" : "No remark"} onClick={() => setViewRemarkLead(lead)}
+                                className={`p-1.5 rounded-md transition-colors ${!!(lead.remarks || lead.comments) ? "hover:bg-amber-50 text-amber-500" : "text-gray-300"}`}>
                                 <FaEye className="w-3.5 h-3.5" />
                               </button>
                             </div>
@@ -626,14 +769,13 @@ const LeadManager = () => {
                   if (count === 0) return null;
                   return (
                     <div key={status} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-500 w-36 truncate">{status}</span>
+                      <span className="text-xs text-gray-500 w-36 truncate">{formatStatus(status)}</span>
                       <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full rounded-full bg-indigo-400" style={{ width: `${pct}%` }} /></div>
                       <span className="text-xs font-semibold text-gray-600 w-8 text-right">{count}</span>
                       <span className="text-xs text-gray-400 w-8">{pct}%</span>
                     </div>
                   );
                 })}
-                {leads.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No leads loaded</p>}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -641,11 +783,9 @@ const LeadManager = () => {
                 <h3 className="text-sm font-semibold text-gray-700 mb-4">Follow-up Overview</h3>
                 <div className="space-y-3">
                   {[
-                    { label: "With Next Follow-up", count: leads.filter(l => l.nextFollowUpDate).length },
-                    { label: "No Follow-up Set", count: leads.filter(l => !l.nextFollowUpDate).length },
-                    { label: "Overdue Follow-ups", count: leads.filter(l => l.nextFollowUpDate && new Date(l.nextFollowUpDate) < new Date()).length },
-                    { label: "Contacted Today", count: leads.filter(l => l.contactedToday).length },
-                    { label: "WhatsApp Enabled", count: leads.filter(l => l.whatsappEnabled).length },
+                    { label: "With Next Follow-up", count: leads.filter(l => l.followUpDate).length },
+                    { label: "No Follow-up Set", count: leads.filter(l => !l.followUpDate).length },
+                    { label: "Overdue Follow-ups", count: leads.filter(l => l.followUpDate && new Date(l.followUpDate) < new Date()).length },
                   ].map(({ label, count }) => (
                     <div key={label} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                       <span className="text-xs text-gray-600">{label}</span>
@@ -659,8 +799,8 @@ const LeadManager = () => {
                 <div className="space-y-2">
                   {[
                     { label: "Manage All Leads", icon: FaUsers, action: () => setActiveTab("manage") },
-                    { label: "Bulk Reassign", icon: FaExchangeAlt, action: () => {} },
-                    { label: "Escalation Queue", icon: FaArrowUp, action: () => {} },
+                    { label: "Export Leads CSV", icon: FaFileExport, action: () => { } },
+                    { label: "Escalation Queue", icon: FaArrowUp, action: () => { } },
                   ].map(({ label, icon: Icon, action }) => (
                     <button key={label} onClick={action} className="w-full flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-all text-left group">
                       <div className="flex items-center gap-3">
@@ -681,6 +821,13 @@ const LeadManager = () => {
       {escalateLead && <EscalateModal lead={escalateLead} onClose={() => setEscalateLead(null)} onSuccess={fetchLeads} />}
       {viewRemarkLead && <ViewRemarkModal lead={viewRemarkLead} onClose={() => setViewRemarkLead(null)} />}
       {editRemarkLead && <EditRemarkModal lead={editRemarkLead} onClose={() => setEditRemarkLead(null)} onSave={handleRemarkSave} />}
+      {followUpLead && (
+        <FollowUpModal
+          lead={followUpLead}
+          onClose={() => setFollowUpLead(null)}
+          onSuccess={fetchLeads}
+        />
+      )}
     </div>
   );
 };

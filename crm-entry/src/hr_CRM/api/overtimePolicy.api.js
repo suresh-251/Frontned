@@ -18,14 +18,20 @@ export const getOvertimePolicies = async () => {
  */
 export const createOvertimePolicy = async (data) => {
   try {
-    const response = await hrApi.post("/api/OvertimePolicy", {
-      departmentId: parseInt(data.departmentId),
-      standardDailyHours: parseInt(data.standardDailyHours),
-      maxWeeklyOvertimeHours: parseInt(data.maxWeeklyOvertimeHours)
-    });
+    const payload = {
+      departmentId: parseInt(data.departmentId, 10),
+      standardDailyHours: parseInt(data.standardDailyHours, 10),
+      maxWeeklyOvertimeHours: parseInt(data.maxWeeklyOvertimeHours, 10)
+    };
+    
+    // 1. Log what we are actually sending
+    console.log("🚀 Payload being sent to backend:", JSON.stringify(payload)); 
+
+    const response = await hrApi.post("/api/OvertimePolicy", payload);
     return response.data;
   } catch (error) {
-    console.error("Error creating overtime policy:", error);
+    // 2. Log the EXACT error message the backend is returning
+    console.error("❌ Backend rejected the request. Details:", error.response?.data || error.message);
     throw error;
   }
 };

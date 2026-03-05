@@ -2,7 +2,6 @@ import apiClient from './apiClient';
 
 /**
  * Activities API Service
- * Handles all activity-related API calls
  */
 
 const activitiesAPI = {

@@ -1,15 +1,5 @@
-// src/pages/Leads.jsx
-// ─── IMPROVEMENTS IMPLEMENTED ────────────────────────────────────────────────
-// 1. Pagination      — default 25/page, prev/next/page-number controls
-// 2. Always-visible action icons — removed opacity-0 / group-hover pattern
-// 3. View Lead       — fetches GET /api/Leads/{id} instead of using list data
-// 4. Status display  — plain text badge in Leads table; dropdown only in Lead Manager
-// 5. Status options  — removed "PERSONAL"; added "Qualified" and "CloseLead"
-// 6. Delete fix      — optimistic removal + leadsAPI.delete(id)
-// 7. Import Leads    — CSV/Excel file upload with validation + POST /api/Leads/import
-// ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import leadsAPI from "../api/leads.api";
 import { getLeads as getSocialLeads } from "../../socialCRM/api/facebook.leads.api";
 import * as jwtDecode from "jwt-decode";
@@ -18,152 +8,48 @@ import {
   FaUsers, FaPlus, FaEye, FaTimesCircle, FaTrash, FaFileImport,
   FaList, FaTh, FaSearch, FaSync, FaFileExport, FaFilter,
   FaChevronDown, FaWhatsapp, FaCheck, FaTimes, FaCopy,
-  FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaGlobe,
-  FaBullhorn, FaStickyNote, FaClock, FaUserTie, FaTachometerAlt,
-  FaExchangeAlt, FaArrowUp, FaChartLine, FaChevronRight, FaChevronLeft,
-  FaSpinner, FaUserCircle, FaStar, FaUpload, FaFileCsv,
+  FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaStickyNote, FaClock, FaUserTie,
+  FaChevronRight, FaChevronLeft,
+  FaSpinner, FaUpload, FaFileCsv, FaUserCheck,
 } from "react-icons/fa";
 
-// ─────────────────────────────────────────────
-// STATUS CONFIG — UPDATED (5)
-// Removed: PERSONAL
-// Added:   Qualified, CloseLead
-// ─────────────────────────────────────────────
 const STATUS_OPTIONS = [
-  "Lead",
-  "Fresh Lead",
-  "Interested",
-  "Qualified",        // ← NEW
+  "FreshLead",
   "Contacted",
-  "Follow-Up",
-  "Active Client",
-  "Re-Engagement",
-  "CloseLead",        // ← NEW
-  "Junk Lead",
-  "Not interested",
-  "Unable to contact",
+  "FollowUp",
+  "Interested",
+  "Negotiation",
+  "NotInterested",
+  "UnableToContact",
+  "JunkLead",
+  "ReEngagement",
+  "ActiveClient",
+  "Lost",
 ];
 
-const STATUS_NUMBER_MAP = {
-  0: "Lead",
-  1: "Interested",
-  2: "Contacted",
-  3: "Follow-Up",
-  4: "Active Client",
-  5: "Re-Engagement",
-  6: "Qualified",
-  7: "Junk Lead",
-  8: "Fresh Lead",
-  9: "Not interested",
-  10: "Unable to contact",
-};
-
-// Status → color mapping (used by badge + dropdown)
-const STATUS_COLOR_MAP = {
-  "Lead":             "bg-blue-50 text-blue-700 border-blue-200",
-  "Fresh Lead":       "bg-cyan-50 text-cyan-700 border-cyan-200",
-  "Interested":       "bg-amber-50 text-amber-700 border-amber-200",
-  "Qualified":        "bg-emerald-50 text-emerald-700 border-emerald-200",
-  "Contacted":        "bg-violet-50 text-violet-700 border-violet-200",
-  "Follow-Up":        "bg-orange-50 text-orange-700 border-orange-200",
-  "Active Client":    "bg-green-50 text-green-700 border-green-200",
-  "Re-Engagement":    "bg-purple-50 text-purple-700 border-purple-200",
-  "CloseLead":        "bg-teal-50 text-teal-700 border-teal-200",
-  "Junk Lead":        "bg-red-50 text-red-700 border-red-200",
-  "Not interested":   "bg-gray-50 text-gray-600 border-gray-200",
-  "Unable to contact":"bg-rose-50 text-rose-700 border-rose-200",
+const formatStatus = (status) => {
+  if (!status) return "—";
+  return status.replace(/([A-Z])/g, ' $1').trim();
 };
 
 const getStatusColor = (status) =>
-  STATUS_COLOR_MAP[status] || "bg-gray-50 text-gray-600 border-gray-200";
+  "bg-blue-50 text-gray-600 border-gray-200";
 
 const normalizeLead = (lead) => ({
   ...lead,
-  status:
-    typeof lead.status === "number"
-      ? (STATUS_NUMBER_MAP[lead.status] ?? `Status ${lead.status}`)
-      : (lead.status ?? ""),
+  status: lead.status ?? "",
 });
 
 // ─────────────────────────────────────────────
-// STATUS BADGE — plain text, no dropdown (for Leads table) (4)
+// STATUS BADGE — plain text, no dropdown (for Leads table)
 // ─────────────────────────────────────────────
 const StatusBadge = ({ status }) => (
   <span
     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusColor(status)}`}
   >
-    {status || "—"}
+    {formatStatus(status)}
   </span>
 );
-
-// ─────────────────────────────────────────────
-// STATUS DROPDOWN — editable, for Lead Manager (4)
-// ─────────────────────────────────────────────
-const StatusDropdown = ({ leadId, currentStatus, onStatusChange }) => {
-  const [open, setOpen] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const ref = useRef();
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const allOptions =
-    currentStatus && !STATUS_OPTIONS.includes(currentStatus)
-      ? [currentStatus, ...STATUS_OPTIONS]
-      : STATUS_OPTIONS;
-
-  const handleSelect = async (status) => {
-    setOpen(false);
-    if (status === currentStatus) return;
-    try {
-      setUpdating(true);
-      // PUT /api/Leads/{id}
-      await leadsAPI.update(leadId, { status });
-      onStatusChange(leadId, status);
-      Toast.success("Status updated");
-    } catch {
-      Toast.error("Failed to update status");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        disabled={updating}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-opacity
-          ${getStatusColor(currentStatus)}
-          ${updating ? "opacity-50 cursor-wait" : "hover:opacity-80 cursor-pointer"}`}
-      >
-        {updating ? "Saving…" : currentStatus || "—"}
-        <FaChevronDown className="w-2.5 h-2.5 opacity-70 flex-shrink-0" />
-      </button>
-
-      {open && (
-        <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-1 overflow-hidden">
-          {allOptions.map((status) => (
-            <button
-              key={status}
-              onClick={() => handleSelect(status)}
-              className={`w-full text-left px-4 py-2 text-xs transition-colors flex items-center justify-between hover:bg-gray-50 text-gray-700
-                ${status === currentStatus ? "font-semibold bg-gray-50" : ""}`}
-            >
-              <span>{status}</span>
-              {status === currentStatus && <FaCheck className="w-3 h-3 opacity-60" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ─────────────────────────────────────────────
 // AVATAR
@@ -285,12 +171,11 @@ const Toggle = ({ label, name, checked, onChange }) => (
 );
 
 // ─────────────────────────────────────────────
-// PAGINATION COMPONENT (1)
+// PAGINATION COMPONENT
 // ─────────────────────────────────────────────
 const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, pageSize }) => {
   if (totalPages <= 1) return null;
 
-  // Build page number array with ellipsis
   const getPageNumbers = () => {
     const pages = [];
     if (totalPages <= 7) {
@@ -354,7 +239,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, pageSiz
 };
 
 // ─────────────────────────────────────────────
-// IMPORT LEADS MODAL (7)
+// IMPORT LEADS MODAL
 // ─────────────────────────────────────────────
 const ImportLeadsModal = ({ onClose, onSuccess }) => {
   const [file, setFile] = useState(null);
@@ -381,7 +266,6 @@ const ImportLeadsModal = ({ onClose, onSuccess }) => {
     if (validationError) { setError(validationError); return; }
     setFile(f);
 
-    // Show lightweight preview for CSV
     if (f.name.endsWith(".csv")) {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -408,7 +292,6 @@ const ImportLeadsModal = ({ onClose, onSuccess }) => {
       const formData = new FormData();
       formData.append("file", file);
 
-      // POST /api/Leads/import
       const response = await fetch("/api/Leads/import", {
         method: "POST",
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -435,7 +318,6 @@ const ImportLeadsModal = ({ onClose, onSuccess }) => {
   return (
     <Modal isOpen={true} onClose={onClose} title="Import Leads" size="md">
       <div className="space-y-5">
-        {/* Drop zone */}
         <div
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
@@ -471,14 +353,12 @@ const ImportLeadsModal = ({ onClose, onSuccess }) => {
           )}
         </div>
 
-        {/* Error */}
         {error && (
           <div className="flex items-center gap-2 px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs">
             <FaTimes className="w-3 h-3 flex-shrink-0" /> {error}
           </div>
         )}
 
-        {/* CSV Preview */}
         {preview && (
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preview (first 3 rows)</p>
@@ -496,7 +376,6 @@ const ImportLeadsModal = ({ onClose, onSuccess }) => {
           </div>
         )}
 
-        {/* Template hint */}
         <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 text-xs text-amber-700">
           <p className="font-semibold mb-1">Required CSV columns:</p>
           <p className="text-amber-600">name, email, phone, company, source, status</p>
@@ -521,13 +400,7 @@ const ImportLeadsModal = ({ onClose, onSuccess }) => {
 };
 
 // ─────────────────────────────────────────────
-// VIEW LEAD MODAL
-// Uses the lead object passed directly from the list (instant open),
-// then optionally enriches with GET /api/Leads/{id} for extra fields.
-// Never closes on API failure — always shows what we have.
-// ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-// CONTACT HISTORY MODAL — name, id, history only
+// CONTACT HISTORY MODAL
 // ─────────────────────────────────────────────
 const ContactHistoryModal = ({ leadId, leadName, onClose }) => {
   const [history, setHistory] = useState([]);
@@ -577,9 +450,9 @@ const ContactHistoryModal = ({ leadId, leadName, onClose }) => {
     const t = (type || "").toLowerCase();
     if (t.includes("call") || t.includes("phone")) return { icon: FaPhone, color: "bg-blue-100 text-blue-600", label: "Call" };
     if (t.includes("email") || t.includes("mail")) return { icon: FaEnvelope, color: "bg-violet-100 text-violet-600", label: "Email" };
-    if (t.includes("whatsapp") || t.includes("wa"))  return { icon: FaWhatsapp, color: "bg-green-100 text-green-600", label: "WhatsApp" };
+    if (t.includes("whatsapp") || t.includes("wa")) return { icon: FaWhatsapp, color: "bg-green-100 text-green-600", label: "WhatsApp" };
     if (t.includes("note") || t.includes("comment")) return { icon: FaStickyNote, color: "bg-amber-100 text-amber-600", label: "Note" };
-    if (t.includes("meet") || t.includes("visit"))   return { icon: FaUserTie, color: "bg-indigo-100 text-indigo-600", label: "Meeting" };
+    if (t.includes("meet") || t.includes("visit")) return { icon: FaUserTie, color: "bg-indigo-100 text-indigo-600", label: "Meeting" };
     return { icon: FaClock, color: "bg-gray-100 text-gray-500", label: type || "Activity" };
   };
 
@@ -590,7 +463,6 @@ const ContactHistoryModal = ({ leadId, leadName, onClose }) => {
         className="relative bg-white w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header — only name + id */}
         <div className="bg-gradient-to-r from-sky-600 to-sky-800 px-5 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-base flex-shrink-0">
@@ -606,7 +478,6 @@ const ContactHistoryModal = ({ leadId, leadName, onClose }) => {
           </button>
         </div>
 
-        {/* Body — history only */}
         <div className="overflow-y-auto flex-1 p-5">
           {loading ? (
             <div className="space-y-4">
@@ -639,27 +510,23 @@ const ContactHistoryModal = ({ leadId, leadName, onClose }) => {
             </div>
           ) : (
             <div className="relative">
-              {/* Count */}
               <p className="text-xs text-gray-400 mb-4">{history.length} {history.length === 1 ? "entry" : "entries"}</p>
-              {/* Vertical connector line */}
               <div className="absolute left-[15px] top-8 bottom-0 w-px bg-gray-100" />
               <div className="space-y-4">
                 {history.map((entry, idx) => {
                   const style = getContactStyle(entry.type ?? entry.contactType ?? entry.method ?? "");
                   const Icon = style.icon;
                   const timestamp = entry.contactedAt ?? entry.date ?? entry.createdAt ?? entry.timestamp;
-                  const note      = entry.notes ?? entry.note ?? entry.comment ?? entry.description ?? entry.remarks ?? "";
-                  const agent     = entry.agentName ?? entry.userName ?? entry.createdByName ?? entry.agent ?? "";
-                  const outcome   = entry.outcome ?? entry.result ?? entry.status ?? "";
-                  const duration  = entry.duration ?? entry.durationMinutes ?? null;
+                  const note = entry.notes ?? entry.note ?? entry.comment ?? entry.description ?? entry.remarks ?? "";
+                  const agent = entry.agentName ?? entry.userName ?? entry.createdByName ?? entry.agent ?? "";
+                  const outcome = entry.outcome ?? entry.result ?? entry.status ?? "";
+                  const duration = entry.duration ?? entry.durationMinutes ?? null;
 
                   return (
                     <div key={idx} className="relative flex gap-3">
-                      {/* Icon bubble */}
                       <div className={`relative z-10 w-8 h-8 rounded-full ${style.color} flex items-center justify-center flex-shrink-0 ring-2 ring-white shadow-sm`}>
                         <Icon className="w-3.5 h-3.5" />
                       </div>
-                      {/* Card */}
                       <div className="flex-1 bg-white border border-gray-100 rounded-xl px-4 py-3 shadow-sm">
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -707,7 +574,6 @@ const ContactHistoryModal = ({ leadId, leadName, onClose }) => {
           )}
         </div>
 
-        {/* Footer */}
         <div className="border-t border-gray-100 px-5 py-3 flex justify-end bg-gray-50 flex-shrink-0">
           <button onClick={onClose} className="px-4 py-1.5 text-xs text-gray-600 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg font-medium transition-colors">
             Close
@@ -719,15 +585,206 @@ const ContactHistoryModal = ({ leadId, leadName, onClose }) => {
 };
 
 // ─────────────────────────────────────────────
-// VIEW LEAD MODAL — no history tab, no history references
+// EDIT LEAD MODAL
 // ─────────────────────────────────────────────
-const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) => {
+const EDIT_FIELDS = [
+  { name: "name", label: "Name" },
+  { name: "email", label: "Email", type: "email" },
+  { name: "phone", label: "Phone" },
+  { name: "company", label: "Company" },
+  { name: "position", label: "Position" },
+  { name: "source", label: "Source" },
+  { name: "address", label: "Address" },
+  { name: "city", label: "City" },
+  { name: "state", label: "State" },
+  { name: "country", label: "Country" },
+  { name: "zipCode", label: "Zip Code" },
+  { name: "website", label: "Website" },
+  { name: "campaignName", label: "Campaign Name" },
+  { name: "campaignSource", label: "Campaign Source" },
+  { name: "campaignMedium", label: "Campaign Medium" },
+];
+const EDIT_CHECKBOX_FIELDS = [
+  { name: "isPublic", label: "Is Public" },
+  { name: "contactedToday", label: "Contacted Today" },
+  { name: "whatsappEnabled", label: "WhatsApp Enabled" },
+];
+
+const EditLeadModal = ({ lead, onClose, onSaved }) => {
+  const [form, setForm] = useState(() => {
+    const { id, createdAt, updatedAt, convertedToCustomer, ...editable } = lead;
+    return editable;
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setForm((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      await leadsAPI.update(lead.id, form);
+      Toast.success("Lead updated successfully");
+      onSaved?.();
+      onClose();
+    } catch {
+      Toast.error("Failed to update lead. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title={`Edit Lead — ${lead.name || `#${lead.id}`}`} size="xl">
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Basic Information</h3>
+          <div className="grid grid-cols-2 gap-4">
+            {EDIT_FIELDS.filter((f) => ["name", "email", "phone", "company", "position"].includes(f.name)).map((f) => (
+              <Input key={f.name} {...f} value={form[f.name] || ""} onChange={handleChange} />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Status</h3>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</label>
+            <select
+              name="status"
+              value={form.status || ""}
+              onChange={handleChange}
+              className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white"
+            >
+              <option value="">— Select status —</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{formatStatus(s)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Location</h3>
+          <div className="grid grid-cols-3 gap-4">
+            {EDIT_FIELDS.filter((f) => ["address", "city", "state", "country", "zipCode", "website"].includes(f.name)).map((f) => (
+              <Input key={f.name} {...f} value={form[f.name] || ""} onChange={handleChange} />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Campaign & Source</h3>
+          <div className="grid grid-cols-2 gap-4">
+            {EDIT_FIELDS.filter((f) => ["source", "campaignName", "campaignSource", "campaignMedium"].includes(f.name)).map((f) => (
+              <Input key={f.name} {...f} value={form[f.name] || ""} onChange={handleChange} />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Notes</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Comments</label>
+              <textarea name="comments" value={form.comments || ""} onChange={handleChange} rows={3}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white resize-none" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Description</label>
+              <textarea name="description" value={form.description || ""} onChange={handleChange} rows={3}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white resize-none" />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Settings</h3>
+          <div className="flex flex-wrap gap-6">
+            {EDIT_CHECKBOX_FIELDS.map((f) => (
+              <Toggle key={f.name} {...f} checked={!!form[f.name]}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.checked }))} />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors font-medium shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+            {saving ? <FaSpinner className="w-3.5 h-3.5 animate-spin" /> : null}
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+// ─────────────────────────────────────────────
+// VIEW LEAD MODAL
+// ─────────────────────────────────────────────
+const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete, onConverted }) => {
   const [lead, setLead] = useState(leadData ? normalizeLead(leadData) : null);
   const [loading, setLoading] = useState(!leadData);
   const [activeTab, setActiveTab] = useState("overview");
   const [copied, setCopied] = useState("");
+  const [converting, setConverting] = useState(false);
+  const [convertedSuccess, setConvertedSuccess] = useState(false);
 
-  const authHeader = { Authorization: `Bearer ${localStorage.getItem("token")}` };
+  // ── FIX: convert-to-deal using correct endpoint + null body ──
+  const handleConvertToDeal = async () => {
+    if (!lead?.id) return;
+
+    const confirmed = window.confirm(
+      `Convert "${lead.name || `Lead #${lead.id}`}" to a customer?\n\nThis will mark them as an Active Client.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setConverting(true);
+
+      // Call API — no body needed, only path param {id}
+      const result = await leadsAPI.convertToDeal(lead.id);
+
+      // Optimistically update UI
+      setLead((prev) => ({ ...prev, status: "ActiveClient", convertedToCustomer: true }));
+      setConvertedSuccess(true);
+
+      const extras = [
+        result?.dealId ? `Deal #${result.dealId}` : null,
+        result?.accountId ? `Account #${result.accountId}` : null,
+      ].filter(Boolean).join(", ");
+
+      Toast.success(
+        `${lead.name || "Lead"} converted to customer${extras ? ` · ${extras}` : ""}`
+      );
+
+      onConverted?.();
+    } catch (err) {
+      // Log full response for debugging
+      console.error("Convert API error:", err?.response?.data ?? err);
+
+      const errData = err?.response?.data;
+      const msg =
+        errData?.message ||
+        errData?.title ||
+        (errData?.errors ? Object.values(errData.errors).flat().join(", ") : null) ||
+        err?.message ||
+        "Conversion failed. Please try again.";
+
+      Toast.error(msg);
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const authHeader = { Authorization: `Bearer ${localStorage.getItem("accessToken")}` };
 
   useEffect(() => {
     if (!leadId) return;
@@ -758,8 +815,11 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
   };
   const fmtDate = (val) => {
     if (!val) return "—";
-    return new Date(val).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    return new Date(val).toLocaleDateString("en-IN", { day: "2-digit", month: "numeric", year: "numeric" });
   };
+
+  const isAlreadyConverted =
+    lead?.status === "ActiveClient" || lead?.convertedToCustomer === true;
 
   const TABS = ["overview", "campaign", "location", "notes"];
 
@@ -777,7 +837,6 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
           </div>
         ) : lead ? (
           <>
-            {/* HEADER */}
             <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 px-6 py-5 flex-shrink-0">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
@@ -796,28 +855,44 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
                   <FaTimesCircle className="w-4 h-4" />
                 </button>
               </div>
-              <div className="flex items-center gap-2 mt-4 flex-wrap">
+
+              <div className="mt-4 flex items-center justify-between gap-3">
                 <StatusBadge status={lead.status} />
-                {lead.phone && (
-                  <a href={`tel:${lead.phone}`} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-medium rounded-lg transition-colors">
-                    <FaPhone className="w-3 h-3" /> Call
-                  </a>
+
+                {/* Convert button — hidden once already converted */}
+                {!isAlreadyConverted && (
+                  <button
+                    onClick={handleConvertToDeal}
+                    disabled={converting}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                      bg-white/15 text-white border border-white/30
+                      hover:bg-white/25 hover:border-white/50
+                      disabled:opacity-50 disabled:cursor-not-allowed
+                      transition-all backdrop-blur-sm"
+                  >
+                    {converting
+                      ? <FaSpinner className="w-3 h-3 animate-spin" />
+                      : <FaUserCheck className="w-3 h-3" />}
+                    {converting ? "Converting…" : "Convert to Customer"}
+                  </button>
                 )}
-                {lead.email && (
-                  <a href={`mailto:${lead.email}`} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-medium rounded-lg transition-colors">
-                    <FaEnvelope className="w-3 h-3" /> Email
-                  </a>
+
+                {/* Success state — shown after conversion */}
+                {isAlreadyConverted && convertedSuccess && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500/20 text-green-100 border border-green-400/30">
+                    <FaCheck className="w-3 h-3" /> Converted to Customer
+                  </span>
                 )}
-                {lead.whatsappEnabled && lead.phone && (
-                  <a href={`https://wa.me/${lead.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-400 text-white text-xs font-medium rounded-lg transition-colors">
-                    <FaWhatsapp className="w-3 h-3" /> WhatsApp
-                  </a>
+
+                {/* Already a customer before opening modal */}
+                {isAlreadyConverted && !convertedSuccess && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 text-white/60 border border-white/20 cursor-default">
+                    <FaUserCheck className="w-3 h-3" /> Active Client
+                  </span>
                 )}
               </div>
             </div>
 
-            {/* TABS — no history */}
             <div className="flex border-b border-gray-100 bg-white flex-shrink-0 px-2">
               {TABS.map((tab) => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
@@ -828,10 +903,7 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
               ))}
             </div>
 
-            {/* BODY */}
             <div className="overflow-y-auto flex-1 p-6">
-
-              {/* OVERVIEW */}
               {activeTab === "overview" && (
                 <div className="space-y-5">
                   <section>
@@ -875,12 +947,11 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Lead Details</p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: "Source",      value: lead.source || "—" },
+                        { label: "Source", value: lead.source || "—" },
                         { label: "Assigned To", value: lead.assignedToUserId != null ? `User #${lead.assignedToUserId}` : "—" },
-                        { label: "Score",       value: lead.score != null ? lead.score : "—" },
-                        { label: "SLA Hours",   value: lead.slaHours != null ? `${lead.slaHours}h` : "—" },
-                        { label: "Deposits",    value: lead.deposits != null ? `₹${Number(lead.deposits).toLocaleString("en-IN")}` : "—" },
-                        { label: "Position",    value: lead.position || "—" },
+                        { label: "Score", value: lead.score != null ? lead.score : "—" },
+                        { label: "SLA Hours", value: lead.slaHours != null ? `${lead.slaHours}h` : "—" },
+                        { label: "Position", value: lead.position || "—" },
                       ].map(({ label, value }) => (
                         <div key={label} className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
                           <p className="text-xs text-gray-400 mb-0.5">{label}</p>
@@ -900,9 +971,9 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Timeline</p>
                     <div className="border border-gray-100 rounded-xl overflow-hidden">
                       {[
-                        { label: "Created",       value: lead.createdAt,       icon: FaPlus,  color: "text-indigo-400" },
+                        { label: "Created", value: lead.createdAt, icon: FaPlus, color: "text-indigo-400" },
                         { label: "First Response", value: lead.firstResponseAt, icon: FaCheck, color: "text-green-400" },
-                        { label: "Last Contacted", value: lead.lastContactedAt, icon: FaPhone, color: "text-blue-400" },
+                        { label: "Last Contacted", value: lead.lastContact, icon: FaPhone, color: "text-blue-400" },
                       ].map(({ label, value, icon: Icon, color }, i) => (
                         <div key={label} className={`flex items-center justify-between px-4 py-3 ${i > 0 ? "border-t border-gray-50" : ""} ${value ? "bg-white" : "bg-gray-50/50"}`}>
                           <div className="flex items-center gap-2.5">
@@ -917,14 +988,13 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
                 </div>
               )}
 
-              {/* CAMPAIGN */}
               {activeTab === "campaign" && (
                 <div className="space-y-4">
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Campaign Information</p>
                   <div className="grid grid-cols-1 gap-3">
                     {[
-                      { label: "Source",          value: lead.source,         desc: "Where the lead originally came from" },
-                      { label: "Campaign Name",   value: lead.campaignName,   desc: "The marketing campaign name" },
+                      { label: "Source", value: lead.source, desc: "Where the lead originally came from" },
+                      { label: "Campaign Name", value: lead.campaignName, desc: "The marketing campaign name" },
                       { label: "Campaign Source", value: lead.campaignSource, desc: "Platform or channel" },
                       { label: "Campaign Medium", value: lead.campaignMedium, desc: "Medium type (CPC, email, organic)" },
                     ].map(({ label, value, desc }) => (
@@ -947,7 +1017,6 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
                 </div>
               )}
 
-              {/* LOCATION */}
               {activeTab === "location" && (
                 <div className="space-y-4">
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Location Details</p>
@@ -959,12 +1028,12 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: "Address",  value: lead.address },
-                        { label: "City",     value: lead.city },
-                        { label: "State",    value: lead.state },
-                        { label: "Country",  value: lead.country },
+                        { label: "Address", value: lead.address },
+                        { label: "City", value: lead.city },
+                        { label: "State", value: lead.state },
+                        { label: "Country", value: lead.country },
                         { label: "Zip Code", value: lead.zipCode },
-                        { label: "Website",  value: lead.website },
+                        { label: "Website", value: lead.website },
                       ].map(({ label, value }) => (
                         <div key={label} className="bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100">
                           <p className="text-xs text-gray-400 mb-0.5">{label}</p>
@@ -981,7 +1050,6 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
                 </div>
               )}
 
-              {/* NOTES */}
               {activeTab === "notes" && (
                 <div className="space-y-4">
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Notes & Description</p>
@@ -1010,11 +1078,10 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
               )}
             </div>
 
-            {/* FOOTER */}
             <div className="border-t border-gray-100 px-6 py-3 flex items-center justify-between bg-gray-50 flex-shrink-0">
               <p className="text-xs text-gray-400">
                 Created {fmtDate(lead.createdAt)}
-                {lead.lastContactedAt && ` · Last contact ${fmtDate(lead.lastContactedAt)}`}
+                {lead.lastContact && ` · Last contact ${fmtDate(lead.lastContact)}`}
               </p>
               <div className="flex gap-2">
                 {lead.id && (
@@ -1036,351 +1103,6 @@ const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete }) 
 };
 
 // ─────────────────────────────────────────────
-// LEAD MANAGER — with editable status dropdown (4)
-// ─────────────────────────────────────────────
-const leadManagerAPI = {
-  getDashboard: () =>
-    fetch("/api/LeadManager/dashboard", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
-      .then((r) => r.json()),
-  getConversionRate: () =>
-    fetch("/api/LeadManager/performance/Convertionrate", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
-      .then((r) => r.json()),
-  reassignLead: (leadId, newUserId) =>
-    fetch(`/api/LeadManager/reassign/${leadId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-      body: JSON.stringify({ newUserId: Number(newUserId) }),
-    }).then((r) => r.json()),
-  escalateLead: (leadId, data) =>
-    fetch(`/api/LeadManager/escalate/${leadId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-      body: JSON.stringify(data),
-    }).then((r) => r.json()),
-};
-
-const StatCard = ({ icon: Icon, label, value, color, subtext }) => (
-  <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm flex items-start gap-4">
-    <div className={`p-3 rounded-xl ${color}`}>
-      <Icon className="w-5 h-5 text-white" />
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-xs text-gray-500 font-medium">{label}</p>
-      <p className="text-2xl font-bold text-gray-800 mt-0.5">{value ?? "—"}</p>
-      {subtext && <p className="text-xs text-gray-400 mt-0.5">{subtext}</p>}
-    </div>
-  </div>
-);
-
-const ReassignModal = ({ lead, onClose, onSuccess }) => {
-  const [newUserId, setNewUserId] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async () => {
-    if (!newUserId) return Toast.error("Please enter a user ID");
-    try {
-      setLoading(true);
-      await leadManagerAPI.reassignLead(lead.id, newUserId);
-      Toast.success("Lead reassigned successfully");
-      onSuccess();
-      onClose();
-    } catch {
-      Toast.error("Failed to reassign lead");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Modal isOpen={true} onClose={onClose} title={`Reassign Lead #${lead.id}`} size="sm">
-      <div className="space-y-4">
-        <div className="bg-indigo-50 rounded-lg p-3 flex items-center gap-3 border border-indigo-100">
-          <div className="w-8 h-8 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-sm">
-            {lead.name ? lead.name.charAt(0).toUpperCase() : "?"}
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-800">{lead.name || "—"}</p>
-            <p className="text-xs text-gray-500">Currently: User #{lead.assignedToUserId ?? "Unassigned"}</p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">New User ID</label>
-          <input
-            type="number"
-            value={newUserId}
-            onChange={(e) => setNewUserId(e.target.value)}
-            placeholder="Enter user ID to assign"
-            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50"
-          />
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium">Cancel</button>
-          <button onClick={handleSubmit} disabled={loading} className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium disabled:opacity-50">
-            {loading && <FaSpinner className="w-3 h-3 animate-spin" />} Reassign
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
-const EscalateModal = ({ lead, onClose, onSuccess }) => {
-  const [reason, setReason] = useState("");
-  const [priority, setPriority] = useState("high");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async () => {
-    if (!reason) return Toast.error("Please provide an escalation reason");
-    try {
-      setLoading(true);
-      await leadManagerAPI.escalateLead(lead.id, { reason, priority });
-      Toast.success("Lead escalated successfully");
-      onSuccess();
-      onClose();
-    } catch {
-      Toast.error("Failed to escalate lead");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Modal isOpen={true} onClose={onClose} title={`Escalate Lead #${lead.id}`} size="sm">
-      <div className="space-y-4">
-        <div className="bg-rose-50 rounded-lg p-3 flex items-center gap-3 border border-rose-100">
-          <div className="w-8 h-8 rounded-full bg-rose-200 flex items-center justify-center text-rose-700 font-bold text-sm">
-            {lead.name ? lead.name.charAt(0).toUpperCase() : "?"}
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-800">{lead.name || "—"}</p>
-            <p className="text-xs text-gray-500">Status: {lead.status || "—"}</p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Priority</label>
-          <div className="flex gap-2">
-            {["low", "medium", "high", "critical"].map((p) => (
-              <button key={p} onClick={() => setPriority(p)}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-all capitalize
-                  ${priority === p
-                    ? p === "critical" ? "bg-red-600 text-white border-red-600"
-                      : p === "high" ? "bg-orange-500 text-white border-orange-500"
-                        : p === "medium" ? "bg-amber-400 text-white border-amber-400"
-                          : "bg-green-500 text-white border-green-500"
-                    : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"}`}
-              >{p}</button>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Reason</label>
-          <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Describe why this lead needs escalation..." rows={3}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-300 bg-gray-50 resize-none" />
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium">Cancel</button>
-          <button onClick={handleSubmit} disabled={loading} className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-rose-600 hover:bg-rose-700 rounded-lg font-medium disabled:opacity-50">
-            {loading && <FaSpinner className="w-3 h-3 animate-spin" />}
-            <FaArrowUp className="w-3 h-3" /> Escalate
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
-// Lead Manager Section — uses StatusDropdown (editable) + pagination (1)
-const LeadManagerSection = ({ leads, onRefresh, onStatusChange }) => {
-  const [dashboard, setDashboard] = useState(null);
-  const [conversionRate, setConversionRate] = useState(null);
-  const [loadingDash, setLoadingDash] = useState(true);
-  const [reassignLead, setReassignLead] = useState(null);
-  const [escalateLead, setEscalateLead] = useState(null);
-  const [managerSearch, setManagerSearch] = useState("");
-  const [managerTab, setManagerTab] = useState("dashboard");
-  const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 25; // (1) default 25
-
-  useEffect(() => {
-    leadManagerAPI.getDashboard()
-      .then(setDashboard)
-      .catch(() => Toast.error("Failed to load dashboard"))
-      .finally(() => setLoadingDash(false));
-    leadManagerAPI.getConversionRate()
-      .then(setConversionRate)
-      .catch(() => { });
-  }, []);
-
-  useEffect(() => { setCurrentPage(1); }, [managerSearch]);
-
-  const filteredLeads = leads.filter((l) => {
-    if (!managerSearch) return true;
-    const q = managerSearch.toLowerCase();
-    return (
-      (l.name || "").toLowerCase().includes(q) ||
-      (l.phone || "").toLowerCase().includes(q) ||
-      (l.status || "").toLowerCase().includes(q) ||
-      String(l.assignedToUserId || "").includes(q)
-    );
-  });
-
-  const totalPages = Math.ceil(filteredLeads.length / PAGE_SIZE);
-  const paginatedLeads = filteredLeads.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-  return (
-    <div className="space-y-5">
-      <div className="flex gap-1 border-b border-gray-200">
-        {[{ key: "dashboard", label: "Dashboard", icon: FaTachometerAlt }, { key: "leads", label: "Lead Actions", icon: FaExchangeAlt }].map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setManagerTab(key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px
-              ${managerTab === key ? "border-indigo-600 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
-            <Icon className="w-3.5 h-3.5" /> {label}
-          </button>
-        ))}
-      </div>
-
-      {managerTab === "dashboard" && (
-        <div className="space-y-5">
-          {loadingDash ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-xl border border-gray-100 p-5 animate-pulse">
-                  <div className="h-4 bg-gray-100 rounded w-2/3 mb-3" />
-                  <div className="h-8 bg-gray-100 rounded w-1/2" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard icon={FaUsers} label="Total Leads" value={dashboard?.totalLeads ?? leads.length} color="bg-indigo-500" subtext="All time" />
-              <StatCard icon={FaChartLine} label="Conversion Rate"
-                value={conversionRate?.rate != null ? `${Number(conversionRate.rate).toFixed(1)}%` : "—"}
-                color="bg-emerald-500" subtext="Lead → Client" />
-              <StatCard icon={FaUserTie} label="Active Clients"
-                value={dashboard?.activeClients ?? leads.filter((l) => l.status === "Active Client").length}
-                color="bg-green-500" subtext="Currently active" />
-              <StatCard icon={FaStar} label="Interested"
-                value={dashboard?.interested ?? leads.filter((l) => l.status === "Interested").length}
-                color="bg-amber-500" subtext="High potential" />
-            </div>
-          )}
-
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Lead Status Breakdown</h3>
-            <div className="space-y-2">
-              {STATUS_OPTIONS.map((status) => {
-                const count = leads.filter((l) => l.status === status).length;
-                const pct = leads.length ? Math.round((count / leads.length) * 100) : 0;
-                if (count === 0) return null;
-                return (
-                  <div key={status} className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500 w-36 truncate">{status}</span>
-                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-indigo-400" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{count}</span>
-                  </div>
-                );
-              })}
-              {leads.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No leads to display</p>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {managerTab === "leads" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <p className="text-sm text-gray-500">
-              Showing {paginatedLeads.length} of {filteredLeads.length} leads
-            </p>
-            <div className="relative">
-              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input type="text" placeholder="Search leads..." value={managerSearch}
-                onChange={(e) => setManagerSearch(e.target.value)}
-                className="pl-9 pr-4 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 w-52" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    {["#", "Name", "Phone", "Status", "Assigned To", "Last Contact", "Actions"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {paginatedLeads.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-12 text-gray-400">
-                        <FaUsers className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">No leads found</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedLeads.map((lead) => (
-                      <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 text-indigo-600 font-medium">{lead.id}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Avatar name={lead.name} />
-                            <span className="font-medium text-gray-800">{lead.name || "—"}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-500">{lead.phone || "—"}</td>
-                        {/* (4) Editable status dropdown in Lead Manager */}
-                        <td className="px-4 py-3">
-                          <StatusDropdown leadId={lead.id} currentStatus={lead.status} onStatusChange={onStatusChange} />
-                        </td>
-                        <td className="px-4 py-3 text-gray-500">
-                          {lead.assignedToUserId ? `User #${lead.assignedToUserId}` : <span className="text-gray-300">Unassigned</span>}
-                        </td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">
-                          {lead.lastContactedAt
-                            ? new Date(lead.lastContactedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-                            : "—"}
-                        </td>
-                        {/* (2) Always-visible action buttons */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <button onClick={() => setReassignLead(lead)}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors">
-                              <FaExchangeAlt className="w-3 h-3" /> Reassign
-                            </button>
-                            <button onClick={() => setEscalateLead(lead)}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors">
-                              <FaArrowUp className="w-3 h-3" /> Escalate
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {/* (1) Pagination */}
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-              totalItems={filteredLeads.length}
-              pageSize={PAGE_SIZE}
-            />
-          </div>
-        </div>
-      )}
-
-      {reassignLead && <ReassignModal lead={reassignLead} onClose={() => setReassignLead(null)} onSuccess={onRefresh} />}
-      {escalateLead && <EscalateModal lead={escalateLead} onClose={() => setEscalateLead(null)} onSuccess={onRefresh} />}
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────
 const Leads = () => {
@@ -1392,11 +1114,13 @@ const Leads = () => {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
-  // Two separate modals — eye opens full view, clock opens history only
-  const [viewLeadEntry, setViewLeadEntry] = useState(null);   // { id, data }
-  const [historyEntry, setHistoryEntry] = useState(null);     // { id, name }
+  const [viewLeadEntry, setViewLeadEntry] = useState(null);
+  const [editLeadEntry, setEditLeadEntry] = useState(null);
+  const [historyEntry, setHistoryEntry] = useState(null);
   const openLeadView = (lead) => setViewLeadEntry({ id: lead.id, data: lead });
   const closeLeadView = () => setViewLeadEntry(null);
+  const openEditLead = (lead) => setEditLeadEntry(lead);
+  const closeEditLead = () => setEditLeadEntry(null);
   const openHistory = (lead) => setHistoryEntry({ id: lead.id, name: lead.name });
   const closeHistory = () => setHistoryEntry(null);
   const [formData, setFormData] = useState({});
@@ -1405,11 +1129,9 @@ const Leads = () => {
   const [filterSource, setFilterSource] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // (1) Pagination state — default 25
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // Reset page when filters change
   useEffect(() => { setCurrentPage(1); }, [filterStatus, filterSource, searchQuery, activeType]);
 
   // ── Auth ──
@@ -1453,7 +1175,7 @@ const Leads = () => {
 
   useEffect(() => { refreshAll(); }, []);
 
-  // ── Status change (shared) ──
+  // ── Status change ──
   const handleStatusChange = (leadId, newStatus) => {
     setSalesLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, status: newStatus } : l));
     setSocialLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, status: newStatus } : l));
@@ -1474,21 +1196,17 @@ const Leads = () => {
     }
   };
 
-  // (6) Delete fix — optimistic removal, tries leadsAPI.delete then direct fetch fallback
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this lead? This cannot be undone.")) return;
 
-    // Optimistic: remove from UI immediately so it feels instant
     setSalesLeads((prev) => prev.filter((l) => l.id !== id));
     setSocialLeads((prev) => prev.filter((l) => l.id !== id));
     closeLeadView();
 
     try {
-      // Primary: use the API module (DELETE /api/Leads/{id})
       await leadsAPI.delete(id);
       Toast.success("Lead deleted");
     } catch {
-      // Fallback: direct fetch in case leadsAPI.delete isn't wired correctly
       try {
         const res = await fetch(`/api/Leads/${id}`, {
           method: "DELETE",
@@ -1498,7 +1216,6 @@ const Leads = () => {
         Toast.success("Lead deleted");
       } catch (err) {
         Toast.error(`Delete failed (${err.message}) — refreshing`);
-        // Rollback: re-fetch to restore correct state
         fetchSalesLeads();
       }
     }
@@ -1509,7 +1226,9 @@ const Leads = () => {
     if (!date) return "—";
     const d = new Date(date);
     const now = new Date();
-    const diffDays = Math.floor((now - d) / 86400000);
+    const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const nDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((nDate - dDate) / 86400000);
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 30) return `${diffDays}d ago`;
@@ -1534,18 +1253,12 @@ const Leads = () => {
     return true;
   });
 
-  // Sort by real lead.id ascending (smallest ID first)
   const sortedLeads = [...filteredLeads].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
-
-  // Pagination
   const totalPages = Math.ceil(sortedLeads.length / pageSize);
   const paginatedLeads = sortedLeads.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
   const uniqueSources = [...new Set(rawLeads.map((l) => l.source).filter(Boolean))];
 
-  // ── Add modal fields ──
-  // NOTE: LeadCard is defined here (inside Leads but before return) so it correctly
-  // captures openLeadView, openHistory, handleDelete, activeType, formatDate from closure.
+  // ── Lead Card (grid view) ──
   const LeadCard = ({ lead }) => (
     <div className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md hover:border-indigo-200 transition-all">
       <div className="flex items-start justify-between mb-3">
@@ -1593,7 +1306,6 @@ const Leads = () => {
     { name: "address", label: "Address" }, { name: "city", label: "City" },
     { name: "state", label: "State" }, { name: "country", label: "Country" },
     { name: "zipCode", label: "Zip Code" }, { name: "website", label: "Website" },
-    { name: "deposits", label: "Deposits", type: "number" },
   ];
   const checkboxFields = [
     { name: "isPublic", label: "Is Public" },
@@ -1603,7 +1315,7 @@ const Leads = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-screen-2xl mx-auto px-6 py-6 space-y-5">
+      <div className="max-w-screen-2xl mx-auto px-4 py-4 space-y-5">
 
         {/* ── Top Action Bar ── */}
         <div className="flex items-center gap-3 flex-wrap">
@@ -1611,7 +1323,6 @@ const Leads = () => {
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-all active:scale-95">
             <FaPlus className="w-3.5 h-3.5" /> New Lead
           </button>
-          {/* (7) Import button opens modal */}
           <button onClick={() => setIsImportOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg border border-gray-200 shadow-sm transition-all active:scale-95">
             <FaFileImport className="w-3.5 h-3.5 text-indigo-500" /> Import Leads
@@ -1628,54 +1339,51 @@ const Leads = () => {
           </div>
         </div>
 
-        {/* ── Lead type sub-tabs ── */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
-          {["sales", "social"].map((type) => (
-            <button key={type} onClick={() => setActiveType(type)}
-              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all
-                ${activeType === type ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              {type === "sales" ? "Sales Leads" : "Social Leads"}
-            </button>
-          ))}
-        </div>
+        <div className="flex items-center justify-between gap-4 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
+          {/* Left: Lead type sub-tabs */}
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            {["sales", "social"].map((type) => (
+              <button key={type} onClick={() => setActiveType(type)}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all
+                  ${activeType === type ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                {type === "sales" ? "Sales Leads" : "Social Leads"}
+              </button>
+            ))}
+          </div>
 
-        {/* ── Filter Bar ── */}
-        <div className="flex items-center gap-3 flex-wrap bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
-          <FaFilter className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-          <span className="text-sm text-gray-500 font-medium">Filter</span>
-          <FilterDropdown label="Status" options={STATUS_OPTIONS} value={filterStatus} onChange={setFilterStatus} />
-          <FilterDropdown label="Source" options={uniqueSources} value={filterSource} onChange={setFilterSource} />
-          {(filterStatus || filterSource) && (
-            <button onClick={() => { setFilterStatus(""); setFilterSource(""); }}
-              className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1">
-              <FaTimes className="w-3 h-3" /> Clear filters
-            </button>
-          )}
+          {/* Right: Filters */}
+          <div className="flex items-center gap-3">
+            <FaFilter className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+            <span className="text-sm text-gray-500 font-medium">Filter</span>
+            <FilterDropdown label="Status" options={STATUS_OPTIONS.map(s => formatStatus(s))} value={filterStatus ? formatStatus(filterStatus) : ""} onChange={(val) => {
+              const original = STATUS_OPTIONS.find(s => formatStatus(s) === val);
+              setFilterStatus(original || "");
+            }} />
+            <FilterDropdown label="Source" options={uniqueSources} value={filterSource} onChange={setFilterSource} />
+            {(filterStatus || filterSource) && (
+              <button onClick={() => { setFilterStatus(""); setFilterSource(""); }}
+                className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1">
+                <FaTimes className="w-3 h-3" /> Clear filters
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── Table Toolbar ── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
-            {/* (1) Page size selector */}
             <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
               {[25, 50, 100, 200].map((n) => <option key={n}>{n}</option>)}
             </select>
             <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all"
               onClick={() => {
-                // Export filtered leads as CSV
-                const headers = ["ID","Name","Email","Phone","Company","Status","Source","Assigned To","Deposits","Last Contact","Created"];
+                const headers = ["ID", "Name", "Email", "Phone", "Company", "Status", "Source", "Assigned To", "Last Contact", "Created"];
                 const rows = filteredLeads.map(l => [
-                  l.id,
-                  l.name || "",
-                  l.email || "",
-                  l.phone || "",
-                  l.company || "",
-                  l.status || "",
-                  l.source || "",
+                  l.id, l.name || "", l.email || "", l.phone || "", l.company || "",
+                  l.status || "", l.source || "",
                   l.assignedToUserId != null ? `User #${l.assignedToUserId}` : "",
-                  l.deposits != null ? l.deposits : "",
-                  l.lastContactedAt ? new Date(l.lastContactedAt).toLocaleDateString("en-IN") : "",
+                  l.lastContact ? new Date(l.lastContact).toLocaleDateString("en-IN") : "",
                   l.createdAt ? new Date(l.createdAt).toLocaleDateString("en-IN") : "",
                 ]);
                 const csv = [headers, ...rows]
@@ -1685,7 +1393,7 @@ const Leads = () => {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `leads_export_${new Date().toISOString().slice(0,10)}.csv`;
+                a.download = `leads_export_${new Date().toISOString().slice(0, 10)}.csv`;
                 a.click();
                 URL.revokeObjectURL(url);
                 Toast.success(`Exported ${filteredLeads.length} leads`);
@@ -1718,7 +1426,7 @@ const Leads = () => {
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
                     <th className="w-10 px-4 py-3"><input type="checkbox" className="rounded border-gray-300" /></th>
-                    {["#", "Name", "Comments", "Email", "Phone", "Value", "Assigned", "Status", "Source", "Last Contact", "Created", "WA", "Actions"].map((h) => (
+                    {["#", "Name", "Comments", "Email", "Phone", "Assigned", "Status", "Source", "Last Contact", "Created", "Whatsapp", "Actions"].map((h) => (
                       <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -1740,44 +1448,58 @@ const Leads = () => {
                       </td>
                     </tr>
                   ) : (
-                    paginatedLeads.map((lead, idx) => {
-                      // Check all possible field names the API might return for assigned user
+                    paginatedLeads.map((lead) => {
                       const assignedId = lead.assignedToUserId ?? lead.assignedTo ?? lead.assigned ?? null;
                       const assignedName = lead.assignedToUserName ?? lead.assignedUserName ?? lead.assignedName ?? null;
                       const assignedLabel = assignedName
                         ? assignedName
-                        : assignedId != null
-                          ? `User #${assignedId}`
-                          : null;
+                        : assignedId != null ? `User #${assignedId}` : null;
                       const assignedInitial = assignedName
                         ? assignedName.charAt(0).toUpperCase()
-                        : assignedId != null
-                          ? String(assignedId).charAt(0)
-                          : "?";
+                        : assignedId != null ? String(assignedId).charAt(0) : "?";
                       return (
-                        <tr key={lead.id} className="hover:bg-indigo-50/30 transition-colors">
+                        <tr key={lead.id} className="group hover:bg-indigo-50/30 transition-colors">
                           <td className="px-4 py-3"><input type="checkbox" className="rounded border-gray-300" /></td>
-
-                          {/* # — real DB lead ID from API */}
                           <td className="px-3 py-3">
                             <span className="text-indigo-600 font-medium">{lead.id}</span>
                           </td>
-
                           <td className="px-3 py-3 font-medium">
-                            <span
-                              className="text-indigo-600 hover:underline cursor-pointer"
-                              onClick={() => openLeadView(lead)}
-                            >
+                            <span className="text-indigo-600 hover:underline cursor-pointer" onClick={() => openLeadView(lead)}>
                               {lead.name || "/"}
                             </span>
+                            {activeType === "sales" && (
+                              <div className="flex items-center gap-1.5 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => openEditLead(lead)}
+                                  className="text-[11px] text-gray-600 hover:text-indigo-600 transition-colors leading-none cursor-pointer"
+                                >
+                                  Edit
+                                </button>
+                                <span className="text-[10px] text-gray-400 leading-none">|</span>
+                                <button
+                                  onClick={() => handleDelete(lead.id)}
+                                  className="text-[11px] text-gray-600 hover:text-rose-500 transition-colors leading-none cursor-pointer"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            )}
                           </td>
-
-                          <td className="px-3 py-3 text-gray-500 max-w-[120px] truncate text-xs">{lead.comments || "—"}</td>
+                          <td className="px-3 py-3 text-gray-500 max-w-[140px] text-xs">
+                            {lead.comments
+                              ? (
+                                <span
+                                  title={lead.comments}
+                                  className="block truncate cursor-default hover:text-gray-800 transition-colors"
+                                  style={{ maxWidth: "130px" }}
+                                >
+                                  {lead.comments}
+                                </span>
+                              )
+                              : <span className="text-gray-300">—</span>}
+                          </td>
                           <td className="px-3 py-3 text-indigo-500 text-xs">{lead.email || "—"}</td>
                           <td className="px-3 py-3 text-gray-600">{lead.phone || "—"}</td>
-                          <td className="px-3 py-3 text-gray-500">{lead.deposits != null ? `₹${lead.deposits}` : "—"}</td>
-
-                          {/* Assigned — avatar initial + label text */}
                           <td className="px-3 py-3">
                             {assignedLabel ? (
                               <div className="flex items-center gap-1.5">
@@ -1790,43 +1512,31 @@ const Leads = () => {
                               <span className="text-xs text-gray-300 italic">Unassigned</span>
                             )}
                           </td>
-
                           <td className="px-3 py-3"><StatusBadge status={lead.status} /></td>
                           <td className="px-3 py-3 text-gray-500 whitespace-nowrap text-xs">{lead.source || "—"}</td>
-                          <td className="px-3 py-3 text-gray-400 whitespace-nowrap text-xs">{formatDate(lead.lastContactedAt)}</td>
+                          <td className="px-3 py-3 text-gray-400 whitespace-nowrap text-xs">{formatDate(lead.lastContact)}</td>
                           <td className="px-3 py-3 text-gray-400 whitespace-nowrap text-xs">{formatDate(lead.createdAt)}</td>
                           <td className="px-3 py-3">
                             {lead.whatsappEnabled
                               ? <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">Enabled</span>
                               : <span className="text-xs text-gray-300 font-medium">Disabled</span>}
                           </td>
-
-                          {/* Actions: Eye | History | Delete */}
                           <td className="px-3 py-3">
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => openLeadView(lead)}
-                                className="p-1.5 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+                                className="p-1.5 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors cursor-pointer"
                                 title="View lead"
                               >
                                 <FaEye className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => openHistory(lead)}
-                                className="p-1.5 rounded-md bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors"
+                                className="p-1.5 rounded-md bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors cursor-pointer"
                                 title="Contact history"
                               >
                                 <FaClock className="w-3.5 h-3.5" />
                               </button>
-                              {activeType === "sales" && (
-                                <button
-                                  onClick={() => handleDelete(lead.id)}
-                                  className="p-1.5 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
-                                  title="Delete lead"
-                                >
-                                  <FaTrash className="w-3.5 h-3.5" />
-                                </button>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -1836,7 +1546,6 @@ const Leads = () => {
                 </tbody>
               </table>
             </div>
-            {/* (1) Pagination controls */}
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
@@ -1862,8 +1571,8 @@ const Leads = () => {
                   </div>
                 ))
                 : paginatedLeads.map((lead) => (
-                    <LeadCard key={lead.id} lead={lead} />
-                  ))}
+                  <LeadCard key={lead.id} lead={lead} />
+                ))}
               {!loading && paginatedLeads.length === 0 && (
                 <div className="col-span-full text-center py-16 text-gray-400">
                   <FaUsers className="w-8 h-8 mx-auto mb-3 opacity-30" />
@@ -1871,7 +1580,6 @@ const Leads = () => {
                 </div>
               )}
             </div>
-            {/* (1) Grid pagination */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <Pagination
                 currentPage={currentPage}
@@ -1914,8 +1622,8 @@ const Leads = () => {
           </div>
           <div>
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Assignment & Status</h3>
-            <div className="grid grid-cols-3 gap-4">
-              {leadFields.filter((f) => ["status", "assignedToUserId", "deposits"].includes(f.name)).map((f) => (
+            <div className="grid grid-cols-2 gap-4">
+              {leadFields.filter((f) => ["status", "assignedToUserId"].includes(f.name)).map((f) => (
                 <Input key={f.name} {...f} value={formData[f.name] || ""} onChange={handleChange} />
               ))}
             </div>
@@ -1957,7 +1665,7 @@ const Leads = () => {
         </div>
       </Modal>
 
-      {/* (7) IMPORT LEADS MODAL */}
+      {/* IMPORT LEADS MODAL */}
       {isImportOpen && (
         <ImportLeadsModal
           onClose={() => setIsImportOpen(false)}
@@ -1965,13 +1673,14 @@ const Leads = () => {
         />
       )}
 
-      {/* VIEW LEAD MODAL — no history */}
+      {/* VIEW LEAD MODAL */}
       {viewLeadEntry && (
         <ViewLeadModal
           leadId={viewLeadEntry.id}
           leadData={viewLeadEntry.data}
           onClose={closeLeadView}
           onStatusChange={handleStatusChange}
+          onConverted={refreshAll}
           onDelete={(id) => {
             closeLeadView();
             handleDelete(id);
@@ -1979,7 +1688,16 @@ const Leads = () => {
         />
       )}
 
-      {/* CONTACT HISTORY MODAL — name, id, history only */}
+      {/* EDIT LEAD MODAL */}
+      {editLeadEntry && (
+        <EditLeadModal
+          lead={editLeadEntry}
+          onClose={closeEditLead}
+          onSaved={refreshAll}
+        />
+      )}
+
+      {/* CONTACT HISTORY MODAL */}
       {historyEntry && (
         <ContactHistoryModal
           leadId={historyEntry.id}
