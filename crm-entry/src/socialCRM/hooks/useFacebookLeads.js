@@ -97,7 +97,8 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import {
   getLeads,
   updateLeadStatus,
-  assignLead as assignLeadApi
+  assignLead as assignLeadApi,
+  assignLeadsByFormToDepartment as assignByFormApi
 } from "../api/facebook.leads.api";
  
 export default function useFacebookLeads() {
@@ -107,7 +108,8 @@ export default function useFacebookLeads() {
   const [filters, setFilters] = useState({
     pageId: "",
     formId: "",
-    status: ""
+    status: "",
+    departmentId: ""
   });
  
   const filtersRef = useRef(filters);
@@ -221,6 +223,19 @@ export default function useFacebookLeads() {
     }
   };
  
+  /* =========================
+     ASSIGN LEADS BY FORM TO DEPARTMENT
+     ========================= */
+  const assignByFormToDepartment = async (formId, departmentId, departmentName) => {
+    try {
+      await assignByFormApi(formId, departmentId, departmentName);
+      await loadLeads({}, true);
+    } catch (err) {
+      console.error("Assign by form to department failed:", err);
+      throw err;
+    }
+  };
+
   return {
     leads,
     loading,
@@ -228,7 +243,8 @@ export default function useFacebookLeads() {
     setFilters,
     reload,
     changeStatus,
-    assignLead
+    assignLead,
+    assignByFormToDepartment
   };
 }
  

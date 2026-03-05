@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import leadsAPI from "../api/leads.api";
 import { getLeads as getSocialLeads } from "../../socialCRM/api/facebook.leads.api";
+import { getDepartments } from "../../hr_CRM/api/hr.dept";
 import * as jwtDecode from "jwt-decode";
 import Toast from "../utils/toast";
 import {
@@ -1132,15 +1133,20 @@ const Leads = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
+  // Social leads department filter
+  const [departments, setDepartments] = useState([]);
+  const [socialDeptId, setSocialDeptId] = useState("");
+  const [socialMyOnly, setSocialMyOnly] = useState(true); // default: show only my leads
+
   useEffect(() => { setCurrentPage(1); }, [filterStatus, filterSource, searchQuery, activeType]);
 
   // ── Auth ──
   const getUserIdFromToken = () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       if (!token) return null;
       const decoded = jwtDecode.default(token);
-      return decoded.userId || decoded.sub;
+      return decoded.sub || decoded.userId;
     } catch { return null; }
   };
 
@@ -1157,11 +1163,19 @@ const Leads = () => {
     }
   };
 
-  const fetchSocialLeads = async () => {
+  const fetchSocialLeads = async (deptId, myOnly) => {
     try {
       const userId = getUserIdFromToken();
-      if (!userId) return;
-      const data = await getSocialLeads({ assignedToUserId: userId });
+      const params = {};
+      if (deptId) {
+        params.departmentId = deptId;
+      } else if (myOnly && userId) {
+        params.assignedToUserId = userId;
+      } else if (userId) {
+        // fallback: always restrict to current user if nothing else selected
+        params.assignedToUserId = userId;
+      }
+      const data = await getSocialLeads(params);
       setSocialLeads(Array.isArray(data) ? data.map(normalizeLead) : []);
     } catch {
       Toast.error("Failed to load social leads");
@@ -1170,10 +1184,22 @@ const Leads = () => {
 
   const refreshAll = () => {
     fetchSalesLeads();
-    fetchSocialLeads();
+    fetchSocialLeads(socialDeptId, socialMyOnly);
   };
 
   useEffect(() => { refreshAll(); }, []);
+
+  // Reload departments once
+  useEffect(() => {
+    getDepartments()
+      .then(data => setDepartments(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  // Refetch social leads when filter changes
+  useEffect(() => {
+    fetchSocialLeads(socialDeptId, socialMyOnly);
+  }, [socialDeptId, socialMyOnly]);
 
   // ── Status change ──
   const handleStatusChange = (leadId, newStatus) => {
@@ -1352,14 +1378,43 @@ const Leads = () => {
           </div>
 
           {/* Right: Filters */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <FaFilter className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
             <span className="text-sm text-gray-500 font-medium">Filter</span>
             <FilterDropdown label="Status" options={STATUS_OPTIONS.map(s => formatStatus(s))} value={filterStatus ? formatStatus(filterStatus) : ""} onChange={(val) => {
               const original = STATUS_OPTIONS.find(s => formatStatus(s) === val);
               setFilterStatus(original || "");
             }} />
-            <FilterDropdown label="Source" options={uniqueSources} value={filterSource} onChange={setFilterSource} />
+            {activeType === "sales" && (
+              <FilterDropdown label="Source" options={uniqueSources} value={filterSource} onChange={setFilterSource} />
+            )}
+            {activeType === "social" && (
+              <>
+                <select
+                  value={socialDeptId}
+                  onChange={e => {
+                    setSocialDeptId(e.target.value);
+                    if (e.target.value) setSocialMyOnly(false); // dept selected → clear "my leads"
+                  }}
+                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-700"
+                >
+                  <option value="">My Leads (default)</option>
+                  {departments.map(d => (
+                    <option key={d.departmentId} value={d.departmentId}>{d.departmentName}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => { setSocialMyOnly(v => !v); setSocialDeptId(""); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border transition-all ${
+                    socialMyOnly && !socialDeptId
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+                  }`}
+                >
+                  <FaCheck className="w-3 h-3" /> My Leads
+                </button>
+              </>
+            )}
             {(filterStatus || filterSource) && (
               <button onClick={() => { setFilterStatus(""); setFilterSource(""); }}
                 className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1">

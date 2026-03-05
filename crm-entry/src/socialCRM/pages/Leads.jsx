@@ -9,6 +9,8 @@ import * as XLSX from "xlsx";
 import * as signalR from "@microsoft/signalr";
 import { BASE_URL } from "../api/apiClient";
 import Toast from "../../salesCRM/utils/toast";
+import { getDepartments } from "../../hr_CRM/api/hr.dept";
+import { useAuth } from "../../auth/AuthContext";
 
 import {
   FaUsers, FaTimesCircle, FaList, FaTh, FaSearch, FaSync, FaFileExport, FaFilter,
@@ -189,18 +191,25 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, pageSiz
 // MAIN COMPONENT
 // ─────────────────────────────────────────────
 export default function Leads() {
+  const { user } = useAuth();
+  const myUserId = user?.sub || user?.id || user?.userId || user?.uid;
+
   const {
     leads,
     loading,
     filters,
     reload,
     changeStatus,
-    assignLead
+    assignLead,
+    assignByFormToDepartment
   } = useFacebookLeads();
 
   const [pages, setPages] = useState([]);
   const [forms, setForms] = useState([]);
   const users = useUsers();
+  const [departments, setDepartments] = useState([]);
+  const [assignDeptId, setAssignDeptId] = useState("");
+  const [assigningDept, setAssigningDept] = useState(false);
 
   const [remarkMap, setRemarkMap] = useState({});
   const [selectedLead, setSelectedLead] = useState(null);
@@ -252,6 +261,10 @@ export default function Leads() {
      ========================= */
   useEffect(() => {
     getAvailablePages().then(setPages);
+  }, []);
+
+  useEffect(() => {
+    getDepartments().then(setDepartments).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -376,6 +389,25 @@ export default function Leads() {
   };
 
   /* =========================
+     ASSIGN FORM LEADS TO DEPARTMENT
+     ========================= */
+  const handleAssignFormToDept = async () => {
+    if (!filters.formId) return Toast?.error("Select a form first");
+    if (!assignDeptId) return Toast?.error("Select a department");
+    const dept = departments.find(d => String(d.departmentId) === String(assignDeptId));
+    try {
+      setAssigningDept(true);
+      await assignByFormToDepartment(filters.formId, String(assignDeptId), dept?.departmentName ?? "");
+      Toast?.success("Leads assigned to department");
+      setAssignDeptId("");
+    } catch {
+      Toast?.error("Failed to assign leads to department");
+    } finally {
+      setAssigningDept(false);
+    }
+  };
+
+  /* =========================
      RENDER
      ========================= */
   return (
@@ -437,6 +469,33 @@ export default function Leads() {
             disabled={!filters.pageId}
           />
 
+          {/* Department quick filter */}
+          <select
+            value={filters.departmentId || ""}
+            onChange={e => reload({ departmentId: e.target.value || undefined })}
+            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-700"
+          >
+            <option value="">All Departments</option>
+            {departments.map(d => (
+              <option key={d.departmentId} value={d.departmentId}>{d.departmentName}</option>
+            ))}
+          </select>
+
+          {/* My Leads quick filter */}
+          <button
+            onClick={() => {
+              const isActive = String(filters.assignedToUserId) === String(myUserId);
+              reload({ assignedToUserId: isActive ? undefined : myUserId });
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border transition-all ${
+              String(filters.assignedToUserId) === String(myUserId)
+                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+            }`}
+          >
+            <FaCheck className="w-3 h-3" /> My Leads
+          </button>
+
           {/* Calendar Date Filter */}
           <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 ml-auto">
              <FaCalendarAlt className="w-3.5 h-3.5 text-gray-400" />
@@ -459,6 +518,50 @@ export default function Leads() {
                 </button>
              )}
           </div>
+        </div>
+
+        {/* ── Assign Form Leads to Department ── */}
+        <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+              <FaUsers className="w-3.5 h-3.5 text-indigo-500" />
+            </div>
+            <span className="text-sm font-semibold text-gray-700">Assign Form Leads to Department</span>
+          </div>
+          <div className="w-px h-5 bg-gray-200 hidden sm:block" />
+          <select
+            value={filters.formId}
+            onChange={val => reload({ formId: val.target.value })}
+            disabled={!filters.pageId}
+            className={`text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all
+              ${!filters.pageId ? "bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed" : "bg-white border-gray-200 text-gray-700"}`}
+          >
+            <option value="">— Select Form —</option>
+            {forms.map(f => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+          <select
+            value={assignDeptId}
+            onChange={e => setAssignDeptId(e.target.value)}
+            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-700"
+          >
+            <option value="">— Select Department —</option>
+            {departments.map(d => (
+              <option key={d.departmentId} value={d.departmentId}>{d.departmentName}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleAssignFormToDept}
+            disabled={!filters.formId || !assignDeptId || assigningDept}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+          >
+            {assigningDept ? <FaSpinner className="w-3.5 h-3.5 animate-spin" /> : <FaCheck className="w-3.5 h-3.5" />}
+            {assigningDept ? "Assigning…" : "Assign to Department"}
+          </button>
+          {!filters.pageId && (
+            <span className="text-xs text-gray-400 italic ml-1">Select a page first to enable form selection</span>
+          )}
         </div>
 
         {/* ── Table Toolbar ── */}
