@@ -19,7 +19,7 @@ export default function ProtectedRoute({ children }) {
 
   if (loading) return <p>Checking login...</p>;
 
-  if (!allowed) return <Navigate to="/login" replace />;
+  if (!allowed) return <Navigate to="/post/create" replace />;
 
   return children;
 }

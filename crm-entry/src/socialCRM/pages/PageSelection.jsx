@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  getAvailablePages,
+  getConnectedPages,
   selectPage,
     subscribePage,
   unsubscribePage
@@ -12,7 +12,7 @@ export default function PageSelection() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    getAvailablePages()
+    getConnectedPages()
       .then(setPages)
       .catch(() => alert("Failed to load pages"));
   }, []);

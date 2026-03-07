@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import { getBrands } from "../api/brand.api";
 
 export default function OAuthCallback() {
   const navigate = useNavigate();
@@ -17,18 +18,42 @@ export default function OAuthCallback() {
 
     if (status === "connected") {
       toast.success("Account connected successfully 🎉");
-      navigate(returnUrl || "/crm/socialmedia/post/create", { replace: true });
+
+      // Check if user has brands set up; if not, force brand setup first
+      getBrands()
+        .then((brands) => {
+          const hasActive = brands.some((b) => b.isActive);
+          if (brands.length === 0 || !hasActive) {
+            navigate("/crm/socialmedia/brand/setup", { replace: true });
+          } else {
+            navigate(returnUrl || "/crm/socialmedia/dashboard", { replace: true });
+          }
+        })
+        .catch(() => {
+          // Cannot determine brand state — send to brand setup to be safe
+          navigate("/crm/socialmedia/brand/setup", { replace: true });
+        });
       return;
     }
 
     if (status === "error") {
       toast.error(message || "Social media connection failed");
-      navigate("/crm/socialmedia/post/create", { replace: true });
+      navigate("/crm/socialmedia/dashboard", { replace: true });
       return;
     }
 
-    navigate("/crm/socialmedia/post/create", { replace: true });
+    navigate("/crm/socialmedia/dashboard", { replace: true });
   }, [navigate, params]);
 
-  return <p>Finalizing connection...</p>;
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex flex-col items-center gap-3">
+        <svg className="animate-spin w-10 h-10 text-blue-600" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+        <p className="text-gray-600 font-medium">Finalizing connection...</p>
+      </div>
+    </div>
+  );
 }

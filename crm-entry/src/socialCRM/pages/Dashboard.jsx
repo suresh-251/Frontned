@@ -1,329 +1,210 @@
+import React, { useState, useEffect, cloneElement } from "react";
 import useFacebookDashboard from "../hooks/useFacebookDashboard";
-import { useState, useEffect } from "react";
+import api from "../api/apiClient";
+import { connectPlatform } from "../api/auth.api";
+import { useBrand } from "../context/BrandContext";
+import { useNavigate } from "react-router-dom";
+import { FiEdit, FiUsers, FiFileText, FiSettings, FiActivity, FiInfo } from "react-icons/fi";
+
+const FB_COLOR   = "text-blue-600 bg-blue-50";
+const IG_COLOR   = "text-pink-500 bg-pink-50";
+const LI_COLOR   = "text-sky-700 bg-sky-50";
+
+function PlatformBadge({ platform }) {
+  const MAP = {
+    Facebook:  { label: "Facebook",  cls: "bg-blue-100 text-blue-700"  },
+    Instagram: { label: "Instagram", cls: "bg-pink-100 text-pink-700"  },
+    LinkedIn:  { label: "LinkedIn",  cls: "bg-sky-100 text-sky-700"    },
+  };
+  const m = MAP[platform] ?? { label: platform, cls: "bg-gray-100 text-gray-600" };
+  return <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${m.cls}`}>{m.label}</span>;
+}
+
+function PlatformIcon({ platform, size = 18 }) {
+  if (platform === "Facebook") return (
+    <svg width={size} height={size} fill="currentColor" viewBox="0 0 24 24" className="text-blue-600">
+      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+    </svg>
+  );
+  if (platform === "Instagram") return (
+    <svg width={size} height={size} fill="currentColor" viewBox="0 0 24 24" className="text-pink-500">
+      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+    </svg>
+  );
+  return (
+    <svg width={size} height={size} fill="currentColor" viewBox="0 0 24 24" className="text-sky-700">
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+    </svg>
+  );
+}
 
 export default function Dashboard() {
   const stats = useFacebookDashboard();
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const navigate = useNavigate();
+  const { activeBrand } = useBrand();
 
+  const [accounts, setAccounts] = useState([]);   // all accounts for active brand
+  const [fbAnalytics, setFbAnalytics] = useState(null);  // page analytics (active page)
+  const [loadingAccounts, setLoadingAccounts] = useState(true);
+
+  // Load brand-scoped accounts (single call) + FB analytics in parallel
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!activeBrand?.slug) { setLoadingAccounts(false); return; }
+    setLoadingAccounts(true);
+    const normP = (p) => ({ facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn" }[(p ?? "").toLowerCase()] ?? p);
+    Promise.allSettled([
+      api.get(`/brands/${activeBrand.slug}/accounts`),
+      api.get("/analytics/facebook/page"),
+    ]).then(([accsRes, analyticsRes]) => {
+      const raw = accsRes.status === "fulfilled" ? (accsRes.value.data.accounts ?? []) : [];
+      setAccounts(raw.map(a => ({
+        id:             a.pageIdentifier,
+        platform:       normP(a.platform),
+        pageIdentifier: a.pageIdentifier,
+        displayName:    a.displayName,
+        isActive:       a.isActive,
+      })));
+      setFbAnalytics(analyticsRes.status === "fulfilled" ? analyticsRes.value?.data ?? null : null);
+    }).finally(() => setLoadingAccounts(false));
+  }, [activeBrand?.slug]);
 
-  if (!stats) return (
-    <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-      <div className="text-center">
-        <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600 mx-auto mb-4"></div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-8 h-8 bg-blue-600 rounded-full animate-pulse"></div>
-          </div>
-        </div>
-        <p className="text-gray-700 font-semibold text-lg">Loading dashboard...</p>
-        <p className="text-gray-500 text-sm mt-1">Please wait</p>
-      </div>
-    </div>
-  );
-
-  // Mock data for charts and activity
-  const recentActivity = [
-    { id: 1, type: 'lead', name: 'John Doe', action: 'New lead received', time: '2 minutes ago', color: 'blue' },
-    { id: 2, type: 'post', name: 'Campaign Post', action: 'Post published successfully', time: '15 minutes ago', color: 'green' },
-    { id: 3, type: 'lead', name: 'Jane Smith', action: 'Lead marked as qualified', time: '1 hour ago', color: 'purple' },
-    { id: 4, type: 'form', name: 'Contact Form', action: 'Form enabled', time: '2 hours ago', color: 'orange' },
-  ];
-
-  const leadStats = [
-    { status: 'New', count: Math.floor(stats.newLeads * 0.6), color: 'blue' },
-    { status: 'Contacted', count: Math.floor(stats.newLeads * 0.25), color: 'yellow' },
-    { status: 'Qualified', count: Math.floor(stats.newLeads * 0.1), color: 'green' },
-    { status: 'Lost', count: Math.floor(stats.newLeads * 0.05), color: 'red' },
-  ];
+  if (!stats) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header with Time */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Dashboard
-              </h1>
-              <p className="text-gray-600 mt-2 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Real-time overview of your social media performance
-              </p>
-            </div>
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 px-6 py-3">
-              <div className="text-right">
-                <p className="text-xs text-gray-500 mb-1">Current Time</p>
-                <p className="text-lg font-bold text-gray-900">
-                  {currentTime.toLocaleTimeString()}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div className="w-full min-h-screen bg-[#F8FAFC] p-6 animate-in fade-in duration-500">
+      <div className="mb-8">
+        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Dashboard</h1>
+        <p className="text-xs text-slate-500 font-medium">
+          {activeBrand ? <>Brand: <span className="font-bold text-slate-700">{activeBrand.name}</span></> : "Welcome back!"}
+        </p>
+      </div>
 
-        {/* Stats Grid - Enhanced Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Active Page Card */}
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <div className="flex items-center gap-1 px-2 py-1 bg-green-50 rounded-full">
-                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                <span className="text-xs font-medium text-green-700">Active</span>
-              </div>
-            </div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Active Page</h3>
-            <p className="text-2xl font-bold text-gray-900 truncate mb-3" title={stats.pageName}>
-              {stats.pageName}
-            </p>
-            <div className="pt-3 border-t border-gray-100">
-              <p className="text-xs text-gray-500">Facebook Business Page</p>
-            </div>
-          </div>
+      <div className="grid grid-cols-12 gap-6">
 
-          {/* Total Leads Card */}
-          <div className="bg-gradient-to-br from-purple-500 via-purple-600 to-indigo-600 rounded-2xl shadow-xl p-6 text-white hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
-            <div className="relative">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-              </div>
-              <h3 className="text-sm font-semibold text-purple-100 uppercase tracking-wider mb-2">Total Leads</h3>
-              <p className="text-5xl font-bold mb-3">{stats.totalLeads}</p>
-              <div className="flex items-center gap-2 text-purple-100 text-sm">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-                <span>All time collected</span>
-              </div>
-            </div>
-          </div>
+        {/* LEFT: Brand Health + Growth */}
+        <div className="col-span-12 lg:col-span-8 space-y-6">
 
-          {/* New Leads Card */}
-          <div className="bg-gradient-to-br from-green-500 via-emerald-600 to-teal-600 rounded-2xl shadow-xl p-6 text-white hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
-            <div className="relative">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </div>
-              </div>
-              <h3 className="text-sm font-semibold text-green-100 uppercase tracking-wider mb-2">New Leads</h3>
-              <p className="text-5xl font-bold mb-3">{stats.newLeads}</p>
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-white/20 backdrop-blur-sm flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                  </svg>
-                  This week
+          {/* BRAND HEALTH TABLE */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                Brand Health <FiInfo className="text-slate-300" size={14} />
+              </h3>
+              {activeBrand && (
+                <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
+                  {activeBrand.name}
                 </span>
+              )}
+            </div>
+
+            <div className="overflow-y-auto max-h-[320px]">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider sticky top-0 z-10 border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-3">Channel</th>
+                    <th className="px-6 py-3">Followers / Fans</th>
+                    <th className="px-6 py-3">Reach</th>
+                    <th className="px-6 py-3">Leads</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {loadingAccounts ? (
+                    <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400 text-sm animate-pulse">Loading channels...</td></tr>
+                  ) : accounts.length === 0 ? (
+                    <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400 text-sm">No accounts connected to this brand</td></tr>
+                  ) : (
+                    accounts.map(acc => {
+                      // For the active FB page, show real analytics; otherwise show "—"
+                      const isFbActive = acc.platform === "Facebook" && acc.isActive;
+                      const followers = isFbActive && fbAnalytics
+                        ? (fbAnalytics.followers_count ?? fbAnalytics.fan_count ?? "—").toLocaleString?.() ?? fbAnalytics.followers_count ?? fbAnalytics.fan_count
+                        : "—";
+                      const reach = isFbActive && fbAnalytics?.reach ? fbAnalytics.reach.toLocaleString?.() ?? fbAnalytics.reach : "—";
+                      return (
+                        <tr key={acc.id} className="hover:bg-slate-50/80 transition-colors group">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <PlatformIcon platform={acc.platform} size={18} />
+                              <div>
+                                <p className="text-[11px] font-bold text-slate-700 leading-tight">{acc.displayName || acc.pageIdentifier}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <PlatformBadge platform={acc.platform} />
+                                  {acc.isActive && <span className="text-[9px] text-green-600 font-semibold">● active</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{followers}</td>
+                          <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{reach}</td>
+                          <td className="px-6 py-4">
+                            <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                              {acc.platform === "Facebook" ? stats.totalLeads : "—"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Connect new */}
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Connect New:</span>
+              <div className="flex gap-5">
+                <button onClick={() => connectPlatform("facebook")} className="flex items-center gap-1.5 text-slate-300 hover:text-blue-600 transition-all hover:scale-105 text-[9px] font-black uppercase tracking-tighter">
+                  <PlatformIcon platform="Facebook" size={14}/> Facebook
+                </button>
+                <button onClick={() => connectPlatform("facebook")} className="flex items-center gap-1.5 text-slate-300 hover:text-pink-500 transition-all hover:scale-105 text-[9px] font-black uppercase tracking-tighter">
+                  <PlatformIcon platform="Instagram" size={14}/> Instagram
+                </button>
+                <button onClick={() => connectPlatform("linkedin")} className="flex items-center gap-1.5 text-slate-300 hover:text-sky-700 transition-all hover:scale-105 text-[9px] font-black uppercase tracking-tighter">
+                  <PlatformIcon platform="LinkedIn" size={14}/> LinkedIn
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Enabled Forms Card */}
-          <div className="bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 rounded-2xl shadow-xl p-6 text-white hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
-            <div className="relative">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-              </div>
-              <h3 className="text-sm font-semibold text-orange-100 uppercase tracking-wider mb-2">Active Forms</h3>
-              <p className="text-5xl font-bold mb-3">{stats.enabledForms}</p>
-              <div className="flex items-center gap-2 text-orange-100 text-sm">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>Forms collecting leads</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Lead Status Distribution */}
-          <div className="lg:col-span-2 bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              Lead Status Distribution
-            </h2>
-            <div className="space-y-4">
-              {leadStats.map((stat, idx) => (
-                <div key={idx}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">{stat.status}</span>
-                    <span className="text-sm font-bold text-gray-900">{stat.count}</span>
-                  </div>
-                  <div className="relative h-3 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${
-                        stat.color === 'blue' ? 'bg-blue-500' :
-                        stat.color === 'yellow' ? 'bg-yellow-500' :
-                        stat.color === 'green' ? 'bg-green-500' :
-                        'bg-red-500'
-                      }`}
-                      style={{ width: `${(stat.count / stats.totalLeads) * 100}%` }}
-                    ></div>
-                  </div>
+          {/* FB ANALYTICS CARD (only when active page has data) */}
+          {fbAnalytics && (
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: "Page Fans",      value: fbAnalytics.fan_count?.toLocaleString() ?? "—",       icon: "👥" },
+                { label: "Followers",      value: fbAnalytics.followers_count?.toLocaleString() ?? "—", icon: "📣" },
+                { label: "Category",       value: fbAnalytics.category ?? "—",                          icon: "🏷️" },
+              ].map(m => (
+                <div key={m.label} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">{m.icon} {m.label}</p>
+                  <p className="text-xl font-black text-slate-800">{m.value}</p>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Quick Stats */}
-          <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl shadow-xl p-6 text-white">
-            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Quick Stats
-            </h3>
-            <div className="space-y-4">
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                <p className="text-blue-100 text-xs mb-1">Conversion Rate</p>
-                <p className="text-3xl font-bold">
-                  {stats.totalLeads > 0 ? ((leadStats[2].count / stats.totalLeads) * 100).toFixed(1) : 0}%
-                </p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                <p className="text-blue-100 text-xs mb-1">Response Time</p>
-                <p className="text-3xl font-bold">2.5h</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                <p className="text-blue-100 text-xs mb-1">Success Rate</p>
-                <p className="text-3xl font-bold">87%</p>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Recent Activity & Quick Actions */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Recent Activity */}
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Recent Activity
-            </h2>
-            <div className="space-y-3">
-              {recentActivity.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors"
-                >
-                  <div className={`p-2 rounded-lg ${
-                    activity.color === 'blue' ? 'bg-blue-100' :
-                    activity.color === 'green' ? 'bg-green-100' :
-                    activity.color === 'purple' ? 'bg-purple-100' :
-                    'bg-orange-100'
-                  }`}>
-                    <svg className={`w-4 h-4 ${
-                      activity.color === 'blue' ? 'text-blue-600' :
-                      activity.color === 'green' ? 'text-green-600' :
-                      activity.color === 'purple' ? 'text-purple-600' :
-                      'text-orange-600'
-                    }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{activity.action}</p>
-                    <p className="text-xs text-gray-500">{activity.name} • {activity.time}</p>
-                  </div>
-                </div>
-              ))}
+        {/* RIGHT: Quick Actions + Activity */}
+        <div className="col-span-12 lg:col-span-4 space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <h3 className="text-slate-800 font-bold text-[10px] uppercase tracking-widest mb-5">Quick Actions</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <CompactAction icon={<FiEdit />}     label="Post"   color="bg-blue-600"    onClick={() => navigate("/crm/socialmedia/post/create")} />
+              <CompactAction icon={<FiUsers />}    label="Leads"  color="bg-indigo-600"  onClick={() => navigate("/crm/socialmedia/leads")} />
+              <CompactAction icon={<FiFileText />} label="Forms"  color="bg-emerald-600" onClick={() => navigate("/crm/socialmedia/leads/forms")} />
+              <CompactAction icon={<FiSettings />} label="Config" color="bg-slate-700"   onClick={() => navigate("/crm/socialmedia/facebook/pages/subscriptions")} />
             </div>
           </div>
 
-          {/* Quick Actions */}
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Quick Actions
-            </h2>
-            <div className="grid grid-cols-2 gap-3">
-              <a
-                href="/crm/socialmedia/post/create"
-                className="flex flex-col items-center gap-2 p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl hover:from-blue-100 hover:to-blue-200 transition-all group"
-              >
-                <div className="p-3 bg-blue-600 rounded-xl group-hover:scale-110 transition-transform shadow-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </div>
-                <span className="text-sm font-semibold text-gray-900">Create Post</span>
-              </a>
-
-              <a
-                href="/crm/socialmedia/leads"
-                className="flex flex-col items-center gap-2 p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl hover:from-purple-100 hover:to-purple-200 transition-all group"
-              >
-                <div className="p-3 bg-purple-600 rounded-xl group-hover:scale-110 transition-transform shadow-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <span className="text-sm font-semibold text-gray-900">View Leads</span>
-              </a>
-
-              <a
-                href="/crm/socialmedia/leads/forms"
-                className="flex flex-col items-center gap-2 p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-xl hover:from-green-100 hover:to-green-200 transition-all group"
-              >
-                <div className="p-3 bg-green-600 rounded-xl group-hover:scale-110 transition-transform shadow-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <span className="text-sm font-semibold text-gray-900">Manage Forms</span>
-              </a>
-
-              <a
-                href="/crm/socialmedia/facebook/pages/subscriptions"
-                className="flex flex-col items-center gap-2 p-4 bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl hover:from-orange-100 hover:to-orange-200 transition-all group"
-              >
-                <div className="p-3 bg-orange-600 rounded-xl group-hover:scale-110 transition-transform shadow-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-                <span className="text-sm font-semibold text-gray-900">Settings</span>
-              </a>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-slate-800 font-bold text-[10px] uppercase tracking-widest">Recent Activity</h3>
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
+            </div>
+            <div className="space-y-4">
+              <ActivityItem text="Facebook Sync" time="2m ago" />
+              <ActivityItem text="New Lead Received" time="15m ago" />
+              <ActivityItem text="Instagram Updated" time="1h ago" />
             </div>
           </div>
         </div>
@@ -331,3 +212,25 @@ export default function Dashboard() {
     </div>
   );
 }
+
+function CompactAction({ icon, label, color, onClick }) {
+  return (
+    <button onClick={onClick} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:shadow-lg transition-all active:scale-95 group">
+      <div className={`w-10 h-10 rounded-lg ${color} text-white flex items-center justify-center shadow-md mb-2 group-hover:-translate-y-1 transition-transform`}>
+        {cloneElement(icon, { size: 18 })}
+      </div>
+      <span className="text-[10px] font-black text-slate-600 uppercase tracking-tighter">{label}</span>
+    </button>
+  );
+}
+
+function ActivityItem({ text, time }) {
+  return (
+    <div className="flex items-center justify-between border-l-2 border-slate-100 pl-4 py-1">
+      <p className="text-[11px] font-bold text-slate-600">{text}</p>
+      <span className="text-[9px] font-bold text-slate-300 uppercase">{time}</span>
+    </div>
+  );
+}
+
+

@@ -1,5 +1,7 @@
-import api from "../api/apiClient";
+import api from "./apiClient";
+
+// X-Brand-Id is automatically attached by the apiClient interceptor
 export const getFacebookCapabilities = async () => {
-  const res = await api.get("/facebook/capabilities");
-  return res.data;
+  const response = await api.get("/facebook/capabilities");
+  return response.data;
 };

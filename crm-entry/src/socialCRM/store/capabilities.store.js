@@ -11,9 +11,9 @@ export const loadCapabilities = async () => {
 
 export const getCapabilities = () => cache;
 
-export const isFacebookConnected = () => {
-  return cache?.connected === true;
-};
+// export const isFacebookConnected = () => {
+//   return cache?.connected === true;
+// };
 
 export const hasActivePage = () => {
   return cache?.hasActivePage === true;
