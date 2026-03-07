@@ -3,7 +3,7 @@ import axios from "axios";
 
 const api = axios.create({
   // baseURL: "http://89.116.20.215:9090/",
-  baseURL: "https://crmauth.metagensoft.com/api/",
+  baseURL: "https://crmauth.metagensoft.com/",
   // baseURL: "https://albertine-nonempathic-heaven.ngrok-free.dev",
   // baseURL: "https://localhost:8080",
   headers: {
