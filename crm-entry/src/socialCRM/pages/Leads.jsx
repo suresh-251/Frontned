@@ -653,7 +653,7 @@ useEffect(() => {
                         />
                       </th>
                     )}
-                    {["Name", "Contact", "Status", "Assigned To", "Remark", "Ad / Campaign", "Created At", "Actions"].map((h) => (
+                    {["Name", "Contact", "Status", "Assigned To", "Remark",  "Created At", "Actions"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
