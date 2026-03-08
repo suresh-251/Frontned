@@ -237,24 +237,43 @@ export default function Leads() {
   /* =========================
      SIGNALR REAL-TIME
      ========================= */
-  useEffect(() => {
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl(HUB_URL, {
-        accessTokenFactory: () => localStorage.getItem("accessToken")
-      })
-      .withAutomaticReconnect()
-      .build();
+const connectionRef = useRef(null);
 
-    connection.on("LeadUpdated", (data) => {
-      reload({}); // silent reload
-    });
+useEffect(() => {
+  if (connectionRef.current) return;
 
-    connection.start().catch(err => console.error("SignalR connection failed:", err));
+  const connection = new signalR.HubConnectionBuilder()
+    .withUrl(HUB_URL, {
+      accessTokenFactory: () => localStorage.getItem("accessToken")
+    })
+    .withAutomaticReconnect()
+    .configureLogging(signalR.LogLevel.Information)
+    .build();
 
-    return () => {
-      connection.stop();
-    };
-  }, []);
+  connectionRef.current = connection;
+
+  connection.on("LeadUpdated", () => {
+    reload({});
+  });
+
+  const startConnection = async () => {
+    try {
+      if (connection.state === signalR.HubConnectionState.Disconnected) {
+        await connection.start();
+        console.log("✅ SignalR connected");
+      }
+    } catch (err) {
+      console.error("SignalR connection failed:", err);
+    }
+  };
+
+  startConnection();
+
+  return () => {
+    connection.stop();
+    connectionRef.current = null;
+  };
+}, []);
 
   /* =========================
      LOAD PAGES & FORMS
