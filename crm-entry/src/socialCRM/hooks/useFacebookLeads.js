@@ -98,7 +98,15 @@ import {
   getLeads,
   updateLeadStatus,
   assignLead as assignLeadApi,
-  assignLeadsByFormToDepartment as assignByFormApi
+  assignLeadsByFormToDepartment as assignByFormApi,
+  assignLeadsByFormToDepartments as assignByFormMultiApi,
+  removeDepartmentFromForm as removeDeptFromFormApi,
+  getLeadDepartments as getLeadDepartmentsApi,
+  assignLeadDepartments as assignLeadDepartmentsApi,
+  removeLeadDepartment as removeLeadDepartmentApi,
+  getLeadUsers as getLeadUsersApi,
+  assignLeadUsers as assignLeadUsersApi,
+  removeLeadUser as removeLeadUserApi,
 } from "../api/facebook.leads.api";
  
 export default function useFacebookLeads() {
@@ -224,7 +232,7 @@ export default function useFacebookLeads() {
   };
  
   /* =========================
-     ASSIGN LEADS BY FORM TO DEPARTMENT
+     ASSIGN LEADS BY FORM TO DEPARTMENT (legacy)
      ========================= */
   const assignByFormToDepartment = async (formId, departmentId, departmentName) => {
     try {
@@ -236,6 +244,66 @@ export default function useFacebookLeads() {
     }
   };
 
+  /* =========================
+     ASSIGN LEADS BY FORM TO MULTIPLE DEPARTMENTS (with optional time range)
+     ========================= */
+  const assignByFormToDepartments = async (formId, departments, startDate = null, endDate = null) => {
+    try {
+      await assignByFormMultiApi(formId, departments, startDate, endDate);
+      await loadLeads({}, true);
+    } catch (err) {
+      console.error("Assign by form to departments failed:", err);
+      throw err;
+    }
+  };
+
+  /* =========================
+     REMOVE DEPARTMENT FROM ALL LEADS IN A FORM
+     ========================= */
+  const removeDepartmentFromForm = async (formId, departmentId) => {
+    try {
+      await removeDeptFromFormApi(formId, departmentId);
+      await loadLeads({}, true);
+    } catch (err) {
+      console.error("Remove department from form failed:", err);
+      throw err;
+    }
+  };
+
+  /* =========================
+     PER-LEAD DEPARTMENT CRUD
+     ========================= */
+  const getLeadDepartments = async (leadId) => {
+    return await getLeadDepartmentsApi(leadId);
+  };
+
+  const assignLeadDepartments = async (leadId, departments) => {
+    await assignLeadDepartmentsApi(leadId, departments);
+    await loadLeads({}, true);
+  };
+
+  const removeLeadDepartment = async (leadId, departmentId) => {
+    await removeLeadDepartmentApi(leadId, departmentId);
+    await loadLeads({}, true);
+  };
+
+  /* =========================
+     PER-LEAD USER CRUD
+     ========================= */
+  const getLeadUsers = async (leadId) => {
+    return await getLeadUsersApi(leadId);
+  };
+
+  const assignLeadUsers = async (leadId, userIds) => {
+    await assignLeadUsersApi(leadId, userIds);
+    await loadLeads({}, true);
+  };
+
+  const removeLeadUser = async (leadId, userId) => {
+    await removeLeadUserApi(leadId, userId);
+    await loadLeads({}, true);
+  };
+
   return {
     leads,
     loading,
@@ -244,7 +312,18 @@ export default function useFacebookLeads() {
     reload,
     changeStatus,
     assignLead,
-    assignByFormToDepartment
+    // form → department(s)
+    assignByFormToDepartment,
+    assignByFormToDepartments,
+    removeDepartmentFromForm,
+    // per-lead departments
+    getLeadDepartments,
+    assignLeadDepartments,
+    removeLeadDepartment,
+    // per-lead users
+    getLeadUsers,
+    assignLeadUsers,
+    removeLeadUser,
   };
 }
  

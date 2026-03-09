@@ -1,10 +1,9 @@
 import axios from "axios";
-
 export const BASE_URL = "https://crmsocial.metagensoft.com/api";
 // Old URLs for reference:
 // export const BASE_URL = "http://89.116.20.215:9090/api";
 // export const BASE_URL = "https://unvolatilised-essie-straight.ngrok-free.dev/api";
-//  export const BASE_URL = "https://localhost:7015/api";
+// export const BASE_URL = "https://localhost:7015/api";
 
 const api = axios.create({
   baseURL: BASE_URL,
