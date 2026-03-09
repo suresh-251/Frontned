@@ -16,11 +16,7 @@
 
 import api from "./apiClient";
 
-/**
- * Facebook Page Analytics
- * GET /api/analytics/facebook/page
- * Requires: X-Brand-Id header
- */
+// X-Brand-Id is automatically attached by the apiClient interceptor
 export const getFacebookPageAnalytics = async () => {
   const brandId = localStorage.getItem("brandId");
 

@@ -11,11 +11,15 @@ const api = axios.create({
   withCredentials: true
 });
 
-// 🔐 Attach JWT automatically
+// 🔐 Attach JWT + active brand automatically
 api.interceptors.request.use(config => {
   const token = localStorage.getItem("accessToken");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const brandSlug = localStorage.getItem("brandSlug");
+  if (brandSlug) {
+    config.headers["X-Brand-Id"] = brandSlug;
   }
   return config;
 });

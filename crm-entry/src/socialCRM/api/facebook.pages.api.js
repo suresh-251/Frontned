@@ -56,7 +56,7 @@ export const getConnectedPages = async () => {
    (/facebook/pages/available)
    ========================= */
 export const getAvailablePages = async () => {
-  const res = await api.get("/facebook/pages/available");
+  const res = await api.get("/facebook/pages");
   return res.data || [];
 };
 

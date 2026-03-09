@@ -1,1767 +1,1335 @@
-
-import { useEffect, useState, useRef } from "react";
-import leadsAPI from "../api/leads.api";
-import { getLeads as getSocialLeads } from "../../socialCRM/api/facebook.leads.api";
-import { getDepartments } from "../../hr_CRM/api/hr.dept";
-import * as jwtDecode from "jwt-decode";
-import Toast from "../utils/toast";
+import '../styles/Leads.css';
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import {
-  FaUsers, FaPlus, FaEye, FaTimesCircle, FaTrash, FaFileImport,
-  FaList, FaTh, FaSearch, FaSync, FaFileExport, FaFilter,
-  FaChevronDown, FaWhatsapp, FaCheck, FaTimes, FaCopy,
-  FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaStickyNote, FaClock, FaUserTie,
-  FaChevronRight, FaChevronLeft,
-  FaSpinner, FaUpload, FaFileCsv, FaUserCheck,
-} from "react-icons/fa";
+  Users, Phone, Mail, Calendar, Bell, AlertTriangle, CheckCircle, TrendingUp,
+  Search, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, X, Edit2,
+  Eye, Check, Filter, List, Settings, Plus, Upload, User, LayoutGrid,
+  MessageSquare, Globe, Megaphone, Share2, Star, Handshake, BarChart2, BarChart3,
+} from "lucide-react";
 
-const STATUS_OPTIONS = [
-  "FreshLead",
-  "Contacted",
-  "FollowUp",
-  "Interested",
-  "Negotiation",
-  "NotInterested",
-  "UnableToContact",
-  "JunkLead",
-  "ReEngagement",
-  "ActiveClient",
-  "Lost",
+/* ─────────────────────────────────────────────
+   CONSTANTS & CONFIGURATION
+───────────────────────────────────────────── */
+
+const makeInitialActivity = (leads) => {
+  const map = {};
+  leads.forEach(l => {
+    const acts = [{ id: Date.now() + l.id, type: "created", date: l.createdDate, time: "09:00 AM", notes: "Lead created" }];
+    if (l.lastContacted) {
+      const t = l.respondedTo || "call";
+      acts.unshift({ id: Date.now() + l.id + 1, type: t, date: l.lastContacted, time: "10:30 AM", notes: `${t.charAt(0).toUpperCase() + t.slice(1)} made` });
+    }
+    map[l.id] = acts;
+  });
+  return map;
+};
+
+const INIT_LEADS = [
+  { id: 1, name: "Evan Yeager", company: "Peak Dynamics", email: "evan@peakdyn.com", phone: "602-555-0193", address: "3210 N Central Ave, Phoenix, AZ", status: "Qualified", assignee: "Monica Jones", avatarBg: "#6366f1", score: 94, source: "Inbound", createdDate: "2026-06-11", followUpDate: "2026-06-14", city: "Phoenix", state: "AZ", zip: "85012", lastContacted: "2026-06-12", respondedTo: "email" },
+  { id: 2, name: "Levi Ackerman", company: "Hortson Toch", email: "levi@hortson.com", phone: "411-555-0183", address: "88 Pine Street, New York, NY", status: "Contacted", assignee: "James Carter", avatarBg: "#10b981", score: 86, source: "Inbound", createdDate: "2026-06-11", followUpDate: "2026-06-13", city: "New York", state: "NY", zip: "10005", lastContacted: "2026-06-11", respondedTo: "call" },
+  { id: 3, name: "Lana Griffin", company: "Griffin Advertising", email: "lana@griffin.co", phone: "206-555-0159", address: "1420 5th Ave, Seattle, WA", status: "New", assignee: "Amanda Blake", avatarBg: "#f59e0b", score: 78, source: "Referral", createdDate: "2026-06-11", followUpDate: "2026-06-15", city: "Seattle", state: "WA", zip: "98101", lastContacted: "", respondedTo: "" },
+  { id: 4, name: "Nick Tatum", company: "WebSolutions", email: "nick@websol.io", phone: "818-555-0115", address: "9200 Sunset Blvd, W. Hollywood, CA", status: "Closed", assignee: "Monica Jones", avatarBg: "#ec4899", score: 58, source: "Inbound", createdDate: "2026-06-10", followUpDate: "", city: "West Hollywood", state: "CA", zip: "90069", lastContacted: "2026-06-09", respondedTo: "email" },
+  { id: 5, name: "Ivy Parker", company: "Parker Consulting", email: "ivy@parkerconsult.com", phone: "323-555-0141", address: "611 Wilshire Blvd, Los Angeles, CA", status: "Qualified", assignee: "Samantha Clark", avatarBg: "#0ea5e9", score: 90, source: "Warm", createdDate: "2026-06-10", followUpDate: "2026-06-12", city: "Los Angeles", state: "CA", zip: "90017", lastContacted: "2026-06-10", respondedTo: "call" },
+  { id: 6, name: "Mireille Hebert", company: "TitanFitness", email: "mireille@titan.fit", phone: "507-555-0169", address: "101 Broadway, Minneapolis, MN", status: "New", assignee: "Anthony Cruz", avatarBg: "#14b8a6", score: 55, source: "Outbound", createdDate: "2026-06-10", followUpDate: "2026-06-16", city: "Minneapolis", state: "MN", zip: "55403", lastContacted: "", respondedTo: "" },
+  { id: 7, name: "Jordan Wells", company: "Apex Media", email: "jordan@apexmedia.com", phone: "404-555-0207", address: "75 5th St NW, Atlanta, GA", status: "Contacted", assignee: "James Carter", avatarBg: "#8b5cf6", score: 72, source: "Referral", createdDate: "2026-06-09", followUpDate: "2026-06-13", city: "Atlanta", state: "GA", zip: "30308", lastContacted: "2026-06-09", respondedTo: "message" },
+  { id: 8, name: "Sofia Reyes", company: "Latitude Labs", email: "sofia@latitudelabs.io", phone: "512-555-0311", address: "500 W 2nd St, Austin, TX", status: "Qualified", assignee: "Amanda Blake", avatarBg: "#f97316", score: 88, source: "Inbound", createdDate: "2026-06-09", followUpDate: "2026-06-14", city: "Austin", state: "TX", zip: "78701", lastContacted: "2026-06-08", respondedTo: "email" },
 ];
 
-const formatStatus = (status) => {
-  if (!status) return "—";
-  return status.replace(/([A-Z])/g, ' $1').trim();
+const STAT_CARDS = [
+  {
+    label: "Total New Leads",
+    value: "128",
+    change: "22 this week",
+    icon: Users,
+    alert: Bell,
+    c: { card: "#f6fbf7", icon: "#e6f6ea", ink: "#2e7d32" }
+  },
+  {
+    label: "Calls to Make",
+    value: "56",
+    change: "15 due today",
+    icon: Phone,
+    alert: Bell,
+    c: { card: "#f6f9fe", icon: "#e3efff", ink: "#1565c0" }
+  },
+  {
+    label: "Emails to Send",
+    value: "39",
+    change: "8 due today",
+    icon: Mail,
+    alert: AlertTriangle,
+    c: { card: "#fffdf7", icon: "#fff6dc", ink: "#e65100" }
+  },
+  {
+    label: "Meetings to Schedule",
+    value: "17",
+    change: "4 due today",
+    icon: Calendar,
+    alert: CheckCircle,
+    c: { card: "#fff6fa", icon: "#ffe4ef", ink: "#880e4f" }
+  }
+];
+
+const STATUS_META = {
+  New: { color: "#7c3aed", bg: "#ede9fe", dot: "#7c3aed" },
+  Contacted: { color: "#0284c7", bg: "#e0f2fe", dot: "#0284c7" },
+  Qualified: { color: "#059669", bg: "#d1fae5", dot: "#059669" },
+  Closed: { color: "#6b7280", bg: "#f3f4f6", dot: "#9ca3af" },
+};
+const STATUS_LIST = ["New", "Contacted", "Qualified", "Closed"];
+
+const SOURCE_META = {
+  Inbound: { color: "#1d4ed8", bg: "#dbeafe" },
+  Outbound: { color: "#065f46", bg: "#d1fae5" },
+  Referral: { color: "#6d28d9", bg: "#ede9fe" },
+  Warm: { color: "#92400e", bg: "#fef3c7" },
+  Website: { color: "#0e7490", bg: "#cffafe" },
+  Campaign: { color: "#be185d", bg: "#fce7f3" },
+  Event: { color: "#b45309", bg: "#fef3c7" },
+  Partner: { color: "#047857", bg: "#d1fae5" },
 };
 
-const getStatusColor = (status) =>
-  "bg-blue-50 text-gray-600 border-gray-200";
+const RESPONSE_TYPES = ["All", "Email", "Call", "Message"];
 
-const normalizeLead = (lead) => ({
-  ...lead,
-  status: lead.status ?? "",
-});
+const ALL_COLUMNS = [
+  { key: "name", label: "Lead Name", always: true },
+  { key: "company", label: "Company", always: false },
+  { key: "status", label: "Status", always: false },
+  { key: "followUp", label: "Follow-Up", always: false },
+  { key: "phone", label: "Phone", always: false },
+  { key: "email", label: "Email", always: false },
+  { key: "source", label: "Source", always: false },
+  { key: "score", label: "Score", always: false },
+  { key: "assignee", label: "Owner", always: false },
+  { key: "createdDate", label: "Created At", always: false },
+];
 
-// ─────────────────────────────────────────────
-// STATUS BADGE — plain text, no dropdown (for Leads table)
-// ─────────────────────────────────────────────
-const StatusBadge = ({ status }) => (
-  <span
-    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusColor(status)}`}
-  >
-    {formatStatus(status)}
-  </span>
+const LEAD_TYPES = [
+  { key: "manual", label: "Manual Lead", icon: User, source: "Inbound" },
+  { key: "social", label: "Social Lead", icon: Share2, source: "Referral" },
+  { key: "import", label: "Import Leads", icon: Upload, source: null },
+  { key: "website", label: "Website Lead", icon: Globe, source: "Website" },
+  { key: "campaign", label: "Campaign Lead", icon: Megaphone, source: "Campaign" },
+  { key: "referral", label: "Referral Lead", icon: Handshake, source: "Referral" },
+  { key: "event", label: "Event Lead", icon: Calendar, source: "Event" },
+  { key: "partner", label: "Partner Lead", icon: Star, source: "Partner" },
+];
+
+const fmtDate = (d) => {
+  if (!d) return "—";
+  return new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+const todayStr = () => new Date().toISOString().split("T")[0];
+const offsetDay = (n) => new Date(Date.now() + n * 86400000).toISOString().split("T")[0];
+
+function getFollowUpLabel(dateStr) {
+  if (!dateStr) return null;
+  const today = todayStr();
+  const tomorrow = offsetDay(1);
+  if (dateStr < today) return { label: "Overdue", type: "overdue" };
+  if (dateStr === today) return { label: "Today", type: "today" };
+  if (dateStr === tomorrow) return { label: "Tomorrow", type: "tomorrow" };
+  return { label: fmtDate(dateStr), type: "normal" };
+}
+
+/* ─────────────────────────────────────────────
+   ICONS
+───────────────────────────────────────────── */
+const Icon = ({ id: IconComp, size = 18, color = "currentColor", sw = 1.8 }) => (
+  <IconComp size={size} color={color} strokeWidth={sw} aria-hidden="true" />
 );
+const mkI = (Comp) => ({ s = 14, c = "currentColor", sw = 1.7, ...rest }) => (
+  <Comp size={s} color={c} strokeWidth={sw} aria-hidden="true" {...rest} />
+);
+const ISearch = mkI(Search);
+const IChevD = mkI(ChevronDown);
+const IChevU = mkI(ChevronUp);
+const IChevR = mkI(ChevronRight);
+const IChevL = mkI(ChevronLeft);
+const IX = mkI(X);
+const ICal = mkI(Calendar);
+const IPlus = ({ s = 14, c = "currentColor", sw = 2.2, ...r }) => <Plus size={s} color={c} strokeWidth={sw} aria-hidden="true" {...r} />;
+const IEdit = mkI(Edit2);
+const IPhone = mkI(Phone);
+const IMail = mkI(Mail);
+const ISettings = mkI(Settings);
+const ICheck = ({ s = 14, c = "currentColor", sw = 2.5, ...r }) => <Check size={s} color={c} strokeWidth={sw} aria-hidden="true" {...r} />;
+const IUser = mkI(User);
+const IFilter = mkI(Filter);
+const IRows = mkI(List);
+const IUpload = mkI(Upload);
+const IKanban = mkI(LayoutGrid);
+const IMsg = mkI(MessageSquare);
+const IBarChart = mkI(BarChart2);
 
-// ─────────────────────────────────────────────
-// AVATAR
-// ─────────────────────────────────────────────
-const Avatar = ({ name }) => {
-  const initials = name ? String(name).charAt(0).toUpperCase() : "?";
-  return (
-    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-300 to-indigo-500 flex items-center justify-center shadow text-white text-xs font-bold flex-shrink-0">
-      {initials}
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────
-// FILTER DROPDOWN
-// ─────────────────────────────────────────────
-const FilterDropdown = ({ label, options, value, onChange }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef();
-
+function useClickOutside(ref, cb) {
   useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) cb(); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [ref, cb]);
+}
 
+/* ─────────────────────────────────────────────
+   STAT CARD
+───────────────────────────────────────────── */
+const StatCard = memo(({ label, value, change, icon, alert, c, delay }) => (
+  <div className="stat-card" style={{ "--sc-delay": delay, "--sc-card": c.card, "--sc-icon": c.icon, "--sc-ink": c.ink }}>
+    <div className="stat-header">
+      <div className="stat-icon-wrap"><Icon id={icon} size={18} color="var(--sc-ink)" /></div>
+      <span className="stat-label">{label}</span>
+      <div className="stat-alert"><Icon id={alert} size={14} color="var(--sc-ink)" sw={2} /></div>
+    </div>
+    <div className="stat-body">
+      <div className="stat-value">{value}</div>
+      <div className="stat-change"><TrendingUp size={12} color="var(--sc-ink)" strokeWidth={2.5} aria-hidden="true" /><span>{change}</span></div>
+    </div>
+  </div>
+));
+
+/* ─────────────────────────────────────────────
+   FILTER SIDEBAR
+───────────────────────────────────────────── */
+function FilterModal({ onClose, filters, setFilters, activeFilterCount, onApply, onClear }) {
+  const [localFilters, setLocalFilters] = useState(filters);
+  const assignees = useMemo(() => ["All", "Monica Jones", "James Carter", "Amanda Blake", "Samantha Clark", "Anthony Cruz"], []);
+  const updateFilter = (key, value) => setLocalFilters(prev => ({ ...prev, [key]: value }));
+  const handleApply = () => { onApply(localFilters); onClose(); };
+  const handleClear = () => setLocalFilters({ status: "All", source: "All", assignee: "All", createdDateFrom: "", createdDateTo: "", followUpDateFrom: "", followUpDateTo: "", lastContactedDays: "", respondedTo: "All", city: "", state: "", country: "", zip: "" });
+  const S = { width: '100%', padding: '8px 12px', border: '1.5px solid #e5e7eb', borderRadius: '6px', fontSize: '13px', background: 'white', cursor: 'pointer' };
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2 px-3 py-2 text-sm border rounded-lg hover:shadow-sm transition-all min-w-[160px]
-          ${value ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"}`}
-      >
-        <span className="flex-1 text-left truncate">{value || label}</span>
-        <FaChevronDown className="w-3 h-3 flex-shrink-0 text-gray-400" />
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 500 }} />
+      <div style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: '340px', background: 'white', boxShadow: '4px 0 20px rgba(0,0,0,0.15)', zIndex: 501, display: 'flex', flexDirection: 'column', animation: 'slideIn 0.25s ease-out' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IFilter s={16} c="#4f46e5" />
+            <span style={{ fontSize: '15px', fontWeight: 600, color: '#111827' }}>Filter Leads</span>
+            {activeFilterCount > 0 && <span style={{ background: '#4f46e5', color: 'white', fontSize: '11px', fontWeight: 700, padding: '2px 6px', borderRadius: '12px' }}>{activeFilterCount}</span>}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: '4px' }}><IX s={16} c="#6b7280" /></button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+          <h4 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280', margin: '0 0 12px 0' }}>Lead Filters</h4>
+          {[['Status', 'status', ['All', ...STATUS_LIST]], ['Source', 'source', ['All', 'Inbound', 'Outbound', 'Referral', 'Warm']]].map(([lbl, key, opts]) => (
+            <div key={key} style={{ marginBottom: '12px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 500, color: '#374151', display: 'block', marginBottom: '4px' }}>{lbl}</label>
+              <select value={localFilters[key]} onChange={e => updateFilter(key, e.target.value)} style={S}>
+                {opts.map(o => <option key={o} value={o}>{o === 'All' ? `All ${lbl}es` : o}</option>)}
+              </select>
+            </div>
+          ))}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 500, color: '#374151', display: 'block', marginBottom: '4px' }}>Assigned To</label>
+            <select value={localFilters.assignee} onChange={e => updateFilter('assignee', e.target.value)} style={S}>{assignees.map(a => <option key={a} value={a}>{a}</option>)}</select>
+          </div>
+          <h4 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280', margin: '16px 0 12px 0' }}>Activity</h4>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 500, color: '#374151', display: 'block', marginBottom: '4px' }}>Last Contacted (days)</label>
+            <input type="number" placeholder="Enter days" min="0" value={localFilters.lastContactedDays} onChange={e => updateFilter('lastContactedDays', e.target.value)} style={{ ...S, cursor: 'text' }} />
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 500, color: '#374151', display: 'block', marginBottom: '4px' }}>Responded To</label>
+            <select value={localFilters.respondedTo} onChange={e => updateFilter('respondedTo', e.target.value)} style={S}>{RESPONSE_TYPES.map(r => <option key={r} value={r}>{r}</option>)}</select>
+          </div>
+        </div>
+        <div style={{ padding: '16px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '8px', background: '#fafafa' }}>
+          <button onClick={handleClear} style={{ flex: 1, padding: '8px 12px', background: 'white', border: '1.5px solid #e5e7eb', borderRadius: '6px', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>Clear All</button>
+          <button onClick={handleApply} style={{ flex: 1, padding: '8px 12px', background: '#4f46e5', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, color: 'white', cursor: 'pointer' }}>Apply {activeFilterCount > 0 && `(${activeFilterCount})`}</button>
+        </div>
+      </div>
+      <style>{`@keyframes slideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }`}</style>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   STATUS CELL
+───────────────────────────────────────────── */
+function StatusCell({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useClickOutside(ref, () => setOpen(false));
+  const meta = STATUS_META[value] || {};
+  return (
+    <div className="status-cell" ref={ref}>
+      <button className="status-pill" style={{ color: meta.color, background: meta.bg }} onClick={() => setOpen(o => !o)}>
+        <span className="status-dot" style={{ background: meta.dot }} />{value}<IChevD s={9} c={meta.color} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-xl z-30 py-1 max-h-60 overflow-y-auto">
-          <button
-            onClick={() => { onChange(""); setOpen(false); }}
-            className="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50"
-          >
-            All {label}
-          </button>
-          {options.map((opt) => (
-            <button
-              key={opt}
-              onClick={() => { onChange(opt); setOpen(false); }}
-              className={`w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors
-                ${value === opt ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-700"}`}
-            >
-              {opt}
-            </button>
+        <div className="status-menu">
+          {STATUS_LIST.map(s => {
+            const m = STATUS_META[s];
+            return (
+              <button key={s} className={`status-opt ${value === s ? "status-opt--on" : ""}`} onClick={() => { onChange(s); setOpen(false); }}>
+                <span className="status-dot" style={{ background: m.dot }} />
+                <span style={{ color: m.color }}>{s}</span>
+                {value === s && <ICheck s={10} c={m.color} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   TASK 1: FOLLOW-UP CELL — Smart labels
+───────────────────────────────────────────── */
+function FollowUpCell({ value, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const ref = useRef(null);
+  useClickOutside(ref, () => setEditing(false));
+  const info = value ? getFollowUpLabel(value) : null;
+  return (
+    <div className="followup-cell" ref={ref}>
+      <button onClick={() => setEditing(e => !e)} className={`followup-btn ${!value ? "followup-btn--empty" : ""} ${info ? `followup-btn--${info.type}` : ""}`}>
+        {info?.type === "overdue"
+          ? <AlertTriangle size={11} color="#dc2626" strokeWidth={2} aria-hidden="true" />
+          : <ICal s={11} c="#2563eb" />
+        }
+        {info ? <span>{info.label}</span> : <span>Set date</span>}
+      </button>
+      {editing && (
+        <div className="followup-picker">
+          <input type="date" defaultValue={value || ""} className="date-inp" autoFocus
+            onChange={e => { onChange(e.target.value); setEditing(false); }}
+            onBlur={() => setEditing(false)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   TASK 3: SCORE BADGE with hover adjustment
+───────────────────────────────────────────── */
+function ScoreBar({ score, onAdjust }) {
+  const [hover, setHover] = useState(false);
+  const tier = score >= 80 ? "high" : score >= 60 ? "mid" : "low";
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+      <div className={`score-badge score-badge--${tier}`}>{score}</div>
+      {hover && (
+        <div className="score-adj-menu">
+          {[-20, -10, +10, +20].map(d => (
+            <button key={d} className="score-adj-btn" onClick={e => { e.stopPropagation(); onAdjust(d); }}>{d > 0 ? `+${d}` : d}</button>
           ))}
         </div>
       )}
     </div>
   );
-};
+}
 
-// ─────────────────────────────────────────────
-// MODAL
-// ─────────────────────────────────────────────
-const Modal = ({ isOpen, onClose, title, children, size = "lg" }) => {
-  if (!isOpen) return null;
-  const widths = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-2xl", xl: "max-w-4xl" };
+/* ─────────────────────────────────────────────
+   TASK 2: ADD LEAD DROPDOWN
+───────────────────────────────────────────── */
+function AddLeadDropdown({ onSelectType }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useClickOutside(ref, () => setOpen(false));
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div
-        className={`relative bg-white rounded-2xl shadow-2xl w-full ${widths[size]} max-h-[90vh] overflow-y-auto`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
-          <h2 className="text-base font-semibold text-gray-800">{title}</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <FaTimesCircle className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-6">{children}</div>
-      </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────
-// INPUT
-// ─────────────────────────────────────────────
-const Input = ({ label, name, type = "text", value, onChange }) => (
-  <div className="flex flex-col gap-1">
-    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</label>
-    <input
-      name={name}
-      type={type}
-      value={value}
-      onChange={onChange}
-      placeholder={label}
-      className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition-all bg-gray-50 hover:bg-white"
-    />
-  </div>
-);
-
-// ─────────────────────────────────────────────
-// TOGGLE
-// ─────────────────────────────────────────────
-const Toggle = ({ label, name, checked, onChange }) => (
-  <label className="flex items-center gap-3 cursor-pointer group">
-    <div className={`relative w-10 h-5 rounded-full transition-colors ${checked ? "bg-indigo-500" : "bg-gray-200"}`}>
-      <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? "translate-x-5" : ""}`} />
-      <input type="checkbox" name={name} checked={checked} onChange={onChange} className="sr-only" />
-    </div>
-    <span className="text-sm text-gray-600 group-hover:text-gray-800">{label}</span>
-  </label>
-);
-
-// ─────────────────────────────────────────────
-// PAGINATION COMPONENT
-// ─────────────────────────────────────────────
-const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, pageSize }) => {
-  if (totalPages <= 1) return null;
-
-  const getPageNumbers = () => {
-    const pages = [];
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (currentPage > 3) pages.push("...");
-      const start = Math.max(2, currentPage - 1);
-      const end = Math.min(totalPages - 1, currentPage + 1);
-      for (let i = start; i <= end; i++) pages.push(i);
-      if (currentPage < totalPages - 2) pages.push("...");
-      pages.push(totalPages);
-    }
-    return pages;
-  };
-
-  const from = (currentPage - 1) * pageSize + 1;
-  const to = Math.min(currentPage * pageSize, totalItems);
-
-  return (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
-      <p className="text-xs text-gray-500">
-        Showing {from}–{to} of {totalItems} leads
-      </p>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage === 1}
-          className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <FaChevronLeft className="w-3 h-3" />
-        </button>
-
-        {getPageNumbers().map((page, i) =>
-          page === "..." ? (
-            <span key={`ellipsis-${i}`} className="px-2 text-gray-400 text-xs">…</span>
-          ) : (
-            <button
-              key={page}
-              onClick={() => onPageChange(page)}
-              className={`w-7 h-7 rounded-lg text-xs font-medium transition-colors
-                ${page === currentPage
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "border border-gray-200 bg-white text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"}`}
-            >
-              {page}
-            </button>
-          )
-        )}
-
-        <button
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage === totalPages}
-          className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <FaChevronRight className="w-3 h-3" />
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────
-// IMPORT LEADS MODAL
-// ─────────────────────────────────────────────
-const ImportLeadsModal = ({ onClose, onSuccess }) => {
-  const [file, setFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState(null);
-  const [error, setError] = useState("");
-  const fileInputRef = useRef();
-
-  const ACCEPTED = [".csv", ".xlsx", ".xls"];
-  const MAX_SIZE_MB = 10;
-
-  const validateFile = (f) => {
-    if (!f) return "Please select a file.";
-    const ext = "." + f.name.split(".").pop().toLowerCase();
-    if (!ACCEPTED.includes(ext)) return `Unsupported format. Use ${ACCEPTED.join(", ")}.`;
-    if (f.size > MAX_SIZE_MB * 1024 * 1024) return `File too large (max ${MAX_SIZE_MB} MB).`;
-    return null;
-  };
-
-  const handleFileChange = (f) => {
-    setError("");
-    setPreview(null);
-    const validationError = validateFile(f);
-    if (validationError) { setError(validationError); return; }
-    setFile(f);
-
-    if (f.name.endsWith(".csv")) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const lines = e.target.result.split("\n").slice(0, 4);
-        setPreview(lines);
-      };
-      reader.readAsText(f);
-    }
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    const f = e.dataTransfer.files[0];
-    if (f) handleFileChange(f);
-  };
-
-  const handleUpload = async () => {
-    if (!file) return;
-    const validationError = validateFile(file);
-    if (validationError) { setError(validationError); return; }
-
-    try {
-      setUploading(true);
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/Leads/import", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.message || `Upload failed (${response.status})`);
-      }
-
-      const data = await response.json();
-      Toast.success(`Imported ${data.imported ?? "?"} leads successfully`);
-      onSuccess();
-      onClose();
-    } catch (err) {
-      setError(err.message || "Import failed. Please try again.");
-      Toast.error("Import failed");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <Modal isOpen={true} onClose={onClose} title="Import Leads" size="md">
-      <div className="space-y-5">
-        <div
-          onDrop={handleDrop}
-          onDragOver={(e) => e.preventDefault()}
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
-            ${file ? "border-indigo-400 bg-indigo-50" : "border-gray-200 hover:border-indigo-300 hover:bg-gray-50"}`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            className="hidden"
-            onChange={(e) => handleFileChange(e.target.files[0])}
-          />
-          {file ? (
-            <div className="flex flex-col items-center gap-2">
-              <FaFileCsv className="w-10 h-10 text-indigo-500" />
-              <p className="text-sm font-semibold text-indigo-700">{file.name}</p>
-              <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
-              <button
-                onClick={(e) => { e.stopPropagation(); setFile(null); setPreview(null); }}
-                className="text-xs text-rose-500 hover:text-rose-700 font-medium mt-1"
-              >
-                Remove file
+    <div ref={ref} style={{ position: "relative" }}>
+      <button className="btn-primary" onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: "6px" ,marginLeft:"-37px"}}>
+        <IPlus s={12} />Add Lead<IChevD s={10} c="white" />
+      </button>
+      {open && (
+        <div className="add-lead-menu">
+          <div className="add-lead-section-label">Quick Add</div>
+          {LEAD_TYPES.slice(0, 3).map(t => {
+            const IconComp = t.icon;
+            return (
+              <button key={t.key} className="add-lead-option" onClick={() => { setOpen(false); onSelectType(t); }}>
+                <span className="add-lead-opt-icon"><IconComp size={13} strokeWidth={1.8} /></span>{t.label}
               </button>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2">
-              <FaUpload className="w-8 h-8 text-gray-300" />
-              <p className="text-sm text-gray-500 font-medium">Drop your file here or click to browse</p>
-              <p className="text-xs text-gray-400">Supports CSV, XLSX, XLS · Max {MAX_SIZE_MB} MB</p>
-            </div>
-          )}
+            );
+          })}
+          <div className="add-lead-divider" />
+          <div className="add-lead-section-label">More Types</div>
+          {LEAD_TYPES.slice(3).map(t => {
+            const IconComp = t.icon;
+            return (
+              <button key={t.key} className="add-lead-option" onClick={() => { setOpen(false); onSelectType(t); }}>
+                <span className="add-lead-opt-icon"><IconComp size={13} strokeWidth={1.8} /></span>{t.label}
+              </button>
+            );
+          })}
         </div>
+      )}
+    </div>
+  );
+}
 
-        {error && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs">
-            <FaTimes className="w-3 h-3 flex-shrink-0" /> {error}
-          </div>
-        )}
-
-        {preview && (
+/* ─────────────────────────────────────────────
+   TASK 2: CREATE LEAD FORM MODAL
+───────────────────────────────────────────── */
+function CreateLeadModal({ leadType, onClose, onSave }) {
+  const [form, setForm] = useState({ name: "", company: "", email: "", phone: "", address: "", status: "New", source: leadType?.source || "Inbound", assignee: "Monica Jones", score: 50, followUpDate: "", createdDate: todayStr() });
+  const avatarColors = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#0ea5e9", "#14b8a6", "#8b5cf6", "#f97316"];
+  const handle = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const save = () => {
+    if (!form.name.trim()) return;
+    onSave({ ...form, id: Date.now(), avatarBg: avatarColors[Math.floor(Math.random() * avatarColors.length)] });
+    onClose();
+  };
+  const inpSt = { width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", outline: "none" };
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{ width: 520 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-hdr">
+          <div><div className="modal-title">Create {leadType?.label || "New Lead"}</div><div className="modal-sub">Fill in the lead details below</div></div>
+          <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
+        </div>
+        <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+          {[{ label: "Full Name *", key: "name", span: 2 }, { label: "Company", key: "company" }, { label: "Email", key: "email", type: "email" }, { label: "Phone", key: "phone" }, { label: "Address", key: "address" }].map(f => (
+            <div key={f.key} style={{ gridColumn: f.span === 2 ? "1 / -1" : "auto" }}>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>{f.label}</label>
+              <input type={f.type || "text"} value={form[f.key]} onChange={e => handle(f.key, e.target.value)} style={inpSt} />
+            </div>
+          ))}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preview (first 3 rows)</p>
-            <div className="overflow-x-auto rounded-lg border border-gray-100">
-              <table className="w-full text-xs">
-                {preview.map((row, i) => (
-                  <tr key={i} className={i === 0 ? "bg-gray-50 font-semibold" : "border-t border-gray-50"}>
-                    {row.split(",").map((cell, j) => (
-                      <td key={j} className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{cell.trim()}</td>
-                    ))}
-                  </tr>
-                ))}
-              </table>
-            </div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Status</label>
+            <select value={form.status} onChange={e => handle("status", e.target.value)} style={{ ...inpSt, background: "white" }}>{STATUS_LIST.map(s => <option key={s}>{s}</option>)}</select>
           </div>
-        )}
-
-        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 text-xs text-amber-700">
-          <p className="font-semibold mb-1">Required CSV columns:</p>
-          <p className="text-amber-600">name, email, phone, company, source, status</p>
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Source</label>
+            <select value={form.source} onChange={e => handle("source", e.target.value)} style={{ ...inpSt, background: "white" }}>{Object.keys(SOURCE_META).map(s => <option key={s}>{s}</option>)}</select>
+          </div>
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Follow-Up Date</label>
+            <input type="date" value={form.followUpDate} onChange={e => handle("followUpDate", e.target.value)} style={inpSt} />
+          </div>
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Initial Score ({form.score})</label>
+            <input type="range" min={0} max={100} value={form.score} onChange={e => handle("score", parseInt(e.target.value))} style={{ width: "100%", accentColor: "#4f46e5" }} />
+          </div>
         </div>
-
-        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium">
-            Cancel
-          </button>
-          <button
-            onClick={handleUpload}
-            disabled={!file || uploading}
-            className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-          >
-            {uploading ? <FaSpinner className="w-3.5 h-3.5 animate-spin" /> : <FaUpload className="w-3.5 h-3.5" />}
-            {uploading ? "Importing…" : "Import Leads"}
-          </button>
+        <div className="modal-footer">
+          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" onClick={save} disabled={!form.name.trim()}><IPlus s={12} />&ensp;Create Lead</button>
         </div>
       </div>
-    </Modal>
+    </div>
   );
+}
+
+/* ─────────────────────────────────────────────
+   CSV IMPORT MODAL
+───────────────────────────────────────────── */
+const CSV_FIELD_MAP = {
+  name: ["name", "lead name", "full name", "contact"],
+  company: ["company", "organization", "org", "business"],
+  email: ["email", "e-mail", "email address"],
+  phone: ["phone", "phone number", "mobile", "tel"],
+  address: ["address", "location", "street"],
+  status: ["status", "lead status", "stage"],
+  source: ["source", "lead source", "channel"],
+  score: ["score", "lead score", "rating"],
+  assignee: ["assignee", "owner", "assigned to", "rep"],
+  createdDate: ["created", "created date", "date created", "created at"],
+  followUpDate: ["follow up", "follow-up", "follow up date", "follow-up date", "followup"],
 };
+function guessField(header) {
+  const h = header.toLowerCase().trim();
+  for (const [field, patterns] of Object.entries(CSV_FIELD_MAP)) {
+    if (patterns.some(p => h.includes(p))) return field;
+  }
+  return "";
+}
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
+  const rows = lines.slice(1).map(line => {
+    const cols = []; let cur = ""; let inQ = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === "," && !inQ) { cols.push(cur.trim()); cur = ""; }
+      else cur += ch;
+    }
+    cols.push(cur.trim());
+    return headers.reduce((obj, h, i) => ({ ...obj, [h]: cols[i] || "" }), {});
+  });
+  return { headers, rows };
+}
 
-// ─────────────────────────────────────────────
-// CONTACT HISTORY MODAL
-// ─────────────────────────────────────────────
-const ContactHistoryModal = ({ leadId, leadName, onClose }) => {
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  const authHeader = { Authorization: `Bearer ${localStorage.getItem("token")}` };
-
-  useEffect(() => {
-    if (!leadId) return;
-    const fetch_ = async () => {
-      try {
-        setLoading(true);
-        setError(false);
-        const res = await fetch(`/api/Leads/${leadId}/contact-history`, { headers: authHeader });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setHistory(Array.isArray(data) ? data : data.data ?? data.history ?? data.items ?? []);
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
+function ImportModal({ onClose, onImport }) {
+  const [step, setStep] = useState("upload");
+  const [parsed, setParsed] = useState({ headers: [], rows: [] });
+  const [mapping, setMapping] = useState({});
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef();
+  const LEAD_FIELDS = [
+    { key: "name", label: "Lead Name" }, { key: "company", label: "Company" }, { key: "email", label: "Email" }, { key: "phone", label: "Phone" },
+    { key: "address", label: "Address" }, { key: "status", label: "Status" }, { key: "source", label: "Source" }, { key: "score", label: "Score" },
+    { key: "assignee", label: "Owner" }, { key: "createdDate", label: "Created Date" }, { key: "followUpDate", label: "Follow-Up Date" },
+  ];
+  const handleFile = (file) => {
+    if (!file || !file.name.endsWith(".csv")) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = parseCSV(e.target.result);
+      setParsed(result);
+      const autoMap = {};
+      result.headers.forEach(h => { const g = guessField(h); if (g) autoMap[h] = g; });
+      setMapping(autoMap);
+      setStep("map");
     };
-    fetch_();
-  }, [leadId]);
-
-  const formatDateTime = (val) => {
-    if (!val) return "—";
-    return new Date(val).toLocaleDateString("en-IN", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit",
+    reader.readAsText(file);
+  };
+  const avatarColors = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#0ea5e9", "#14b8a6", "#8b5cf6", "#f97316"];
+  const doImport = () => {
+    const newLeads = parsed.rows.map((row, i) => {
+      const lead = { id: Date.now() + i, avatarBg: avatarColors[i % avatarColors.length] };
+      parsed.headers.forEach(h => { const field = mapping[h]; if (field) lead[field] = field === "score" ? parseInt(row[h]) || 0 : row[h]; });
+      if (!lead.name) lead.name = "Unknown Lead";
+      if (!lead.status || !STATUS_LIST.includes(lead.status)) lead.status = "New";
+      if (!lead.source) lead.source = "Inbound";
+      if (!lead.createdDate) lead.createdDate = todayStr();
+      return lead;
     });
+    onImport(newLeads); onClose();
   };
-
-  const timeAgo = (val) => {
-    if (!val) return "—";
-    const diff = Math.floor((Date.now() - new Date(val)) / 1000);
-    if (diff < 60) return "Just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-    return formatDateTime(val);
-  };
-
-  const getContactStyle = (type) => {
-    const t = (type || "").toLowerCase();
-    if (t.includes("call") || t.includes("phone")) return { icon: FaPhone, color: "bg-blue-100 text-blue-600", label: "Call" };
-    if (t.includes("email") || t.includes("mail")) return { icon: FaEnvelope, color: "bg-violet-100 text-violet-600", label: "Email" };
-    if (t.includes("whatsapp") || t.includes("wa")) return { icon: FaWhatsapp, color: "bg-green-100 text-green-600", label: "WhatsApp" };
-    if (t.includes("note") || t.includes("comment")) return { icon: FaStickyNote, color: "bg-amber-100 text-amber-600", label: "Note" };
-    if (t.includes("meet") || t.includes("visit")) return { icon: FaUserTie, color: "bg-indigo-100 text-indigo-600", label: "Meeting" };
-    return { icon: FaClock, color: "bg-gray-100 text-gray-500", label: type || "Activity" };
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div
-        className="relative bg-white w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="bg-gradient-to-r from-sky-600 to-sky-800 px-5 py-4 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-base flex-shrink-0">
-              {leadName ? leadName.charAt(0).toUpperCase() : "?"}
-            </div>
-            <div>
-              <p className="text-white font-bold text-base leading-tight">{leadName || "Unknown"}</p>
-              <p className="text-sky-200 text-xs">ID #{leadId} · Contact History</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/20 text-white/70 hover:text-white transition-colors">
-            <FaTimesCircle className="w-4 h-4" />
-          </button>
+    <div className="overlay" onClick={onClose}>
+      <div className="import-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-hdr">
+          <div className="import-hdr-icon"><IUpload s={16} c="#4f46e5" /></div>
+          <div><div className="modal-title">Import Leads via CSV</div><div className="modal-sub">{step === "upload" ? "Upload a CSV file to get started" : step === "map" ? "Map your CSV columns to lead fields" : "Preview & confirm import"}</div></div>
+          <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
         </div>
-
-        <div className="overflow-y-auto flex-1 p-5">
-          {loading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex gap-3 animate-pulse">
-                  <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0" />
-                  <div className="flex-1 space-y-2 pt-1">
-                    <div className="h-3 bg-gray-100 rounded w-1/3" />
-                    <div className="h-2 bg-gray-100 rounded w-2/3" />
-                  </div>
+        <div className="import-steps">
+          {["upload", "map", "preview"].map((s, i) => (
+            <div key={s} className={`import-step ${step === s ? "import-step--on" : ""} ${["upload", "map", "preview"].indexOf(step) > i ? "import-step--done" : ""}`}>
+              <span className="import-step-num">{["upload", "map", "preview"].indexOf(step) > i ? "✓" : i + 1}</span>
+              <span className="import-step-lbl">{s === "upload" ? "Upload" : s === "map" ? "Map Fields" : "Preview"}</span>
+            </div>
+          ))}
+        </div>
+        <div className="modal-body">
+          {step === "upload" && (
+            <div className={`drop-zone ${dragOver ? "drop-zone--over" : ""}`} onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }} onClick={() => fileRef.current.click()}>
+              <input ref={fileRef} type="file" accept=".csv" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+              <div className="drop-icon"><IUpload s={32} c="#a5b4fc" /></div>
+              <div className="drop-title">Drop your CSV here</div>
+              <div className="drop-sub">or click to browse — supports standard CRM exports</div>
+              <div className="drop-hint">name, email, phone, company, status, source, score, owner…</div>
+            </div>
+          )}
+          {step === "map" && parsed && (
+            <div className="map-grid">
+              <div className="map-header"><span>CSV Column</span><span>Sample Data</span><span>Maps to Field</span></div>
+              {parsed.headers.map(h => (
+                <div key={h} className="map-row">
+                  <span className="map-col">{h}</span>
+                  <span className="map-sample">{parsed.rows[0]?.[h] || "—"}</span>
+                  <select className="map-select" value={mapping[h] || ""} onChange={e => setMapping(m => ({ ...m, [h]: e.target.value }))}>
+                    <option value="">— skip —</option>
+                    {LEAD_FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                  </select>
                 </div>
               ))}
             </div>
-          ) : error ? (
-            <div className="text-center py-12">
-              <FaTimesCircle className="w-8 h-8 mx-auto mb-2 text-rose-200" />
-              <p className="text-sm text-gray-400">Failed to load history</p>
-              <button
-                onClick={() => { setError(false); setLoading(true); }}
-                className="mt-3 text-xs text-sky-500 hover:text-sky-700 font-medium"
-              >Retry</button>
-            </div>
-          ) : history.length === 0 ? (
-            <div className="text-center py-14">
-              <div className="w-14 h-14 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center mx-auto mb-3">
-                <FaClock className="w-6 h-6 text-gray-200" />
-              </div>
-              <p className="text-sm font-medium text-gray-400">No contact history yet</p>
-              <p className="text-xs text-gray-300 mt-1">Calls, emails and messages will appear here</p>
-            </div>
-          ) : (
-            <div className="relative">
-              <p className="text-xs text-gray-400 mb-4">{history.length} {history.length === 1 ? "entry" : "entries"}</p>
-              <div className="absolute left-[15px] top-8 bottom-0 w-px bg-gray-100" />
-              <div className="space-y-4">
-                {history.map((entry, idx) => {
-                  const style = getContactStyle(entry.type ?? entry.contactType ?? entry.method ?? "");
-                  const Icon = style.icon;
-                  const timestamp = entry.contactedAt ?? entry.date ?? entry.createdAt ?? entry.timestamp;
-                  const note = entry.notes ?? entry.note ?? entry.comment ?? entry.description ?? entry.remarks ?? "";
-                  const agent = entry.agentName ?? entry.userName ?? entry.createdByName ?? entry.agent ?? "";
-                  const outcome = entry.outcome ?? entry.result ?? entry.status ?? "";
-                  const duration = entry.duration ?? entry.durationMinutes ?? null;
-
-                  return (
-                    <div key={idx} className="relative flex gap-3">
-                      <div className={`relative z-10 w-8 h-8 rounded-full ${style.color} flex items-center justify-center flex-shrink-0 ring-2 ring-white shadow-sm`}>
-                        <Icon className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="flex-1 bg-white border border-gray-100 rounded-xl px-4 py-3 shadow-sm">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${style.color}`}>{style.label}</span>
-                            {outcome && (
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium
-                                ${outcome.toLowerCase().includes("success") || outcome.toLowerCase().includes("answer") || outcome.toLowerCase().includes("connect")
-                                  ? "bg-green-50 text-green-700"
-                                  : outcome.toLowerCase().includes("fail") || outcome.toLowerCase().includes("no answer") || outcome.toLowerCase().includes("busy")
-                                    ? "bg-red-50 text-red-600"
-                                    : "bg-gray-50 text-gray-600"}`}>
-                                {outcome}
-                              </span>
-                            )}
-                            {duration && (
-                              <span className="text-xs text-gray-400 flex items-center gap-1">
-                                <FaClock className="w-2.5 h-2.5" /> {duration}m
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex-shrink-0 text-right">
-                            <p className="text-xs text-gray-400 font-medium">{timeAgo(timestamp)}</p>
-                            <p className="text-[10px] text-gray-300">{formatDateTime(timestamp)}</p>
-                          </div>
-                        </div>
-                        {note && (
-                          <p className="text-xs text-gray-600 leading-relaxed mt-1.5 bg-gray-50 rounded-lg px-3 py-2">
-                            "{note}"
-                          </p>
-                        )}
-                        {agent && (
-                          <div className="flex items-center gap-1.5 mt-2">
-                            <div className="w-4 h-4 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 text-[10px] font-bold flex-shrink-0">
-                              {String(agent).charAt(0).toUpperCase()}
-                            </div>
-                            <span className="text-[10px] text-gray-400">{agent}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+          )}
+          {step === "preview" && (
+            <div className="preview-wrap">
+              <div className="preview-info"><span className="preview-count">{parsed.rows.length} leads</span> ready to import{parsed.rows.length > 5 && <span className="preview-more"> — showing first 5</span>}</div>
+              <div className="preview-scroll">
+                <table className="preview-table">
+                  <thead><tr>{Object.values(mapping).filter(Boolean).map(f => <th key={f}>{LEAD_FIELDS.find(x => x.key === f)?.label || f}</th>)}</tr></thead>
+                  <tbody>{parsed.rows.slice(0, 5).map((row, i) => <tr key={i}>{parsed.headers.filter(h => mapping[h]).map(h => <td key={h}>{row[h] || "—"}</td>)}</tr>)}</tbody>
+                </table>
               </div>
             </div>
           )}
         </div>
-
-        <div className="border-t border-gray-100 px-5 py-3 flex justify-end bg-gray-50 flex-shrink-0">
-          <button onClick={onClose} className="px-4 py-1.5 text-xs text-gray-600 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg font-medium transition-colors">
-            Close
-          </button>
+        <div className="modal-footer">
+          {step !== "upload" && <button className="btn-ghost" onClick={() => setStep(step === "preview" ? "map" : "upload")}>← Back</button>}
+          <button className="btn-ghost" onClick={onClose} style={{ marginLeft: step === "upload" ? "auto" : "0" }}>Cancel</button>
+          {step === "map" && <button className="btn-primary" onClick={() => setStep("preview")} disabled={!Object.values(mapping).some(Boolean)}>Preview →</button>}
+          {step === "preview" && <button className="btn-primary" onClick={doImport}><IUpload s={12} />&ensp;Import {parsed.rows.length} Leads</button>}
         </div>
       </div>
     </div>
   );
-};
+}
 
-// ─────────────────────────────────────────────
-// EDIT LEAD MODAL
-// ─────────────────────────────────────────────
-const EDIT_FIELDS = [
-  { name: "name", label: "Name" },
-  { name: "email", label: "Email", type: "email" },
-  { name: "phone", label: "Phone" },
-  { name: "company", label: "Company" },
-  { name: "position", label: "Position" },
-  { name: "source", label: "Source" },
-  { name: "address", label: "Address" },
-  { name: "city", label: "City" },
-  { name: "state", label: "State" },
-  { name: "country", label: "Country" },
-  { name: "zipCode", label: "Zip Code" },
-  { name: "website", label: "Website" },
-  { name: "campaignName", label: "Campaign Name" },
-  { name: "campaignSource", label: "Campaign Source" },
-  { name: "campaignMedium", label: "Campaign Medium" },
-];
-const EDIT_CHECKBOX_FIELDS = [
-  { name: "isPublic", label: "Is Public" },
-  { name: "contactedToday", label: "Contacted Today" },
-  { name: "whatsappEnabled", label: "WhatsApp Enabled" },
-];
-
-const EditLeadModal = ({ lead, onClose, onSaved }) => {
-  const [form, setForm] = useState(() => {
-    const { id, createdAt, updatedAt, convertedToCustomer, ...editable } = lead;
-    return editable;
-  });
-  const [saving, setSaving] = useState(false);
-
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setForm((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
-  };
-
-  const handleSave = async () => {
-    try {
-      setSaving(true);
-      await leadsAPI.update(lead.id, form);
-      Toast.success("Lead updated successfully");
-      onSaved?.();
-      onClose();
-    } catch {
-      Toast.error("Failed to update lead. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+/* ─────────────────────────────────────────────
+   MANAGE COLUMNS PANEL
+───────────────────────────────────────────── */
+function ManageColumnsPanel({ visibleCols, setVisibleCols, rowsPerPage, setRowsPerPage, wrapText, setWrapText, onClose }) {
+  const ref = useRef(null);
+  useClickOutside(ref, onClose);
+  const toggle = (k) => setVisibleCols(p => p.includes(k) ? p.filter(x => x !== k) : [...p, k]);
   return (
-    <Modal isOpen={true} onClose={onClose} title={`Edit Lead — ${lead.name || `#${lead.id}`}`} size="xl">
-      <div className="space-y-6">
-        <div>
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Basic Information</h3>
-          <div className="grid grid-cols-2 gap-4">
-            {EDIT_FIELDS.filter((f) => ["name", "email", "phone", "company", "position"].includes(f.name)).map((f) => (
-              <Input key={f.name} {...f} value={form[f.name] || ""} onChange={handleChange} />
-            ))}
-          </div>
+    <div className="overlay" onClick={onClose}>
+      <div className="mcp" ref={ref} onClick={e => e.stopPropagation()}>
+        <div className="mcp-hdr"><div className="mcp-hdr-left"><ISettings s={15} /><span>Manage Columns</span></div><button className="icon-btn" onClick={onClose}><IX s={14} /></button></div>
+        <div className="mcp-section">
+          <div className="mcp-sec-lbl">Show / Hide Columns</div>
+          {ALL_COLUMNS.map(col => (
+            <label key={col.key} className={`mcp-row ${col.always ? "mcp-row--locked" : ""}`}>
+              <span className="toggle"><input type="checkbox" checked={col.always || visibleCols.includes(col.key)} disabled={col.always} onChange={() => !col.always && toggle(col.key)} /><span className="toggle-track"><span className="toggle-thumb" /></span></span>
+              <span className="mcp-col-name">{col.label}</span>
+              {col.always && <span className="required-tag">Required</span>}
+            </label>
+          ))}
         </div>
-
-        <div>
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Status</h3>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</label>
-            <select
-              name="status"
-              value={form.status || ""}
-              onChange={handleChange}
-              className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white"
-            >
-              <option value="">— Select status —</option>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{formatStatus(s)}</option>
-              ))}
-            </select>
-          </div>
+        <div className="mcp-divider" />
+        <div className="mcp-section">
+          <div className="mcp-sec-lbl"><IRows s={13} /> Records Per Page</div>
+          <div className="rpp-row">{[10, 25, 30, 50, 100].map(n => <button key={n} className={`rpp-btn ${rowsPerPage === n ? "rpp-btn--on" : ""}`} onClick={() => setRowsPerPage(n)}>{n}</button>)}</div>
         </div>
-
-        <div>
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Location</h3>
-          <div className="grid grid-cols-3 gap-4">
-            {EDIT_FIELDS.filter((f) => ["address", "city", "state", "country", "zipCode", "website"].includes(f.name)).map((f) => (
-              <Input key={f.name} {...f} value={form[f.name] || ""} onChange={handleChange} />
-            ))}
-          </div>
+        <div className="mcp-divider" />
+        <div className="mcp-section">
+          <label className="mcp-row" style={{ cursor: "pointer" }}>
+            <span className="toggle"><input type="checkbox" checked={wrapText} onChange={e => setWrapText(e.target.checked)} /><span className="toggle-track"><span className="toggle-thumb" /></span></span>
+            <span className="mcp-col-name">Wrap text in cells</span>
+          </label>
         </div>
-
-        <div>
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Campaign & Source</h3>
-          <div className="grid grid-cols-2 gap-4">
-            {EDIT_FIELDS.filter((f) => ["source", "campaignName", "campaignSource", "campaignMedium"].includes(f.name)).map((f) => (
-              <Input key={f.name} {...f} value={form[f.name] || ""} onChange={handleChange} />
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Notes</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Comments</label>
-              <textarea name="comments" value={form.comments || ""} onChange={handleChange} rows={3}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white resize-none" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Description</label>
-              <textarea name="description" value={form.description || ""} onChange={handleChange} rows={3}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white resize-none" />
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Settings</h3>
-          <div className="flex flex-wrap gap-6">
-            {EDIT_CHECKBOX_FIELDS.map((f) => (
-              <Toggle key={f.name} {...f} checked={!!form[f.name]}
-                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.checked }))} />
-            ))}
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-          <button onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium">
-            Cancel
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors font-medium shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-            {saving ? <FaSpinner className="w-3.5 h-3.5 animate-spin" /> : null}
-            {saving ? "Saving…" : "Save Changes"}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
-// ─────────────────────────────────────────────
-// VIEW LEAD MODAL
-// ─────────────────────────────────────────────
-const ViewLeadModal = ({ leadId, leadData, onClose, onStatusChange, onDelete, onConverted }) => {
-  const [lead, setLead] = useState(leadData ? normalizeLead(leadData) : null);
-  const [loading, setLoading] = useState(!leadData);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [copied, setCopied] = useState("");
-  const [converting, setConverting] = useState(false);
-  const [convertedSuccess, setConvertedSuccess] = useState(false);
-
-  // ── FIX: convert-to-deal using correct endpoint + null body ──
-  const handleConvertToDeal = async () => {
-    if (!lead?.id) return;
-
-    const confirmed = window.confirm(
-      `Convert "${lead.name || `Lead #${lead.id}`}" to a customer?\n\nThis will mark them as an Active Client.`
-    );
-    if (!confirmed) return;
-
-    try {
-      setConverting(true);
-
-      // Call API — no body needed, only path param {id}
-      const result = await leadsAPI.convertToDeal(lead.id);
-
-      // Optimistically update UI
-      setLead((prev) => ({ ...prev, status: "ActiveClient", convertedToCustomer: true }));
-      setConvertedSuccess(true);
-
-      const extras = [
-        result?.dealId ? `Deal #${result.dealId}` : null,
-        result?.accountId ? `Account #${result.accountId}` : null,
-      ].filter(Boolean).join(", ");
-
-      Toast.success(
-        `${lead.name || "Lead"} converted to customer${extras ? ` · ${extras}` : ""}`
-      );
-
-      onConverted?.();
-    } catch (err) {
-      // Log full response for debugging
-      console.error("Convert API error:", err?.response?.data ?? err);
-
-      const errData = err?.response?.data;
-      const msg =
-        errData?.message ||
-        errData?.title ||
-        (errData?.errors ? Object.values(errData.errors).flat().join(", ") : null) ||
-        err?.message ||
-        "Conversion failed. Please try again.";
-
-      Toast.error(msg);
-    } finally {
-      setConverting(false);
-    }
-  };
-
-  const authHeader = { Authorization: `Bearer ${localStorage.getItem("accessToken")}` };
-
-  useEffect(() => {
-    if (!leadId) return;
-    const fetchLead = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(`/api/Leads/${leadId}`, { headers: authHeader });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        setLead(normalizeLead(await res.json()));
-      } catch {
-        if (!lead) { Toast.error("Failed to load lead details"); onClose(); }
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchLead();
-  }, [leadId]);
-
-  const copy = (text, field) => {
-    navigator.clipboard.writeText(text);
-    setCopied(field);
-    setTimeout(() => setCopied(""), 2000);
-  };
-
-  const fmt = (val) => {
-    if (!val) return "—";
-    return new Date(val).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  };
-  const fmtDate = (val) => {
-    if (!val) return "—";
-    return new Date(val).toLocaleDateString("en-IN", { day: "2-digit", month: "numeric", year: "numeric" });
-  };
-
-  const isAlreadyConverted =
-    lead?.status === "ActiveClient" || lead?.convertedToCustomer === true;
-
-  const TABS = ["overview", "campaign", "location", "notes"];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div
-        className="relative bg-white w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {loading && !lead ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3">
-            <FaSpinner className="w-8 h-8 animate-spin text-indigo-400" />
-            <p className="text-sm text-gray-400">Loading lead details…</p>
-          </div>
-        ) : lead ? (
-          <>
-            <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 px-6 py-5 flex-shrink-0">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                    {lead.name ? lead.name.charAt(0).toUpperCase() : "?"}
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white leading-tight">{lead.name || "Unknown Lead"}</h2>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className="text-indigo-200 text-xs">#{lead.id}</span>
-                      {lead.company && (<><span className="text-indigo-400 text-xs">•</span><span className="text-indigo-200 text-xs">{lead.company}</span></>)}
-                    </div>
-                  </div>
-                </div>
-                <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/20 text-white/70 hover:text-white transition-colors">
-                  <FaTimesCircle className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <StatusBadge status={lead.status} />
-
-                {/* Convert button — hidden once already converted */}
-                {!isAlreadyConverted && (
-                  <button
-                    onClick={handleConvertToDeal}
-                    disabled={converting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                      bg-white/15 text-white border border-white/30
-                      hover:bg-white/25 hover:border-white/50
-                      disabled:opacity-50 disabled:cursor-not-allowed
-                      transition-all backdrop-blur-sm"
-                  >
-                    {converting
-                      ? <FaSpinner className="w-3 h-3 animate-spin" />
-                      : <FaUserCheck className="w-3 h-3" />}
-                    {converting ? "Converting…" : "Convert to Customer"}
-                  </button>
-                )}
-
-                {/* Success state — shown after conversion */}
-                {isAlreadyConverted && convertedSuccess && (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500/20 text-green-100 border border-green-400/30">
-                    <FaCheck className="w-3 h-3" /> Converted to Customer
-                  </span>
-                )}
-
-                {/* Already a customer before opening modal */}
-                {isAlreadyConverted && !convertedSuccess && (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 text-white/60 border border-white/20 cursor-default">
-                    <FaUserCheck className="w-3 h-3" /> Active Client
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex border-b border-gray-100 bg-white flex-shrink-0 px-2">
-              {TABS.map((tab) => (
-                <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-3 text-xs font-semibold uppercase tracking-wide transition-all border-b-2 -mb-px capitalize
-                    ${activeTab === tab ? "border-indigo-600 text-indigo-600" : "border-transparent text-gray-400 hover:text-gray-600"}`}>
-                  {tab}
-                </button>
-              ))}
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-6">
-              {activeTab === "overview" && (
-                <div className="space-y-5">
-                  <section>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Contact Details</p>
-                    <div className="space-y-2">
-                      {lead.phone && (
-                        <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
-                          <div className="flex items-center gap-3">
-                            <FaPhone className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                            <div><p className="text-xs text-gray-400 mb-0.5">Phone</p><p className="text-sm font-semibold text-gray-800">{lead.phone}</p></div>
-                          </div>
-                          <button onClick={() => copy(lead.phone, "phone")} className="p-1.5 rounded hover:bg-indigo-100 text-gray-400 hover:text-indigo-600 transition-colors">
-                            {copied === "phone" ? <FaCheck className="w-3 h-3 text-green-500" /> : <FaCopy className="w-3 h-3" />}
-                          </button>
-                        </div>
-                      )}
-                      {lead.email && (
-                        <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
-                          <div className="flex items-center gap-3">
-                            <FaEnvelope className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                            <div><p className="text-xs text-gray-400 mb-0.5">Email</p><p className="text-sm font-semibold text-gray-800">{lead.email}</p></div>
-                          </div>
-                          <button onClick={() => copy(lead.email, "email")} className="p-1.5 rounded hover:bg-indigo-100 text-gray-400 hover:text-indigo-600 transition-colors">
-                            {copied === "email" ? <FaCheck className="w-3 h-3 text-green-500" /> : <FaCopy className="w-3 h-3" />}
-                          </button>
-                        </div>
-                      )}
-                      {lead.company && (
-                        <div className="flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
-                          <FaBuilding className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                          <div><p className="text-xs text-gray-400 mb-0.5">Company</p><p className="text-sm font-semibold text-gray-800">{lead.company}</p></div>
-                        </div>
-                      )}
-                      {!lead.phone && !lead.email && !lead.company && (
-                        <p className="text-sm text-gray-400 italic">No contact details available</p>
-                      )}
-                    </div>
-                  </section>
-
-                  <section>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Lead Details</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { label: "Source", value: lead.source || "—" },
-                        { label: "Assigned To", value: lead.assignedToUserId != null ? `User #${lead.assignedToUserId}` : "—" },
-                        { label: "Score", value: lead.score != null ? lead.score : "—" },
-                        { label: "SLA Hours", value: lead.slaHours != null ? `${lead.slaHours}h` : "—" },
-                        { label: "Position", value: lead.position || "—" },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
-                          <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-                          <p className="text-sm font-semibold text-gray-800">{value}</p>
-                        </div>
-                      ))}
-                      <div className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
-                        <p className="text-xs text-gray-400 mb-0.5">SLA Breached</p>
-                        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${lead.isSlaBreached ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
-                          {lead.isSlaBreached ? "Breached" : "Within SLA"}
-                        </span>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Timeline</p>
-                    <div className="border border-gray-100 rounded-xl overflow-hidden">
-                      {[
-                        { label: "Created", value: lead.createdAt, icon: FaPlus, color: "text-indigo-400" },
-                        { label: "First Response", value: lead.firstResponseAt, icon: FaCheck, color: "text-green-400" },
-                        { label: "Last Contacted", value: lead.lastContact, icon: FaPhone, color: "text-blue-400" },
-                      ].map(({ label, value, icon: Icon, color }, i) => (
-                        <div key={label} className={`flex items-center justify-between px-4 py-3 ${i > 0 ? "border-t border-gray-50" : ""} ${value ? "bg-white" : "bg-gray-50/50"}`}>
-                          <div className="flex items-center gap-2.5">
-                            <Icon className={`w-3.5 h-3.5 ${value ? color : "text-gray-200"}`} />
-                            <span className={`text-xs font-medium ${value ? "text-gray-600" : "text-gray-300"}`}>{label}</span>
-                          </div>
-                          <span className={`text-xs font-semibold ${value ? "text-gray-800" : "text-gray-300"}`}>{fmt(value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                </div>
-              )}
-
-              {activeTab === "campaign" && (
-                <div className="space-y-4">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Campaign Information</p>
-                  <div className="grid grid-cols-1 gap-3">
-                    {[
-                      { label: "Source", value: lead.source, desc: "Where the lead originally came from" },
-                      { label: "Campaign Name", value: lead.campaignName, desc: "The marketing campaign name" },
-                      { label: "Campaign Source", value: lead.campaignSource, desc: "Platform or channel" },
-                      { label: "Campaign Medium", value: lead.campaignMedium, desc: "Medium type (CPC, email, organic)" },
-                    ].map(({ label, value, desc }) => (
-                      <div key={label} className={`rounded-lg px-4 py-3 border ${value ? "bg-indigo-50 border-indigo-100" : "bg-gray-50 border-gray-100"}`}>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-                            <p className={`text-sm font-semibold ${value ? "text-indigo-800" : "text-gray-400"}`}>{value || "Not set"}</p>
-                          </div>
-                          {value && (
-                            <button onClick={() => copy(value, label)} className="p-1.5 rounded hover:bg-indigo-100 text-indigo-300 hover:text-indigo-600 transition-colors">
-                              {copied === label ? <FaCheck className="w-3 h-3 text-green-500" /> : <FaCopy className="w-3 h-3" />}
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">{desc}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "location" && (
-                <div className="space-y-4">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Location Details</p>
-                  {!(lead.address || lead.city || lead.state || lead.country || lead.zipCode) ? (
-                    <div className="text-center py-10 text-gray-300">
-                      <FaMapMarkerAlt className="w-8 h-8 mx-auto mb-2" />
-                      <p className="text-sm">No location data available</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { label: "Address", value: lead.address },
-                        { label: "City", value: lead.city },
-                        { label: "State", value: lead.state },
-                        { label: "Country", value: lead.country },
-                        { label: "Zip Code", value: lead.zipCode },
-                        { label: "Website", value: lead.website },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100">
-                          <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-                          {label === "Website" && value ? (
-                            <a href={value.startsWith("http") ? value : `https://${value}`} target="_blank" rel="noreferrer"
-                              className="text-sm font-semibold text-indigo-600 hover:underline truncate block">{value}</a>
-                          ) : (
-                            <p className="text-sm font-semibold text-gray-800">{value || "—"}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === "notes" && (
-                <div className="space-y-4">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Notes & Description</p>
-                  {!lead.comments && !lead.description ? (
-                    <div className="text-center py-10 text-gray-300">
-                      <FaStickyNote className="w-8 h-8 mx-auto mb-2" />
-                      <p className="text-sm">No notes added for this lead</p>
-                    </div>
-                  ) : (
-                    <>
-                      {lead.comments && (
-                        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
-                          <p className="text-xs font-bold text-amber-600 uppercase tracking-wide mb-2">Comments</p>
-                          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{lead.comments}</p>
-                        </div>
-                      )}
-                      {lead.description && (
-                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                          <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Description</p>
-                          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{lead.description}</p>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-gray-100 px-6 py-3 flex items-center justify-between bg-gray-50 flex-shrink-0">
-              <p className="text-xs text-gray-400">
-                Created {fmtDate(lead.createdAt)}
-                {lead.lastContact && ` · Last contact ${fmtDate(lead.lastContact)}`}
-              </p>
-              <div className="flex gap-2">
-                {lead.id && (
-                  <button onClick={() => onDelete(lead.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors font-medium">
-                    <FaTrash className="w-3 h-3" /> Delete
-                  </button>
-                )}
-                <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-600 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors font-medium">
-                  Close
-                </button>
-              </div>
-            </div>
-          </>
-        ) : null}
       </div>
     </div>
   );
-};
+}
 
-// ─────────────────────────────────────────────
-// MAIN COMPONENT
-// ─────────────────────────────────────────────
-const Leads = () => {
-  const [salesLeads, setSalesLeads] = useState([]);
-  const [socialLeads, setSocialLeads] = useState([]);
-  const [activeType, setActiveType] = useState("sales");
-  const [loading, setLoading] = useState(false);
-  const [viewMode, setViewMode] = useState("list");
-
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(false);
-  const [viewLeadEntry, setViewLeadEntry] = useState(null);
-  const [editLeadEntry, setEditLeadEntry] = useState(null);
-  const [historyEntry, setHistoryEntry] = useState(null);
-  const openLeadView = (lead) => setViewLeadEntry({ id: lead.id, data: lead });
-  const closeLeadView = () => setViewLeadEntry(null);
-  const openEditLead = (lead) => setEditLeadEntry(lead);
-  const closeEditLead = () => setEditLeadEntry(null);
-  const openHistory = (lead) => setHistoryEntry({ id: lead.id, name: lead.name });
-  const closeHistory = () => setHistoryEntry(null);
-  const [formData, setFormData] = useState({});
-
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterSource, setFilterSource] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
-
-  // Social leads department filter
-  const [departments, setDepartments] = useState([]);
-  const [socialDeptId, setSocialDeptId] = useState("");
-  const [socialMyOnly, setSocialMyOnly] = useState(true); // default: show only my leads
-
-  useEffect(() => { setCurrentPage(1); }, [filterStatus, filterSource, searchQuery, activeType]);
-
-  // ── Auth ──
-  const getUserIdFromToken = () => {
-    try {
-      const token = localStorage.getItem("accessToken");
-      if (!token) return null;
-      const decoded = jwtDecode.default(token);
-      return decoded.sub || decoded.userId;
-    } catch { return null; }
+/* ─────────────────────────────────────────────
+   TASK 5: ACTIVITY ICON
+───────────────────────────────────────────── */
+function ActivityIcon({ type }) {
+  const cfg = {
+    email: { icon: Mail, color: "#3b82f6", bg: "#eff6ff" },
+    call: { icon: Phone, color: "#10b981", bg: "#ecfdf5" },
+    message: { icon: MessageSquare, color: "#8b5cf6", bg: "#f5f3ff" },
+    meeting: { icon: Calendar, color: "#f59e0b", bg: "#fffbeb" },
+    created: { icon: Plus, color: "#6b7280", bg: "#f3f4f6" },
+    "score-change": { icon: TrendingUp, color: "#ec4899", bg: "#fdf2f8" },
   };
+  const { icon: Ic, color, bg } = cfg[type] || cfg.created;
+  return (
+    <div style={{ width: 30, height: 30, borderRadius: "50%", background: bg, border: `1.5px solid ${color}33`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <Ic size={13} color={color} strokeWidth={2} />
+    </div>
+  );
+}
+function LeadsPerformanceChart({ onClose, leads }) {
+  const [animated, setAnimated] = useState(false);
+  const [tooltip, setTooltip] = useState(null);
+  const [activeRange, setActiveRange] = useState("30");
 
-  // ── Fetch ──
-  const fetchSalesLeads = async () => {
-    try {
-      setLoading(true);
-      const data = await leadsAPI.getAll();
-      setSalesLeads(Array.isArray(data) ? data.map(normalizeLead) : []);
-    } catch {
-      Toast.error("Failed to load sales leads");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchSocialLeads = async (deptId, myOnly) => {
-    try {
-      const userId = getUserIdFromToken();
-      const params = {};
-      if (deptId) {
-        params.departmentId = deptId;
-      } else if (myOnly && userId) {
-        params.assignedToUserId = userId;
-      } else if (userId) {
-        // fallback: always restrict to current user if nothing else selected
-        params.assignedToUserId = userId;
-      }
-      const data = await getSocialLeads(params);
-      setSocialLeads(Array.isArray(data) ? data.map(normalizeLead) : []);
-    } catch {
-      Toast.error("Failed to load social leads");
-    }
-  };
-
-  const refreshAll = () => {
-    fetchSalesLeads();
-    fetchSocialLeads(socialDeptId, socialMyOnly);
-  };
-
-  useEffect(() => { refreshAll(); }, []);
-
-  // Reload departments once
   useEffect(() => {
-    getDepartments()
-      .then(data => setDepartments(Array.isArray(data) ? data : []))
-      .catch(() => {});
+    const t = setTimeout(() => setAnimated(true), 60);
+    return () => clearTimeout(t);
   }, []);
 
-  // Refetch social leads when filter changes
-  useEffect(() => {
-    fetchSocialLeads(socialDeptId, socialMyOnly);
-  }, [socialDeptId, socialMyOnly]);
+  const data = useMemo(() => {
+    const ranges = { "7": 7, "30": 30, "90": 90 };
+    const days = ranges[activeRange];
+    return Array.from({ length: days }, (_, i) => {
+      const d = new Date(Date.now() - (days - 1 - i) * 86400000);
+      const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const base = 10 + Math.sin(i * 0.4) * 8 + Math.random() * 18;
+      const value = Math.round(Math.max(3, base));
+      return { label, value, date: d };
+    });
+  }, [activeRange]);
 
-  // ── Status change ──
-  const handleStatusChange = (leadId, newStatus) => {
-    setSalesLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, status: newStatus } : l));
-    setSocialLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, status: newStatus } : l));
-  };
+  const max = Math.max(...data.map(d => d.value));
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const avg = Math.round(total / data.length);
+  const peak = data.reduce((a, b) => a.value > b.value ? a : b);
 
-  // ── Form handlers ──
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const W = 720, H = 220, PAD = { t: 20, r: 20, b: 40, l: 48 };
+  const chartW = W - PAD.l - PAD.r;
+  const chartH = H - PAD.t - PAD.b;
 
-  const handleCreate = async () => {
-    try {
-      await leadsAPI.create(formData);
-      Toast.success("Lead created successfully");
-      setIsAddOpen(false);
-      setFormData({});
-      fetchSalesLeads();
-    } catch {
-      Toast.error("Failed to create lead");
-    }
-  };
+  const pts = data.map((d, i) => ({
+    x: PAD.l + (i / (data.length - 1)) * chartW,
+    y: PAD.t + chartH - (d.value / (max * 1.15)) * chartH,
+    ...d,
+  }));
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this lead? This cannot be undone.")) return;
+  const pathD = pts.reduce((acc, p, i) => {
+    if (i === 0) return `M ${p.x} ${p.y}`;
+    const prev = pts[i - 1];
+    const cx = (prev.x + p.x) / 2;
+    return `${acc} C ${cx} ${prev.y} ${cx} ${p.y} ${p.x} ${p.y}`;
+  }, "");
 
-    setSalesLeads((prev) => prev.filter((l) => l.id !== id));
-    setSocialLeads((prev) => prev.filter((l) => l.id !== id));
-    closeLeadView();
+  const areaD = `${pathD} L ${pts[pts.length - 1].x} ${PAD.t + chartH} L ${pts[0].x} ${PAD.t + chartH} Z`;
 
-    try {
-      await leadsAPI.delete(id);
-      Toast.success("Lead deleted");
-    } catch {
-      try {
-        const res = await fetch(`/api/Leads/${id}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        Toast.success("Lead deleted");
-      } catch (err) {
-        Toast.error(`Delete failed (${err.message}) — refreshing`);
-        fetchSalesLeads();
-      }
-    }
-  };
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => ({
+    y: PAD.t + chartH - f * chartH,
+    val: Math.round(f * max * 1.15),
+  }));
 
-  // ── Date formatter ──
-  const formatDate = (date) => {
-    if (!date) return "—";
-    const d = new Date(date);
-    const now = new Date();
-    const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const nDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const diffDays = Math.round((nDate - dDate) / 86400000);
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 30) return `${diffDays}d ago`;
-    const months = Math.floor(diffDays / 30);
-    return months === 1 ? "1 mo ago" : `${months} mo ago`;
-  };
+  const xStep = Math.ceil(data.length / 6);
 
-  // ── Filter & search ──
-  const rawLeads = activeType === "sales" ? salesLeads : socialLeads;
-  const filteredLeads = rawLeads.filter((lead) => {
-    if (filterStatus && lead.status !== filterStatus) return false;
-    if (filterSource && lead.source !== filterSource) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return (
-        (lead.name || "").toLowerCase().includes(q) ||
-        (lead.email || "").toLowerCase().includes(q) ||
-        (lead.phone || "").toLowerCase().includes(q) ||
-        (lead.company || "").toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 700, backdropFilter: "blur(3px)", animation: "fadeInBg 0.2s ease" }} />
+      <div style={{
+        position: "fixed", inset: 0, zIndex: 701, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none"
+      }}>
+        <div onClick={e => e.stopPropagation()} style={{
+          pointerEvents: "all",
+          background: "white",
+          borderRadius: "16px",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.22)",
+          width: "min(800px, 94vw)",
+          overflow: "hidden",
+          transform: animated ? "scale(1) translateY(0)" : "scale(0.92) translateY(32px)",
+          opacity: animated ? 1 : 0,
+          transition: "transform 0.38s cubic-bezier(0.34,1.4,0.64,1), opacity 0.28s ease",
+        }}>
+          {/* Header */}
+          <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid #f0f0f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: "#eef2ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <BarChart2 size={17} color="#4f46e5" strokeWidth={2} />
+              </div>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#111827", letterSpacing: "-0.2px" }}>Leads Performance</div>
+                <div style={{ fontSize: 13.5, color: "#9ca3af", marginTop: 1 }}>New leads over time</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Range toggle */}
+              <div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
+                {[["7", "7 days"], ["30", "30 days"], ["90", "90 days"]].map(([v, l]) => (
+                  <button key={v} onClick={() => setActiveRange(v)} style={{
+                    padding: "5px 12px", border: "none", fontSize: 14, fontWeight: activeRange === v ? 700 : 500,
+                    background: activeRange === v ? "#eef2ff" : "white", color: activeRange === v ? "#4f46e5" : "#6b7280",
+                    cursor: "pointer", borderRight: v !== "90" ? "1px solid #e5e7eb" : "none", transition: "all 0.15s"
+                  }}>{l}</button>
+                ))}
+              </div>
+              <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 6, borderRadius: 6, color: "#9ca3af" }}>
+                <X size={16} strokeWidth={2} />
+              </button>
+            </div>
+          </div>
 
-  const sortedLeads = [...filteredLeads].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
-  const totalPages = Math.ceil(sortedLeads.length / pageSize);
-  const paginatedLeads = sortedLeads.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const uniqueSources = [...new Set(rawLeads.map((l) => l.source).filter(Boolean))];
+          {/* Stats row */}
+          <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #f0f0f0" }}>
+            {[
+              { label: "Total New Leads", val: total, color: "#4f46e5" },
+              { label: "Daily Average", val: avg, color: "#10b981" },
+              { label: "Peak Day", val: peak.value, sub: peak.label, color: "#f59e0b" },
+            ].map((s, i) => (
+              <div key={i} style={{ flex: 1, padding: "8px 12px", textAlign: "center", borderRight: i < 2 ? "1px solid #f0f0f0" : "none" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9ca3af", marginBottom: 4 }}>
+                  {s.label} {s.sub && <span style={{ marginLeft: 6, color: "#6b7280", textTransform: "none" }}>({s.sub})</span>}
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: s.color, letterSpacing: "-0.5px", lineHeight: 1 }}>{s.val}</div>
+              </div>
+            ))}
+          </div>
 
-  // ── Lead Card (grid view) ──
-  const LeadCard = ({ lead }) => (
-    <div className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md hover:border-indigo-200 transition-all">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Avatar name={lead.name} />
-          <div>
-            <p className="text-sm font-semibold text-gray-800">{lead.name || "—"}</p>
-            <p className="text-xs text-gray-400">#{lead.id}</p>
+          {/* Chart */}
+          <div style={{ padding: "15px 15px", position: "relative" }} onMouseLeave={() => setTooltip(null)}>
+            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible", display: "block" }}>
+              <defs>
+                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.18" />
+                  <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.01" />
+                </linearGradient>
+                <clipPath id="chartClip">
+                  <rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} />
+                </clipPath>
+                <filter id="lineShadow" x="-5%" y="-20%" width="110%" height="140%">
+                  <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#4f46e5" floodOpacity="0.18" />
+                </filter>
+              </defs>
+
+              {/* Y grid */}
+              {yTicks.map((t, i) => (
+                <g key={i}>
+                  <line x1={PAD.l} x2={W - PAD.r} y1={t.y} y2={t.y} stroke="#f3f4f6" strokeWidth="1" />
+                  <text x={PAD.l - 8} y={t.y + 4} textAnchor="end" fill="#9ca3af" fontFamily="Inter,sans-serif">{t.val}</text>
+                </g>
+              ))}
+
+              {/* X labels */}
+              {pts.filter((_, i) => i % xStep === 0 || i === pts.length - 1).map((p, i) => (
+                <text key={i} x={p.x} y={H - 8} textAnchor="middle" fill="#9ca3af" fontFamily="Inter,sans-serif">{p.label}</text>
+              ))}
+
+              <g clipPath="url(#chartClip)">
+                {/* Area */}
+                <path d={areaD} fill="url(#areaGrad)" style={{
+                  opacity: animated ? 1 : 0,
+                  transition: "opacity 0.5s ease 0.2s"
+                }} />
+                {/* Line */}
+                <path d={pathD} fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  filter="url(#lineShadow)"
+                  style={{
+                    strokeDasharray: 2000,
+                    strokeDashoffset: animated ? 0 : 2000,
+                    transition: "stroke-dashoffset 1.1s cubic-bezier(0.4,0,0.2,1) 0.1s"
+                  }} />
+              </g>
+
+              {/* Hover dots */}
+              {pts.map((p, i) => (
+                <circle key={i} cx={p.x} cy={p.y} r="14" fill="transparent" style={{ cursor: "crosshair" }}
+                  onMouseEnter={() => setTooltip({ ...p, idx: i })} />
+              ))}
+
+              {/* Tooltip dot */}
+              {tooltip && (
+                <g>
+                  <line x1={tooltip.x} x2={tooltip.x} y1={PAD.t} y2={PAD.t + chartH} stroke="#4f46e5" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.4" />
+                  <circle cx={tooltip.x} cy={tooltip.y} r="5" fill="#4f46e5" stroke="white" strokeWidth="2.5" />
+                </g>
+              )}
+            </svg>
+
+            {/* Tooltip box */}
+            {tooltip && (
+              <div style={{
+                position: "absolute",
+                left: `calc(${(tooltip.x / W) * 100}% - 70px)`,
+                top: `${((tooltip.y - PAD.t) / H) * 100}%`,
+                transform: "translateY(-115%)",
+                background: "white",
+                border: "1.5px solid #e5e7eb",
+                borderRadius: 10,
+                padding: "8px 13px",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                pointerEvents: "none",
+                minWidth: 130,
+                zIndex: 10,
+              }}>
+                <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>{tooltip.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{tooltip.value}</div>
+                <div style={{ fontSize: 11, color: "#10b981", marginTop: 3, display: "flex", alignItems: "center", gap: 3 }}>
+                  <TrendingUp size={10} strokeWidth={2.5} /> New Leads
+                </div>
+              </div>
+            )}
           </div>
         </div>
-        <StatusBadge status={lead.status} />
       </div>
-      {lead.email && <p className="text-xs text-indigo-500 mb-1 truncate">{lead.email}</p>}
-      {lead.phone && <p className="text-xs text-gray-500 mb-1">{lead.phone}</p>}
-      {lead.source && <p className="text-xs text-gray-400 mb-3">Source: {lead.source}</p>}
-      <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-        <span className="text-xs text-gray-400">{formatDate(lead.createdAt)}</span>
-        <div className="flex gap-1">
-          <button onClick={() => openLeadView(lead)}
-            className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="View lead">
-            <FaEye className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => openHistory(lead)}
-            className="p-1.5 rounded-lg bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors" title="Contact history">
-            <FaClock className="w-3.5 h-3.5" />
-          </button>
-          {activeType === "sales" && (
-            <button onClick={() => handleDelete(lead.id)}
-              className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors" title="Delete">
-              <FaTrash className="w-3.5 h-3.5" />
+      <style>{`
+        @keyframes fadeInBg { from { opacity: 0; } to { opacity: 1; } }
+      `}</style>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   TASKS 4 & 5: LEAD DETAIL DRAWER
+───────────────────────────────────────────── */
+function LeadDetailsModal({ lead, onClose, activityLog, onUpdateLead, onAdjustScore }) {
+  const [tab, setTab] = useState("details");
+  const [addingActivity, setAddingActivity] = useState(false);
+  const [newAct, setNewAct] = useState({ type: "call", notes: "" });
+  const activities = activityLog[lead.id] || [];
+  const scoreTier = lead.score >= 80 ? "high" : lead.score >= 60 ? "mid" : "low";
+  const scoreColors = { high: "#059669", mid: "#d97706", low: "#dc2626" };
+
+  const handleAddActivity = () => {
+    if (!newAct.notes.trim()) return;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    onAdjustScore(lead.id, 0, { type: newAct.type, date: todayStr(), time: timeStr, notes: newAct.notes });
+    setNewAct({ type: "call", notes: "" });
+    setAddingActivity(false);
+  };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 500 }} />
+      <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: 680, background: "#fff", boxShadow: "-4px 0 30px rgba(0,0,0,0.12)", zIndex: 501, display: "flex", flexDirection: "column", animation: "slideInRight 0.25s ease-out" }}>
+        {/* Header */}
+        <div style={{ padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "14px" }}>
+          <div style={{ width: 44, height: 44, borderRadius: "50%", background: lead.avatarBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+            {lead.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: "16px", color: "#111827" }}>{lead.name}</div>
+          </div>
+          <span style={{ padding: "3px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: 600, background: STATUS_META[lead.status]?.bg, color: STATUS_META[lead.status]?.color }}>{lead.status}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: "6px", borderRadius: "6px", display: "flex" }}><IX s={16} c="#6b7280" /></button>
+        </div>
+        {/* Tabs */}
+        <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb", padding: "0 24px" }}>
+          {[{ k: "details", l: "Lead Details" }, { k: "activity", l: `Activity (${activities.length})` }].map(t => (
+            <button key={t.k} onClick={() => setTab(t.k)} style={{ padding: "12px 16px", border: "none", borderBottom: `2px solid ${tab === t.k ? "#4f46e5" : "transparent"}`, background: "none", fontSize: "13.5px", fontWeight: tab === t.k ? 700 : 500, color: tab === t.k ? "#4f46e5" : "#6b7280", cursor: "pointer", transition: "all 0.15s" }}>
+              {t.l}
             </button>
+          ))}
+        </div>
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
+          {tab === "details" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+              {/* Score section */}
+              <div style={{ gridColumn: "1 / -1", padding: "16px", background: "#f9fafb", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>Lead Score</div>
+                  <div style={{ fontSize: "28px", fontWeight: 800, color: scoreColors[scoreTier] }}>{lead.score}</div>
+                </div>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {[-20, -10, +10, +20].map(d => (
+                    <button key={d} onClick={() => onAdjustScore(lead.id, d)} style={{ padding: "5px 10px", border: `1.5px solid ${d > 0 ? "#bbf7d0" : "#fecaca"}`, borderRadius: "6px", background: d > 0 ? "#f0fdf4" : "#fff5f5", color: d > 0 ? "#059669" : "#dc2626", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>
+                      {d > 0 ? `+${d}` : d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {[
+                { label: "Email", value: lead.email, href: `mailto:${lead.email}` },
+                { label: "Phone", value: lead.phone, href: `tel:${lead.phone}` },
+                { label: "Source", value: lead.source },
+                { label: "Owner", value: lead.assignee },
+                { label: "Follow-Up", value: lead.followUpDate ? getFollowUpLabel(lead.followUpDate)?.label : "Not set" },
+                { label: "Created", value: fmtDate(lead.createdDate) },
+                { label: "Address", value: lead.address, span: 2 },
+              ].map(f => (
+                <div key={f.label} style={{ gridColumn: f.span === 2 ? "1 / -1" : "auto" }}>
+                  <div style={{ fontSize: "11px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>{f.label}</div>
+                  {f.href
+                    ? <a href={f.href} style={{ fontSize: "13.5px", color: "#4f46e5", fontWeight: 500 }}>{f.value || "—"}</a>
+                    : <div style={{ fontSize: "13.5px", color: "#111827", fontWeight: 500 }}>{f.value || "—"}</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div>
+              <div style={{ marginBottom: "16px", display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={() => setAddingActivity(a => !a)} style={{ padding: "7px 14px", background: "#4f46e5", border: "none", borderRadius: "6px", color: "white", fontSize: "13px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <IPlus s={12} c="white" />Log Activity
+                </button>
+              </div>
+              {addingActivity && (
+                <div style={{ padding: "14px", background: "#f9fafb", borderRadius: "10px", marginBottom: "16px", border: "1.5px solid #e5e7eb" }}>
+                  <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
+                    {["email", "call", "message", "meeting"].map(t => (
+                      <button key={t} onClick={() => setNewAct(a => ({ ...a, type: t }))} style={{ padding: "5px 10px", border: `1.5px solid ${newAct.type === t ? "#4f46e5" : "#e5e7eb"}`, borderRadius: "6px", background: newAct.type === t ? "#eef2ff" : "white", color: newAct.type === t ? "#4f46e5" : "#6b7280", fontSize: "12px", fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{t}</button>
+                    ))}
+                  </div>
+                  <input placeholder="Add notes…" value={newAct.notes} onChange={e => setNewAct(a => ({ ...a, notes: e.target.value }))} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", marginBottom: "10px", outline: "none" }} />
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                    <button onClick={() => setAddingActivity(false)} style={{ padding: "6px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", background: "white", fontSize: "12px", cursor: "pointer" }}>Cancel</button>
+                    <button onClick={handleAddActivity} style={{ padding: "6px 12px", border: "none", borderRadius: "6px", background: "#4f46e5", color: "white", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>Save</button>
+                  </div>
+                </div>
+              )}
+              <div style={{ position: "relative" }}>
+                {activities.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "40px 0", color: "#9ca3af" }}>
+                    <IMsg s={32} c="#d1d5db" /><p style={{ marginTop: "8px", fontSize: "14px" }}>No activity yet</p>
+                  </div>
+                ) : activities.map((act, idx) => (
+                  <div key={act.id} style={{ display: "flex", gap: "14px", marginBottom: "16px", position: "relative" }}>
+                    {idx < activities.length - 1 && <div style={{ position: "absolute", left: 15, top: 32, bottom: -8, width: 1, background: "#e5e7eb" }} />}
+                    <ActivityIcon type={act.type} />
+                    <div style={{ flex: 1, paddingTop: "4px" }}>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#111827" }}>
+                        {act.type === "created" ? "Lead Created" : act.type === "score-change" ? act.notes : `${act.type.charAt(0).toUpperCase() + act.type.slice(1)} ${act.type === "email" ? "Sent" : act.type === "call" ? "Made" : act.type === "meeting" ? "Scheduled" : "Sent"}`}
+                      </div>
+                      {act.type !== "created" && act.type !== "score-change" && act.notes && <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "2px" }}>{act.notes}</div>}
+                      <div style={{ fontSize: "11.5px", color: "#9ca3af", marginTop: "3px" }}>{fmtDate(act.date)} &bull; {act.time}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
+        </div>
+      </div>
+      <style>{`@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   EDIT MODAL
+───────────────────────────────────────────── */
+function EditModal({ lead, onClose }) {
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-hdr">
+          <div><div className="modal-title">Edit Lead</div><div className="modal-sub">{lead.name}</div></div>
+          <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
+        </div>
+        <div className="modal-body modal-placeholder">
+          <IEdit s={40} c="#d1d5db" /><p>Edit Form</p><span>Fields for name, email, phone, status and source will appear here.</span>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" onClick={onClose}>Save Changes</button>
         </div>
       </div>
     </div>
   );
+}
 
-  const leadFields = [
-    { name: "name", label: "Name" }, { name: "email", label: "Email", type: "email" },
-    { name: "phone", label: "Phone" }, { name: "company", label: "Company" },
-    { name: "position", label: "Position" }, { name: "source", label: "Source" },
-    { name: "campaignName", label: "Campaign Name" }, { name: "campaignSource", label: "Campaign Source" },
-    { name: "campaignMedium", label: "Campaign Medium" }, { name: "status", label: "Status" },
-    { name: "assignedToUserId", label: "Assigned User ID", type: "number" },
-    { name: "address", label: "Address" }, { name: "city", label: "City" },
-    { name: "state", label: "State" }, { name: "country", label: "Country" },
-    { name: "zipCode", label: "Zip Code" }, { name: "website", label: "Website" },
-  ];
-  const checkboxFields = [
-    { name: "isPublic", label: "Is Public" },
-    { name: "contactedToday", label: "Contacted Today" },
-    { name: "whatsappEnabled", label: "WhatsApp Enabled" },
-  ];
+/* ─────────────────────────────────────────────
+   TASK 6: KANBAN BOARD
+───────────────────────────────────────────── */
+function KanbanBoard({ leads, onUpdateLead, onOpenDetails, onAdjustScore }) {
+  const [draggedId, setDraggedId] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+  const grouped = useMemo(() => STATUS_LIST.reduce((acc, s) => { acc[s] = leads.filter(l => l.status === s); return acc; }, {}), [leads]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-screen-2xl mx-auto px-4 py-4 space-y-5">
-
-        {/* ── Top Action Bar ── */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={() => setIsAddOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-all active:scale-95">
-            <FaPlus className="w-3.5 h-3.5" /> New Lead
-          </button>
-          <button onClick={() => setIsImportOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg border border-gray-200 shadow-sm transition-all active:scale-95">
-            <FaFileImport className="w-3.5 h-3.5 text-indigo-500" /> Import Leads
-          </button>
-          <div className="flex items-center gap-1 ml-auto">
-            <button onClick={() => setViewMode("list")}
-              className={`p-2 rounded-lg border transition-all ${viewMode === "list" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
-              <FaList className="w-4 h-4" />
-            </button>
-            <button onClick={() => setViewMode("grid")}
-              className={`p-2 rounded-lg border transition-all ${viewMode === "grid" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
-              <FaTh className="w-4 h-4" />
-            </button>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", overflowX: "auto" }}>
+      {STATUS_LIST.map(status => {
+        const meta = STATUS_META[status];
+        const colLeads = grouped[status] || [];
+        const isOver = dragOverCol === status;
+        return (
+          <div key={status} onDragOver={e => { e.preventDefault(); setDragOverCol(status); }} onDragLeave={() => setDragOverCol(null)} onDrop={e => { e.preventDefault(); if (draggedId) onUpdateLead(draggedId, "status", status); setDraggedId(null); setDragOverCol(null); }}
+            style={{ background: isOver ? "#f0f3ff" : "#f9fafb", border: `2px dashed ${isOver ? "#4f46e5" : "#e5e7eb"}`, borderRadius: "12px", padding: "12px", minHeight: "400px", transition: "all 0.15s" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: meta.dot }} />
+              <span style={{ fontWeight: 700, fontSize: "13px", color: meta.color }}>{status}</span>
+              <span style={{ marginLeft: "auto", background: meta.bg, color: meta.color, fontSize: "11px", fontWeight: 700, padding: "1px 7px", borderRadius: "12px" }}>{colLeads.length}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {colLeads.map(lead => {
+                const initials = lead.name.split(" ").map(n => n[0]).join("").slice(0, 2);
+                const tier = lead.score >= 80 ? "high" : lead.score >= 60 ? "mid" : "low";
+                const sc = { high: "#059669", mid: "#d97706", low: "#dc2626" };
+                const sb = { high: "#d1fae5", mid: "#fef3c7", low: "#fee2e2" };
+                return (
+                  <div key={lead.id} draggable onDragStart={e => { setDraggedId(lead.id); e.dataTransfer.effectAllowed = "move"; }} onClick={() => onOpenDetails(lead)}
+                    style={{ background: "white", borderRadius: "10px", padding: "12px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb", cursor: "grab", transition: "box-shadow 0.15s, transform 0.15s", opacity: draggedId === lead.id ? 0.4 : 1 }}
+                    onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.08)"; e.currentTarget.style.transform = "none"; }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: lead.avatarBg, color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 700, flexShrink: 0 }}>{initials}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.name}</div>
+                        <div style={{ fontSize: "11.5px", color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.company}</div>
+                      </div>
+                      <div style={{ padding: "2px 7px", borderRadius: "12px", background: sb[tier], color: sc[tier], fontSize: "11px", fontWeight: 700, flexShrink: 0 }}>{lead.score}</div>
+                    </div>
+                    <div style={{ fontSize: "11.5px", color: "#9ca3af", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <User size={10} /><span>{lead.assignee}</span>
+                    </div>
+                    {lead.followUpDate && (() => {
+                      const info = getFollowUpLabel(lead.followUpDate);
+                      const c = info.type === "overdue" ? "#dc2626" : info.type === "today" ? "#d97706" : info.type === "tomorrow" ? "#0284c7" : "#6b7280";
+                      return <div style={{ marginTop: "6px", fontSize: "11px", color: c, fontWeight: info.type !== "normal" ? 700 : 400, display: "flex", alignItems: "center", gap: "3px" }}><Calendar size={10} />{info.label}</div>;
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        );
+      })}
+    </div>
+  );
+}
 
-        <div className="flex items-center justify-between gap-4 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
-          {/* Left: Lead type sub-tabs */}
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-            {["sales", "social"].map((type) => (
-              <button key={type} onClick={() => setActiveType(type)}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all
-                  ${activeType === type ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                {type === "sales" ? "Sales Leads" : "Social Leads"}
+/* ─────────────────────────────────────────────
+   MAIN EXPORT
+───────────────────────────────────────────── */
+export default function Leads() {
+  const [leads, setLeads] = useState(INIT_LEADS);
+  const [activityLog, setActivityLog] = useState(() => makeInitialActivity(INIT_LEADS));
+  const [search, setSearch] = useState("");
+  const [searchField, setSearchField] = useState("all");
+  const [showFilter, setShowFilter] = useState(false);
+  const [filters, setFilters] = useState({ status: "All", source: "All", assignee: "All", createdDateFrom: "", createdDateTo: "", followUpDateFrom: "", followUpDateTo: "", lastContactedDays: "", respondedTo: "All", city: "", state: "", country: "", zip: "" });
+  const [sortBy, setSortBy] = useState("createdDate");
+  const [sortDir, setSortDir] = useState("desc");
+  const [selected, setSelected] = useState(new Set());
+  const [visibleCols, setVisibleCols] = useState(ALL_COLUMNS.filter(c => !c.always).map(c => c.key));
+  const [rowsPerPage, setRowsPerPage] = useState(30);
+  const [page, setPage] = useState(1);
+  const [wrapText, setWrapText] = useState(false);
+  const [showColPanel, setShowColPanel] = useState(false);
+  const [detailsLead, setDetailsLead] = useState(null);
+  const [editLead, setEditLead] = useState(null);
+  const [showImport, setShowImport] = useState(false);
+  const [createLeadType, setCreateLeadType] = useState(null);
+  const [viewMode, setViewMode] = useState("list");
+  const [showChart, setShowChart] = useState(false);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.status !== "All") count++;
+    if (filters.source !== "All") count++;
+    if (filters.assignee !== "All") count++;
+    if (filters.createdDateFrom || filters.createdDateTo) count++;
+    if (filters.followUpDateFrom || filters.followUpDateTo) count++;
+    if (filters.lastContactedDays) count++;
+    if (filters.respondedTo !== "All") count++;
+    if (filters.city) count++;
+    if (filters.state) count++;
+    if (filters.country) count++;
+    if (filters.zip) count++;
+    return count;
+  }, [filters]);
+
+  const activeCols = ALL_COLUMNS.filter(c => c.always || visibleCols.includes(c.key));
+
+  const updateLead = useCallback((id, field, val) => {
+    setLeads(p => p.map(l => l.id === id ? { ...l, [field]: val } : l));
+    setDetailsLead(prev => prev && prev.id === id ? { ...prev, [field]: val } : prev);
+  }, []);
+
+  const adjustScore = useCallback((id, delta, customActivity = null) => {
+    setLeads(prev => prev.map(l => l.id !== id ? l : { ...l, score: Math.max(0, Math.min(100, l.score + delta)) }));
+    setDetailsLead(prev => {
+      if (!prev || prev.id !== id) return prev;
+      return { ...prev, score: Math.max(0, Math.min(100, prev.score + delta)) };
+    });
+    const now = new Date();
+    const act = customActivity || { type: "score-change", date: todayStr(), time: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }), notes: `Score ${delta > 0 ? "increased" : "decreased"} ${delta > 0 ? "+" : ""}${delta}` };
+    if (delta !== 0 || customActivity) {
+      setActivityLog(prev => ({ ...prev, [id]: [{ id: Date.now(), ...act }, ...(prev[id] || [])] }));
+    }
+  }, []);
+
+  const handleSort = (col) => {
+    if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortBy(col); setSortDir("asc"); }
+  };
+
+  const filtered = useMemo(() => {
+    return leads.filter(l => {
+      const q = search.trim().toLowerCase();
+      if (q) {
+        const targets = { all: [l.name, l.company, l.email, l.phone, l.address || "", l.assignee].join(" ").toLowerCase(), name: l.name.toLowerCase(), email: l.email.toLowerCase(), phone: l.phone.toLowerCase(), address: (l.address || "").toLowerCase(), score: String(l.score) };
+        if (!targets[searchField]?.includes(q)) return false;
+      }
+      if (filters.status !== "All" && l.status !== filters.status) return false;
+      if (filters.source !== "All" && l.source !== filters.source) return false;
+      if (filters.assignee !== "All" && l.assignee !== filters.assignee) return false;
+      if (filters.createdDateFrom && l.createdDate < filters.createdDateFrom) return false;
+      if (filters.createdDateTo && l.createdDate > filters.createdDateTo) return false;
+      if (filters.followUpDateFrom && (!l.followUpDate || l.followUpDate < filters.followUpDateFrom)) return false;
+      if (filters.followUpDateTo && (!l.followUpDate || l.followUpDate > filters.followUpDateTo)) return false;
+      if (filters.lastContactedDays && l.lastContacted) {
+        const daysSince = Math.floor((new Date() - new Date(l.lastContacted)) / (1000 * 60 * 60 * 24));
+        if (daysSince > parseInt(filters.lastContactedDays)) return false;
+      }
+      if (filters.respondedTo !== "All" && l.respondedTo !== filters.respondedTo.toLowerCase()) return false;
+      if (filters.city && !l.city?.toLowerCase().includes(filters.city.toLowerCase())) return false;
+      if (filters.state && !l.state?.toLowerCase().includes(filters.state.toLowerCase())) return false;
+      if (filters.zip && !l.zip?.toLowerCase().includes(filters.zip.toLowerCase())) return false;
+      return true;
+    }).sort((a, b) => {
+      let av = a[sortBy] ?? "", bv = b[sortBy] ?? "";
+      if (sortBy === "score") { av = a.score; bv = b.score; }
+      const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+      return sortDir === "desc" ? -cmp : cmp;
+    });
+  }, [leads, search, searchField, filters, sortBy, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
+  const paginated = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  useEffect(() => setPage(1), [search, filters, rowsPerPage]);
+
+  const allOnPageSel = paginated.length > 0 && paginated.every(l => selected.has(l.id));
+  const toggleAll = () => {
+    if (allOnPageSel) setSelected(p => { const s = new Set(p); paginated.forEach(l => s.delete(l.id)); return s; });
+    else setSelected(p => { const s = new Set(p); paginated.forEach(l => s.add(l.id)); return s; });
+  };
+  const toggleOne = (id) => setSelected(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
+
+  const SortIco = ({ col }) => (
+    <span className="sort-ico">
+      {sortBy === col ? (sortDir === "asc" ? <IChevU s={9} /> : <IChevD s={9} />) : <span className="sort-both"><IChevU s={8} /><IChevD s={8} /></span>}
+    </span>
+  );
+
+  const handleApplyFilters = (f) => setFilters(f);
+  const handleClearFilters = () => setFilters({ status: "All", source: "All", assignee: "All", createdDateFrom: "", createdDateTo: "", followUpDateFrom: "", followUpDateTo: "", lastContactedDays: "", respondedTo: "All", city: "", state: "", country: "", zip: "" });
+  const hasActiveFilters = search || activeFilterCount > 0;
+
+  const handleAddLeadType = (t) => t.key === "import" ? setShowImport(true) : setCreateLeadType(t);
+  const handleCreateLead = (newLead) => {
+    setLeads(p => [newLead, ...p]);
+    setActivityLog(prev => ({ ...prev, [newLead.id]: [{ id: Date.now(), type: "created", date: todayStr(), time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }), notes: "Lead created" }] }));
+  };
+
+  return (
+    <div className="page">
+      <div className="stat-grid">
+        {STAT_CARDS.map(({ label, value, change, icon, alert, c }, i) => (
+          <StatCard key={label} label={label} value={value} change={change} icon={icon} alert={alert} c={c} delay={`${i * 0.07}s`} />
+        ))}
+      </div>
+
+      {/* ── TOOLBAR ── */}
+      <div className="toolbar">
+        <div className="toolbar-l">
+          <button className={`btn-ghost ${activeFilterCount > 0 ? 'btn-ghost--active' : ''}`} onClick={() => setShowFilter(true)} style={{ marginRight: '192px' }}>
+            <IFilter s={12} />&ensp;Filter
+            {activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}
+          </button>
+
+          {/* Task 2: Add Lead Dropdown */}
+          <AddLeadDropdown onSelectType={handleAddLeadType} />
+
+          <div className="toolbar-divider" />
+
+          {/* Task 6: View Mode Toggle */}
+          <div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: "8px", overflow: "hidden", background: "white" }}>
+            {[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => (
+              <button key={k} onClick={() => setViewMode(k)} title={`${l} View`}
+                style={{ display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", border: "none", borderRight: k === "list" ? "1px solid #e5e7eb" : "none", background: viewMode === k ? "#eef2ff" : "transparent", color: viewMode === k ? "#4f46e5" : "#6b7280", fontSize: "13.5px", fontWeight: viewMode === k ? 700 : 500, cursor: "pointer", transition: "all 0.15s" }}>
+                <I s={13} />{l}
               </button>
             ))}
           </div>
 
-          {/* Right: Filters */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <FaFilter className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-            <span className="text-sm text-gray-500 font-medium">Filter</span>
-            <FilterDropdown label="Status" options={STATUS_OPTIONS.map(s => formatStatus(s))} value={filterStatus ? formatStatus(filterStatus) : ""} onChange={(val) => {
-              const original = STATUS_OPTIONS.find(s => formatStatus(s) === val);
-              setFilterStatus(original || "");
-            }} />
-            {activeType === "sales" && (
-              <FilterDropdown label="Source" options={uniqueSources} value={filterSource} onChange={setFilterSource} />
-            )}
-            {activeType === "social" && (
-              <>
-                <select
-                  value={socialDeptId}
-                  onChange={e => {
-                    setSocialDeptId(e.target.value);
-                    if (e.target.value) setSocialMyOnly(false); // dept selected → clear "my leads"
-                  }}
-                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-700"
-                >
-                  <option value="">My Leads (default)</option>
-                  {departments.map(d => (
-                    <option key={d.departmentId} value={d.departmentId}>{d.departmentName}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => { setSocialMyOnly(v => !v); setSocialDeptId(""); }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border transition-all ${
-                    socialMyOnly && !socialDeptId
-                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                      : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
-                  }`}
-                >
-                  <FaCheck className="w-3 h-3" /> My Leads
-                </button>
-              </>
-            )}
-            {(filterStatus || filterSource) && (
-              <button onClick={() => { setFilterStatus(""); setFilterSource(""); }}
-                className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1">
-                <FaTimes className="w-3 h-3" /> Clear filters
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ── Table Toolbar ── */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-              className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
-              {[25, 50, 100, 200].map((n) => <option key={n}>{n}</option>)}
-            </select>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all"
-              onClick={() => {
-                const headers = ["ID", "Name", "Email", "Phone", "Company", "Status", "Source", "Assigned To", "Last Contact", "Created"];
-                const rows = filteredLeads.map(l => [
-                  l.id, l.name || "", l.email || "", l.phone || "", l.company || "",
-                  l.status || "", l.source || "",
-                  l.assignedToUserId != null ? `User #${l.assignedToUserId}` : "",
-                  l.lastContact ? new Date(l.lastContact).toLocaleDateString("en-IN") : "",
-                  l.createdAt ? new Date(l.createdAt).toLocaleDateString("en-IN") : "",
-                ]);
-                const csv = [headers, ...rows]
-                  .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
-                  .join("\n");
-                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `leads_export_${new Date().toISOString().slice(0, 10)}.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
-                Toast.success(`Exported ${filteredLeads.length} leads`);
-              }}>
-              <FaFileExport className="w-3.5 h-3.5" /> Export
-            </button>
-            <button onClick={refreshAll}
-              className="p-1.5 text-gray-400 hover:text-indigo-600 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all" title="Refresh">
-              <FaSync className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-gray-500">
-              {filteredLeads.length} leads
-              {filteredLeads.length !== rawLeads.length && ` (filtered from ${rawLeads.length})`}
-            </p>
-            <div className="relative">
-              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 w-52" />
+          <div className="toolbar-divider" />
+          <div className="unified-search">
+            <div className="search-wrap">
+              <span className="search-ico"><ISearch s={14} c="#9ca3af" /></span>
+              <input type="text" className="search-inp unified-inp" placeholder={searchField === "all" ? "Search leads…" : `Search by ${searchField}…`} value={search} onChange={e => setSearch(e.target.value)} />
+              {search && <button className="search-clr" onClick={() => setSearch("")}><IX s={12} c="#9ca3af" /></button>}
+            </div>
+            <div className="unified-divider" />
+            <div className="seg unified-seg">
+              {[{ k: "all", l: "All" }, { k: "name", l: "Name" }, { k: "email", l: "Email" }, { k: "phone", l: "Phone" }, { k: "address", l: "Address" }, { k: "score", l: "Score" }].map(f => (
+                <button key={f.k} className={`seg-btn ${searchField === f.k ? "seg-btn--on" : ""}`} onClick={() => setSearchField(f.k)}>{f.l}</button>
+              ))}
             </div>
           </div>
         </div>
-
-        {/* ── LIST VIEW ── */}
-        {viewMode === "list" ? (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="w-10 px-4 py-3"><input type="checkbox" className="rounded border-gray-300" /></th>
-                    {["#", "Name", "Comments", "Email", "Phone", "Assigned", "Status", "Source", "Last Contact", "Created", "Whatsapp", "Actions"].map((h) => (
-                      <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <tr key={i} className="animate-pulse">
-                        {Array.from({ length: 14 }).map((_, j) => (
-                          <td key={j} className="px-3 py-3"><div className="h-4 bg-gray-100 rounded w-3/4" /></td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : paginatedLeads.length === 0 ? (
-                    <tr>
-                      <td colSpan={14} className="text-center py-16 text-gray-400">
-                        <FaUsers className="w-8 h-8 mx-auto mb-3 opacity-30" />
-                        <p className="text-sm">No leads found</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedLeads.map((lead) => {
-                      const assignedId = lead.assignedToUserId ?? lead.assignedTo ?? lead.assigned ?? null;
-                      const assignedName = lead.assignedToUserName ?? lead.assignedUserName ?? lead.assignedName ?? null;
-                      const assignedLabel = assignedName
-                        ? assignedName
-                        : assignedId != null ? `User #${assignedId}` : null;
-                      const assignedInitial = assignedName
-                        ? assignedName.charAt(0).toUpperCase()
-                        : assignedId != null ? String(assignedId).charAt(0) : "?";
-                      return (
-                        <tr key={lead.id} className="group hover:bg-indigo-50/30 transition-colors">
-                          <td className="px-4 py-3"><input type="checkbox" className="rounded border-gray-300" /></td>
-                          <td className="px-3 py-3">
-                            <span className="text-indigo-600 font-medium">{lead.id}</span>
-                          </td>
-                          <td className="px-3 py-3 font-medium">
-                            <span className="text-indigo-600 hover:underline cursor-pointer" onClick={() => openLeadView(lead)}>
-                              {lead.name || "/"}
-                            </span>
-                            {activeType === "sales" && (
-                              <div className="flex items-center gap-1.5 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => openEditLead(lead)}
-                                  className="text-[11px] text-gray-600 hover:text-indigo-600 transition-colors leading-none cursor-pointer"
-                                >
-                                  Edit
-                                </button>
-                                <span className="text-[10px] text-gray-400 leading-none">|</span>
-                                <button
-                                  onClick={() => handleDelete(lead.id)}
-                                  className="text-[11px] text-gray-600 hover:text-rose-500 transition-colors leading-none cursor-pointer"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-gray-500 max-w-[140px] text-xs">
-                            {lead.comments
-                              ? (
-                                <span
-                                  title={lead.comments}
-                                  className="block truncate cursor-default hover:text-gray-800 transition-colors"
-                                  style={{ maxWidth: "130px" }}
-                                >
-                                  {lead.comments}
-                                </span>
-                              )
-                              : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-3 py-3 text-indigo-500 text-xs">{lead.email || "—"}</td>
-                          <td className="px-3 py-3 text-gray-600">{lead.phone || "—"}</td>
-                          <td className="px-3 py-3">
-                            {assignedLabel ? (
-                              <div className="flex items-center gap-1.5">
-                                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold flex-shrink-0">
-                                  {assignedInitial}
-                                </div>
-                                <span className="text-xs text-gray-700 font-medium">{assignedLabel}</span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-gray-300 italic">Unassigned</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-3"><StatusBadge status={lead.status} /></td>
-                          <td className="px-3 py-3 text-gray-500 whitespace-nowrap text-xs">{lead.source || "—"}</td>
-                          <td className="px-3 py-3 text-gray-400 whitespace-nowrap text-xs">{formatDate(lead.lastContact)}</td>
-                          <td className="px-3 py-3 text-gray-400 whitespace-nowrap text-xs">{formatDate(lead.createdAt)}</td>
-                          <td className="px-3 py-3">
-                            {lead.whatsappEnabled
-                              ? <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">Enabled</span>
-                              : <span className="text-xs text-gray-300 font-medium">Disabled</span>}
-                          </td>
-                          <td className="px-3 py-3">
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => openLeadView(lead)}
-                                className="p-1.5 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors cursor-pointer"
-                                title="View lead"
-                              >
-                                <FaEye className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => openHistory(lead)}
-                                className="p-1.5 rounded-md bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors cursor-pointer"
-                                title="Contact history"
-                              >
-                                <FaClock className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-              totalItems={filteredLeads.length}
-              pageSize={pageSize}
-            />
-          </div>
-        ) : (
-          /* ── GRID VIEW ── */
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {loading
-                ? Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 animate-pulse">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-8 h-8 rounded-full bg-gray-100" />
-                      <div className="flex-1 space-y-1">
-                        <div className="h-3 bg-gray-100 rounded w-3/4" />
-                        <div className="h-2 bg-gray-100 rounded w-1/2" />
-                      </div>
-                    </div>
-                  </div>
-                ))
-                : paginatedLeads.map((lead) => (
-                  <LeadCard key={lead.id} lead={lead} />
-                ))}
-              {!loading && paginatedLeads.length === 0 && (
-                <div className="col-span-full text-center py-16 text-gray-400">
-                  <FaUsers className="w-8 h-8 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">No leads found</p>
-                </div>
-              )}
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-                totalItems={filteredLeads.length}
-                pageSize={pageSize}
-              />
-            </div>
-          </div>
-        )}
+        <div className="toolbar-r">
+          <button
+            className={`icon-btn-outline ${showChart ? "icon-btn-outline--on" : ""}`}
+            onClick={() => setShowChart(!showChart)}
+            title="View Performance Chart"
+            style={{ marginRight: '8px' }}
+          >
+            <BarChart3 size={14} />
+          </button>
+        </div>
       </div>
 
-      {/* ── ADD LEAD MODAL ── */}
-      <Modal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title="New Lead" size="xl">
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Basic Information</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {leadFields.filter((f) => ["name", "email", "phone", "company", "position"].includes(f.name)).map((f) => (
-                <Input key={f.name} {...f} value={formData[f.name] || ""} onChange={handleChange} />
-              ))}
-            </div>
+      {/* ── FILTER CHIPS ── */}
+      {hasActiveFilters && (
+        <div className="chips-bar">
+          {search && <span className="chip">Search: &ldquo;{search}&rdquo;<button className="chip-x" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}
+          {filters.status !== "All" && <span className="chip"><span className="chip-dot" style={{ background: STATUS_META[filters.status]?.dot }} />Status: {filters.status}<button className="chip-x" onClick={() => setFilters({ ...filters, status: "All" })}><IX s={9} c="#4f46e5" /></button></span>}
+          {filters.source !== "All" && <span className="chip">Source: {filters.source}<button className="chip-x" onClick={() => setFilters({ ...filters, source: "All" })}><IX s={9} c="#4f46e5" /></button></span>}
+          {filters.assignee !== "All" && <span className="chip">Owner: {filters.assignee}<button className="chip-x" onClick={() => setFilters({ ...filters, assignee: "All" })}><IX s={9} c="#4f46e5" /></button></span>}
+          <button className="chip-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button>
+        </div>
+      )}
+
+      {/* ── BULK BAR ── */}
+      {selected.size > 0 && (
+        <div className="bulk-bar">
+          <span className="bulk-cnt">{selected.size} selected</span>
+          <button className="bulk-btn">Assign Owner</button>
+          <button className="bulk-btn">Change Status</button>
+          <button className="bulk-btn bulk-btn--danger">Delete</button>
+          <button className="bulk-close" onClick={() => setSelected(new Set())}><IX s={12} c="#6b7280" /></button>
+        </div>
+      )}
+
+      {/* ── KANBAN VIEW ── */}
+      {viewMode === "kanban" && (
+        <KanbanBoard leads={filtered} onUpdateLead={updateLead} onOpenDetails={setDetailsLead} onAdjustScore={adjustScore} />
+      )}
+
+      {/* ── LIST VIEW ── */}
+      {viewMode === "list" && (
+        <div className="table-card">
+          <div className="table-scroll">
+            <table className={`table ${wrapText ? "table--wrap" : ""}`}>
+              <thead>
+                <tr className="thead-row">
+                  <th className="th th-check"><input type="checkbox" className="cb" checked={allOnPageSel} onChange={toggleAll} /></th>
+                  {activeCols.map(col => (
+                    <th key={col.key} className={`th th-${col.key} ${sortBy === col.key ? "th--sorted" : ""}`} onClick={() => handleSort(col.key)}>
+                      <span className="th-inner">{col.label}<SortIco col={col.key} /></span>
+                    </th>
+                  ))}
+                  <th className="th th-actions" style={{ textAlign: "right", paddingRight: "10px" }}>
+                    <button className={`icon-btn-outline ${showColPanel ? "icon-btn-outline--on" : ""}`} onClick={() => setShowColPanel(true)} title="Manage Columns" style={{ padding: "4px 6px",marginLeft:"45px" }}>
+                      <ISettings s={13} />
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.length === 0 ? (
+                  <tr><td colSpan={activeCols.length + 2}>
+                    <div className="empty-state"><ISearch s={32} c="#d1d5db" /><p>No leads match your filters</p><span>Try adjusting your search or clearing active filters</span></div>
+                  </td></tr>
+                ) : paginated.map((lead, i) => {
+                  const initials = lead.name.split(" ").map(n => n[0]).join("").slice(0, 2);
+                  const isSel = selected.has(lead.id);
+                  return (
+                    <tr key={lead.id} className={`row ${isSel ? "row--sel" : ""}`} style={{ animationDelay: `${i * 0.02}s` }}>
+                      <td className="td td-check"><input type="checkbox" className="cb" checked={isSel} onChange={() => toggleOne(lead.id)} /></td>
+                      {activeCols.map(col => {
+                        switch (col.key) {
+                          case "name": return (
+                            <td key="name" className="td td-name">
+                              <div className="name-cell">
+                                <div className="avatar" style={{ background: lead.avatarBg }}>{initials}</div>
+                                <div className="name-block">
+                                  <button className="name-link" onClick={() => setDetailsLead(lead)}>{lead.name}</button>
+
+                                </div>
+                              </div>
+                            </td>
+                          );
+                          case "status": return <td key="status" className="td td-status"><StatusCell value={lead.status} onChange={v => updateLead(lead.id, "status", v)} /></td>;
+                          case "followUp": return <td key="followUp" className="td td-followup"><FollowUpCell value={lead.followUpDate} onChange={v => updateLead(lead.id, "followUpDate", v)} /></td>;
+                          case "phone": return <td key="phone" className="td"><a href={`tel:${lead.phone}`} className="link-cell"><IPhone s={11} />&ensp;{lead.phone}</a></td>;
+                          case "email": return <td key="email" className="td"><a href={`mailto:${lead.email}`} className="link-cell"><IMail s={11} />&ensp;{lead.email}</a></td>;
+                          case "company": return <td key="company" className="td"><span className="cell-txt">{lead.company}</span></td>;
+                          case "source": return <td key="source" className="td"><span className="pill" >{lead.source}</span></td>;
+                          case "score": return <td key="score" className="td td-score"><ScoreBar score={lead.score} onAdjust={d => adjustScore(lead.id, d)} /></td>;
+                          case "assignee": return <td key="assignee" className="td"><div className="owner-cell"><div className="owner-av" style={{ background: lead.avatarBg }}>{lead.assignee.split(" ").map(n => n[0]).join("").slice(0, 2)}</div><span className="cell-txt">{lead.assignee}</span></div></td>;
+                          case "createdDate": return <td key="createdDate" className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td>;
+                          default: return null;
+                        }
+                      })}
+                      <td className="td td-actions">
+                        <div className="row-acts">
+                          <button className="act-btn" title="Call"><IPhone s={12} /></button>
+                          <button className="act-btn" title="Email"><IMail s={12} /></button>
+                          <button className="act-btn act-btn--edit" title="Edit" onClick={() => setEditLead(lead)}><IEdit s={12} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Location</h3>
-            <div className="grid grid-cols-3 gap-4">
-              {leadFields.filter((f) => ["address", "city", "state", "country", "zipCode", "website"].includes(f.name)).map((f) => (
-                <Input key={f.name} {...f} value={formData[f.name] || ""} onChange={handleChange} />
-              ))}
+          <div className="pagination">
+            <span className="pg-info">{filtered.length === 0 ? "No records" : `${(page - 1) * rowsPerPage + 1}–${Math.min(page * rowsPerPage, filtered.length)} of ${filtered.length} records`}</span>
+            <div className="pg-btns">
+              <button className="pg-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}><IChevL s={12} />Prev</button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).filter(p => Math.abs(p - page) <= 2 || p === 1 || p === totalPages).reduce((acc, p, idx, arr) => {
+                if (idx > 0 && p - arr[idx - 1] > 1) acc.push(<span key={"e" + p} className="pg-ellipsis">…</span>);
+                acc.push(<button key={p} className={`pg-btn pg-num ${page === p ? "pg-num--on" : ""}`} onClick={() => setPage(p)}>{p}</button>);
+                return acc;
+              }, [])}
+              <button className="pg-btn" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next<IChevR s={12} /></button>
             </div>
-          </div>
-          <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Campaign & Source</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {leadFields.filter((f) => ["source", "campaignName", "campaignSource", "campaignMedium"].includes(f.name)).map((f) => (
-                <Input key={f.name} {...f} value={formData[f.name] || ""} onChange={handleChange} />
-              ))}
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Assignment & Status</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {leadFields.filter((f) => ["status", "assignedToUserId"].includes(f.name)).map((f) => (
-                <Input key={f.name} {...f} value={formData[f.name] || ""} onChange={handleChange} />
-              ))}
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Notes</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Comments</label>
-                <textarea name="comments" value={formData.comments || ""} onChange={handleChange} rows={3}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white resize-none" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Description</label>
-                <textarea name="description" value={formData.description || ""} onChange={handleChange} rows={3}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white resize-none" />
-              </div>
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Settings</h3>
-            <div className="flex flex-wrap gap-6">
-              {checkboxFields.map((f) => (
-                <Toggle key={f.name} {...f} checked={!!formData[f.name]}
-                  onChange={(e) => setFormData({ ...formData, [f.name]: e.target.checked })} />
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-            <button onClick={() => { setIsAddOpen(false); setFormData({}); }}
-              className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium">
-              Cancel
-            </button>
-            <button onClick={handleCreate}
-              className="px-5 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors font-medium shadow-sm active:scale-95">
-              Save Lead
-            </button>
           </div>
         </div>
-      </Modal>
-
-      {/* IMPORT LEADS MODAL */}
-      {isImportOpen && (
-        <ImportLeadsModal
-          onClose={() => setIsImportOpen(false)}
-          onSuccess={refreshAll}
-        />
       )}
 
-      {/* VIEW LEAD MODAL */}
-      {viewLeadEntry && (
-        <ViewLeadModal
-          leadId={viewLeadEntry.id}
-          leadData={viewLeadEntry.data}
-          onClose={closeLeadView}
-          onStatusChange={handleStatusChange}
-          onConverted={refreshAll}
-          onDelete={(id) => {
-            closeLeadView();
-            handleDelete(id);
-          }}
-        />
-      )}
-
-      {/* EDIT LEAD MODAL */}
-      {editLeadEntry && (
-        <EditLeadModal
-          lead={editLeadEntry}
-          onClose={closeEditLead}
-          onSaved={refreshAll}
-        />
-      )}
-
-      {/* CONTACT HISTORY MODAL */}
-      {historyEntry && (
-        <ContactHistoryModal
-          leadId={historyEntry.id}
-          leadName={historyEntry.name}
-          onClose={closeHistory}
-        />
-      )}
+      {/* ── OVERLAYS ── */}
+      {showColPanel && <ManageColumnsPanel visibleCols={visibleCols} setVisibleCols={setVisibleCols} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} wrapText={wrapText} setWrapText={setWrapText} onClose={() => setShowColPanel(false)} />}
+      {detailsLead && <LeadDetailsModal lead={detailsLead} onClose={() => setDetailsLead(null)} activityLog={activityLog} onUpdateLead={updateLead} onAdjustScore={adjustScore} />}
+      {editLead && <EditModal lead={editLead} onClose={() => setEditLead(null)} />}
+      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={newLeads => setLeads(p => [...p, ...newLeads])} />}
+      {showFilter && <FilterModal onClose={() => setShowFilter(false)} filters={filters} setFilters={setFilters} activeFilterCount={activeFilterCount} onApply={handleApplyFilters} onClear={handleClearFilters} />}
+      {createLeadType && <CreateLeadModal leadType={createLeadType} onClose={() => setCreateLeadType(null)} onSave={handleCreateLead} />}
+      {showChart && <LeadsPerformanceChart onClose={() => setShowChart(false)} leads={leads} />}
     </div>
   );
-};
-
-export default Leads;
+}

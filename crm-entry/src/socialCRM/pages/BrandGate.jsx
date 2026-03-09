@@ -1,106 +1,118 @@
-// import { useState } from "react";
-// import { Outlet, useNavigate, useParams } from "react-router-dom";
-// import { createBrand, switchBrand } from "../api/brand.api";
+import { useEffect, useState } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
+import { useBrand } from "../context/BrandContext";
+import toast from "react-hot-toast";
 
-// export default function BrandGate() {
-//   const navigate = useNavigate();
-//   const { domainCode } = useParams();
+function initials(name = "") {
+  return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+}
 
-//   const [brandIdInput, setBrandIdInput] = useState("");
-//   const [brandName, setBrandName] = useState("");
-//   const [loading, setLoading] = useState(false);
+/**
+ * Route guard — blocks access to dashboard routes until the user
+ * has at least one brand AND one is active.
+ * - No brands at all → redirect to /brand/setup (create first brand)
+ * - Brands exist but none active → show inline brand selection screen
+ * - Active brand → render dashboard outlet
+ */
+export default function BrandGate() {
+  const navigate = useNavigate();
+  const { brands, activeBrand, loading, switchBrand } = useBrand();
+  const [switching, setSwitching] = useState(null);
 
-//   const storedBrandId = localStorage.getItem("brandId");
+  useEffect(() => {
+    if (loading) return;
+    if (brands.length === 0) {
+      navigate("/crm/socialmedia/brand/setup", { replace: true });
+    }
+  }, [loading, brands, navigate]);
 
-//   // ✅ If brand already selected → allow access
-//   if (storedBrandId) {
-//     return <Outlet />;
-//   }
+  const handleActivate = async (slug) => {
+    setSwitching(slug);
+    try {
+      await switchBrand(slug);
+      toast.success("Brand activated!");
+    } catch (err) {
+      toast.error(err.message || "Failed to activate brand");
+    } finally {
+      setSwitching(null);
+    }
+  };
 
-//   const goToDashboard = () => {
-//     navigate(`/crm/${domainCode}/dashboard`, { replace: true });
-//   };
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <svg className="animate-spin w-10 h-10 text-blue-600" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          <p className="text-gray-500 text-sm">Loading brand...</p>
+        </div>
+      </div>
+    );
+  }
 
-//   /* =========================================
-//      LOGIN WITH EXISTING BRAND
-//   ========================================= */
-//   const handleLoginWithBrand = async () => {
-//     if (!brandIdInput) return alert("Enter Brand ID");
+  // Brands exist but none is active — ask the user to select one
+  if (brands.length > 0 && !activeBrand) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Select a Brand</h1>
+            <p className="text-gray-500 mt-2 text-sm">
+              No brand is currently active. Choose one below to continue.
+            </p>
+          </div>
 
-//     try {
-//       setLoading(true);
+          <div className="space-y-3">
+            {brands.map((brand) => {
+              const isSwitching = switching === brand.slug;
+              return (
+                <div
+                  key={brand.slug}
+                  className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-4"
+                >
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-slate-400 to-slate-600 shadow-sm">
+                    {brand.logoUrl ? (
+                      <img src={brand.logoUrl} alt={brand.name} className="w-11 h-11 rounded-xl object-cover"
+                        onError={(e) => { e.target.style.display = "none"; }} />
+                    ) : (
+                      <span className="text-white text-sm font-bold">{initials(brand.name)}</span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 text-sm truncate">{brand.name}</p>
+                    {brand.description && (
+                      <p className="text-xs text-slate-400 truncate">{brand.description}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleActivate(brand.slug)}
+                    disabled={isSwitching}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all disabled:opacity-50 flex-shrink-0"
+                  >
+                    {isSwitching ? "Activating..." : "Activate"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
 
-//       // 🔥 Tell backend active brand
-//       await switchBrand(brandIdInput);
+          <p className="text-center text-xs text-gray-400 mt-5">
+            You can also create a new brand from the Brand Manager.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-//       // 🔥 Save locally
-//       localStorage.setItem("brandId", brandIdInput);
+  if (!activeBrand) return null;
 
-//       goToDashboard();
-//     } catch (err) {
-//       alert("Invalid Brand ID");
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   /* =========================================
-//      CREATE NEW BRAND
-//   ========================================= */
-//   const handleCreateBrand = async () => {
-//     if (!brandName) return alert("Enter Brand Name");
-
-//     try {
-//       setLoading(true);
-
-//       const newBrandId = await createBrand(brandName);
-
-//       // 🔥 Activate in backend
-//       await switchBrand(newBrandId);
-
-//       localStorage.setItem("brandId", newBrandId);
-
-//       goToDashboard();
-//     } catch (err) {
-//       alert(err.message);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   return (
-//     <div style={{ padding: 40, textAlign: "center" }}>
-//       <h2>Brand Setup Required</h2>
-
-//       <div style={{ marginTop: 20 }}>
-//         <h4>Login With Existing Brand ID</h4>
-//         <input
-//           type="text"
-//           placeholder="Enter Brand ID"
-//           value={brandIdInput}
-//           onChange={(e) => setBrandIdInput(e.target.value)}
-//         />
-//         <br /><br />
-//         <button onClick={handleLoginWithBrand} disabled={loading}>
-//           {loading ? "Processing..." : "Login with Brand ID"}
-//         </button>
-//       </div>
-
-//       <hr style={{ margin: "30px 0" }} />
-
-//       <div>
-//         <h4>Create New Brand</h4>
-//         <input
-//           type="text"
-//           placeholder="Enter Brand Name"
-//           value={brandName}
-//           onChange={(e) => setBrandName(e.target.value)}
-//         />
-//         <br /><br />
-//         <button onClick={handleCreateBrand} disabled={loading}>
-//           {loading ? "Creating..." : "Add Brand"}
-//         </button>
-//       </div>
-//     </div>
-//   );
-// }
+  return <Outlet />;
+}

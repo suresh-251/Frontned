@@ -1,11 +1,10 @@
 import axios from "axios";
 
 const api = axios.create({
-    baseURL:  "https://crmauth.metagensoft.com",
-
-    // baseURL: "https://crm.metagensoft.com/api/",
-    // baseURL: "https://albertine-nonempathic-heaven.ngrok-free.dev",
-    // baseURL: "https://localhost:8080",
+  // baseURL: "http://89.116.20.215:9090",
+  baseURL: "https://crmauth.metagensoft.com/",
+  // baseURL: "https://albertine-nonempathic-heaven.ngrok-free.dev",
+  // baseURL: "https://localhost:8080",
   headers: {
     "Content-Type": "application/json",
   },

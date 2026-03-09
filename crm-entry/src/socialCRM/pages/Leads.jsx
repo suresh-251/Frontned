@@ -237,24 +237,43 @@ export default function Leads() {
   /* =========================
      SIGNALR REAL-TIME
      ========================= */
-  useEffect(() => {
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl(HUB_URL, {
-        accessTokenFactory: () => localStorage.getItem("accessToken")
-      })
-      .withAutomaticReconnect()
-      .build();
+const connectionRef = useRef(null);
 
-    connection.on("LeadUpdated", (data) => {
-      reload({}); // silent reload
-    });
+useEffect(() => {
+  if (connectionRef.current) return;
 
-    connection.start().catch(err => console.error("SignalR connection failed:", err));
+  const connection = new signalR.HubConnectionBuilder()
+    .withUrl(HUB_URL, {
+      accessTokenFactory: () => localStorage.getItem("accessToken")
+    })
+    .withAutomaticReconnect()
+    .configureLogging(signalR.LogLevel.Information)
+    .build();
 
-    return () => {
-      connection.stop();
-    };
-  }, []);
+  connectionRef.current = connection;
+
+  connection.on("LeadUpdated", () => {
+    reload({});
+  });
+
+  const startConnection = async () => {
+    try {
+      if (connection.state === signalR.HubConnectionState.Disconnected) {
+        await connection.start();
+        console.log("✅ SignalR connected");
+      }
+    } catch (err) {
+      console.error("SignalR connection failed:", err);
+    }
+  };
+
+  startConnection();
+
+  return () => {
+    connection.stop();
+    connectionRef.current = null;
+  };
+}, []);
 
   /* =========================
      LOAD PAGES & FORMS
@@ -634,7 +653,7 @@ export default function Leads() {
                         />
                       </th>
                     )}
-                    {["Name", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map((h) => (
+                    {["Name", "Contact", "Status", "Assigned To", "Remark",  "Created At", "Actions"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -643,14 +662,14 @@ export default function Leads() {
                   {loading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i} className="animate-pulse">
-                        <td colSpan={isSelectMode ? 8 : 7} className="px-4 py-4">
+                        <td colSpan={isSelectMode ? 9 : 8} className="px-4 py-4">
                           <div className="h-4 bg-gray-100 rounded w-full" />
                         </td>
                       </tr>
                     ))
                   ) : paginatedLeads.length === 0 ? (
                     <tr>
-                      <td colSpan={isSelectMode ? 8 : 7} className="text-center py-16 text-gray-400">
+                      <td colSpan={isSelectMode ? 9 : 8} className="text-center py-16 text-gray-400">
                         <FaUsers className="w-8 h-8 mx-auto mb-3 opacity-30" />
                         <p className="text-sm">No leads found</p>
                         <p className="text-xs mt-1">Adjust your filters or search query.</p>
@@ -857,3 +876,7 @@ export default function Leads() {
     </div>
   );
 }
+
+
+
+
