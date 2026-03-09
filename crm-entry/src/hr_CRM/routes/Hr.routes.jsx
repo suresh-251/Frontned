@@ -1,64 +1,3 @@
-// import { Routes, Route, Navigate } from "react-router-dom";
-
-// /* Layout */
-// import HRLayout from "../layout/HRLayout";
-
-// /* Pages */
-// import Dashboard from "../pages/Dashboard";
-// import Employees from "../pages/Employees";
-// import Branch from "../pages/Branch";
-// import Project from "../pages/Project";
-// import HRLeads from "../pages/HRLeads";
-// import Attendance from "../pages/Attendance";
-// import Departments from "../../hr_CRM/pages/Deparments";
-// import Recruitment from "../pages/Recruitment";
-// import Todo from "../pages/Todo";
-// import Shift from "../pages/Shift";
-// import OTApproval from "../pages/shift/OTApproval";
-// import OvertimePolicy from "../pages/shift/OverTimePolicy";
-// import OvertimeRecord from "../pages/shift/OvertimeRecord";
-// import Knowledge from "../pages/Knowledge";
-// import DeptRole from "../pages/dept/DeptRole";
-// import DeptBudget from "../pages/dept/DeptBudget";
-// import BudgetChange from "../pages/dept/BudgetChange";
-// import Onboarding from "../pages/Onboarding";
-
-// export default function HrRoutes() {
-//   return (
-//     <Routes>
-//       <Route element={<HRLayout />}>
-        
-//         {/* Default redirect */}
-//         <Route index element={<Navigate to="dashboard" replace />} />
-
-//         <Route path="dashboard" element={<Dashboard />} />
-//         <Route path="employees" element={<Employees />} />
-//         <Route path="branch" element={<Branch />} />
-//         <Route path="departments" element={<Departments />} />
-//         <Route path="project" element={<Project />} />
-//         <Route path="overtimeApproval" element={<OTApproval />} />
-//         <Route path="overtime-policy" element={<OvertimePolicy />} />
-//         <Route path="department-role" element={<DeptRole />} />
-//         <Route path="leads" element={<HRLeads />} />
-//         <Route path="onboarding" element={<Onboarding />} />
-//         <Route path="attendance" element={<Attendance />} />
-//         <Route path="shift" element={<Shift />} />
-//         <Route path="overtime-record" element={<OvertimeRecord />} />
-//         <Route path="knowledge" element={<Knowledge />} />
-//         <Route path="recruitment" element={<Recruitment />}  />
-//         <Route path="todo" element={<Todo />} /> 
-//         <Route path="department-budget" element={<DeptBudget />} /> 
-//         <Route path="budget-change" element={<BudgetChange />} /> 
-
-//       </Route>
-//     </Routes>
-//   );
-// }
-
-// ============================================                 multi working login routes             =========================================
-
-
-
 // import React, { useMemo } from "react";
 // import { Routes, Route, Navigate } from "react-router-dom";
 // import { jwtDecode } from "jwt-decode";
@@ -84,7 +23,6 @@
 // import BudgetChange from "../pages/dept/BudgetChange";
 // import Onboarding from "../pages/Onboarding";
 
-// /* Configs */
 // import { USER_MENU } from "../configs/userManu";
 // import { MANAGER_MENU } from "../configs/managerMenu";
 
@@ -96,21 +34,17 @@
 //     if (!token) return null;
 //     try {
 //       const decoded = jwtDecode(token);
-//       return decoded[ROLE_CLAIM]; // Use bracket notation here too
+//       return decoded[ROLE_CLAIM];
 //     } catch (e) { return null; }
 //   }, [token]);
 
 //   const activeMenu = role === "HR_MANAGER" ? MANAGER_MENU : USER_MENU;
 
-//   // Build a whitelist of allowed path slugs
 //   const allowedPaths = useMemo(() => {
 //     const paths = [];
 //     activeMenu.forEach(item => {
-//       if (item.type === 'link') {
-//         paths.push(item.path.split('/').pop());
-//       } else if (item.type === 'dropdown') {
-//         item.children.forEach(child => paths.push(child.path.split('/').pop()));
-//       }
+//       if (item.type === 'link') paths.push(item.path.split('/').pop());
+//       else if (item.type === 'dropdown') item.children.forEach(c => paths.push(c.path.split('/').pop()));
 //     });
 //     return paths;
 //   }, [activeMenu]);
@@ -121,8 +55,7 @@
 //     <Routes>
 //       <Route element={<HRLayout />}>
 //         <Route index element={<Navigate to="dashboard" replace />} />
-
-//         {/* --- Guarded Routes --- */}
+        
 //         {isAllowed("dashboard") && <Route path="dashboard" element={<Dashboard />} />}
 //         {isAllowed("branch") && <Route path="branch" element={<Branch />} />}
 //         {isAllowed("employees") && <Route path="employees" element={<Employees />} />}
@@ -142,25 +75,11 @@
 //         {isAllowed("budget-change") && <Route path="budget-change" element={<BudgetChange />} />}
 //         {isAllowed("department-role") && <Route path="department-role" element={<DeptRole />} />}
 
-//         {/* Catch-all: If route isn't in whitelist, redirect to dashboard */}
 //         <Route path="*" element={<Navigate to="dashboard" replace />} />
 //       </Route>
 //     </Routes>
 //   );
 // }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -206,11 +125,13 @@ export default function HrRoutes() {
     } catch (e) { return null; }
   }, [token]);
 
-  const activeMenu = role === "HR_MANAGER" ? MANAGER_MENU : USER_MENU;
+  // 🛑 FIX 1: Explicitly give ADMIN access to the MANAGER_MENU
+  const activeMenu = (role === "HR_MANAGER" || role === "ADMIN") ? MANAGER_MENU : USER_MENU;
 
   const allowedPaths = useMemo(() => {
     const paths = [];
     activeMenu.forEach(item => {
+      // Use full path comparison to be safer, or continue using slug
       if (item.type === 'link') paths.push(item.path.split('/').pop());
       else if (item.type === 'dropdown') item.children.forEach(c => paths.push(c.path.split('/').pop()));
     });
@@ -219,10 +140,14 @@ export default function HrRoutes() {
 
   const isAllowed = (slug) => allowedPaths.includes(slug);
 
+  // 🛑 FIX 2: Use Absolute Paths for Navigates to prevent "dashboard/dashboard/dashboard"
+  const baseRedirect = "/crm/hr/dashboard";
+
   return (
     <Routes>
       <Route element={<HRLayout />}>
-        <Route index element={<Navigate to="dashboard" replace />} />
+        {/* Index redirect using absolute path */}
+        <Route index element={<Navigate to={baseRedirect} replace />} />
         
         {isAllowed("dashboard") && <Route path="dashboard" element={<Dashboard />} />}
         {isAllowed("branch") && <Route path="branch" element={<Branch />} />}
@@ -243,7 +168,8 @@ export default function HrRoutes() {
         {isAllowed("budget-change") && <Route path="budget-change" element={<BudgetChange />} />}
         {isAllowed("department-role") && <Route path="department-role" element={<DeptRole />} />}
 
-        <Route path="*" element={<Navigate to="dashboard" replace />} />
+        {/* Catch-all redirect using absolute path */}
+        <Route path="*" element={<Navigate to={baseRedirect} replace />} />
       </Route>
     </Routes>
   );
