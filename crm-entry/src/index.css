@@ -202,3 +202,38 @@
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(to bottom, #64748b, #475569);
 }
+
+
+
+
+
+
+:root {
+  /* Default Light */
+  --bg-body: #f8fafc; --bg-card: #ffffff; --text-main: #1e293b; --border-color: #e2e8f0;
+}
+
+[data-theme='dark'] {
+  --bg-body: #0f172a; --bg-card: #1e293b; --text-main: #f1f5f9; --border-color: #334155;
+}
+
+[data-theme='midnight'] {
+  --bg-body: #0b1437; --bg-card: #111c44; --text-main: #ffffff; --border-color: #1b254b;
+}
+
+[data-theme='eco'] {
+  --bg-body: #f0f4f3; --bg-card: #ffffff; --text-main: #2d3748; --border-color: #cbd5e0;
+}
+
+[data-theme='cloud'] {
+  --bg-body: #f4f7fe; --bg-card: #ffffff; --text-main: #2b3674; --border-color: #e2e8f0;
+}
+
+[data-theme='rose'] {
+  --bg-body: #fff5f7; --bg-card: #ffffff; --text-main: #4a1212; --border-color: #ffe4e8;
+}
+
+/* Apply transitions to everything for a smooth feel */
+body, header, aside, main, div, button {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}

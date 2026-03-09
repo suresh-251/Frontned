@@ -391,12 +391,11 @@
 
 
 
-
 import { useEffect, useState } from "react";
 import { 
   Plus, Search, ShieldCheck, User, Building, 
   Eye, Loader2, X, Phone, Briefcase, Mail,
-  ChevronRight, ChevronLeft, Fingerprint, Globe, Shield, Lock
+  ChevronRight, ChevronLeft, Fingerprint, Globe, Shield
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
@@ -409,24 +408,30 @@ import { createUser, getUserById } from "../../api/users/users.api";
 
 export default function Employees() {
   const [users, setUsers] = useState([]);
+  const [domains, setDomains] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  // Pagination State
+  // Pagination State - 6 items per page
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
-  /* =======================
-      FETCH USERS
-     ======================= */
+  const [form, setForm] = useState({
+    username: "", email: "", domainCode: "", temporaryPassword: "",
+    roleCodes: [], profile: { firstName: "", lastName: "", mobileNumber: "", department: "", designation: "" },
+  });
+
   const loadData = async () => {
     setLoading(true);
     try {
       const res = await getAdminUsers({ page: 1, pageSize: 100 });
-      const baseUsers = res?.users || res?.data || [];
+      const baseUsers = res?.users || [];
       setUsers(baseUsers);
+      hydrateContacts(baseUsers, 1);
     } catch { 
       toast.error("Sync Error"); 
     } finally { 
@@ -434,9 +439,94 @@ export default function Employees() {
     }
   };
 
+  const hydrateContacts = async (allUsers, page) => {
+    const startIndex = (page - 1) * itemsPerPage;
+    const pageUsers = allUsers.slice(startIndex, startIndex + itemsPerPage);
+
+    const hydrationPromises = pageUsers.map(async (u) => {
+      if (!u.profile?.mobileNumber && !u.mobileNumber) {
+        try {
+          const detail = await getUserById(u.userId);
+          return { ...u, ...detail };
+        } catch { return u; }
+      }
+      return u;
+    });
+
+    const hydratedResults = await Promise.all(hydrationPromises);
+    setUsers(prev => {
+      const newUsers = [...prev];
+      hydratedResults.forEach(updated => {
+        const index = newUsers.findIndex(n => n.userId === updated.userId);
+        if (index !== -1) newUsers[index] = updated;
+      });
+      return newUsers;
+    });
+  };
+
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (users.length > 0) hydrateContacts(users, currentPage);
+  }, [currentPage]);
+
+  useEffect(() => {
+    const loadReferenceData = async () => {
+      try {
+        const [domainsData, rolesData] = await Promise.all([
+          getDomains(),
+          getAdminRoles(),
+        ]);
+        setDomains(Array.isArray(domainsData) ? domainsData : (domainsData?.data || []));
+        setRoles(Array.isArray(rolesData) ? rolesData : (rolesData?.data || []));
+      } catch (err) {
+        console.error("Reference data error:", err);
+        setDomains([]);
+        setRoles([]);
+      }
+    };
+    loadReferenceData();
+  }, []);
+
+  const handleDomainChange = (value) => {
+    setForm((prev) => ({
+      ...prev,
+      domainCode: value,
+      profile: { ...prev.profile, department: value },
+    }));
+  };
+
+  const toggleRole = (roleCode) => {
+    setForm(prev => ({
+      ...prev,
+      roleCodes: prev.roleCodes.includes(roleCode)
+        ? prev.roleCodes.filter(r => r !== roleCode)
+        : [...prev.roleCodes, roleCode],
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setSubmitting(true);
+      await createUser(form);
+      toast.success("Employee Created");
+      closeModal();
+      loadData();
+    } catch { toast.error("Creation Failed"); }
+    finally { setSubmitting(false); }
+  };
+
+  const closeModal = () => {
+    setCreateOpen(false);
+    setSelectedUser(null);
+    setForm({
+      username: "", email: "", domainCode: "", temporaryPassword: "",
+      roleCodes: [], profile: { firstName: "", lastName: "", mobileNumber: "", department: "", designation: "" },
+    });
+  };
 
   const filteredUsers = users.filter(u => 
     u.username?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -447,14 +537,14 @@ export default function Employees() {
   const currentData = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 p-2 font-sans">
+    <div className="max-w-7xl mx-auto space-y-4 p-2 font-sans text-[var(--text-main)] transition-colors duration-300">
       <Toaster position="top-right" />
       
-      {/* HEADER */}
+      {/* COMPACT HEADER */}
       <div className="flex items-center justify-between px-1">
         <div>
-          <h2 className="text-xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
-            <ShieldCheck size={22} className="text-indigo-600" /> Personnel
+          <h2 className="text-xl font-extrabold text-[var(--text-main)] tracking-tight flex items-center gap-2">
+            <ShieldCheck size={22} className="text-indigo-500" /> Personnel
           </h2>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Employee Directory</p>
         </div>
@@ -465,12 +555,18 @@ export default function Employees() {
             <input 
               type="text" placeholder="Search..." value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              className="text-xs font-bold bg-white border border-slate-200 rounded-lg pl-9 pr-4 py-2 w-56 outline-none focus:ring-2 focus:ring-indigo-50"
+              className="text-xs font-bold bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg pl-9 pr-4 py-2 w-56 outline-none focus:ring-2 focus:ring-indigo-500/20 text-[var(--text-main)]"
             />
           </div>
           <button 
-            onClick={() => setCreateOpen(true)} 
-            className="bg-indigo-600 text-white py-2 px-4 rounded-lg text-xs font-bold shadow-sm hover:bg-indigo-700 transition-all"
+            onClick={() => {
+              setForm({
+                username: "", email: "", domainCode: "", temporaryPassword: "",
+                roleCodes: [], profile: { firstName: "", lastName: "", mobileNumber: "", department: "", designation: "" },
+              });
+              setCreateOpen(true);
+            }} 
+            className="bg-indigo-600 text-white py-2 px-4 rounded-lg text-xs font-bold shadow-sm hover:bg-indigo-700 transition-all active:scale-95"
           >
             + Add New
           </button>
@@ -481,43 +577,49 @@ export default function Employees() {
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-500" size={24} /></div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-color)] shadow-sm overflow-hidden transition-colors">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-5 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">Employee Info</th>
-                <th className="px-5 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Contact & Email</th>
-                <th className="px-5 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Status</th>
-                <th className="px-5 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
+              <tr className="bg-[var(--bg-body)] border-b border-[var(--border-color)]">
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Employee Info</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Contact & Email</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Department</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[var(--border-color)]/30">
               {currentData.map((u) => (
-                <tr key={u.userId} className="hover:bg-slate-50/50 transition-colors group">
+                <tr key={u.userId} className="hover:bg-indigo-500/[0.02] transition-colors group">
                   <td className="px-5 py-1.5">
                     <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 text-[11px] font-bold uppercase border border-indigo-100">
+                        <div className="h-8 w-8 bg-indigo-500/10 rounded-lg flex items-center justify-center text-indigo-500 text-[11px] font-bold uppercase border border-indigo-500/20">
                           {u.username?.charAt(0)}
                         </div>
                         <div>
-                          <p className="text-[12px] font-black text-slate-700 uppercase leading-none mb-0.5">{u.username}</p>
+                          <p className="text-[12px] font-black text-[var(--text-main)] uppercase leading-none mb-0.5">{u.username}</p>
                           <p className="text-[9px] font-bold text-slate-400 uppercase">UID: {u.userId}</p>
                         </div>
                     </div>
                   </td>
                   <td className="px-5 py-1.5 text-center">
-                      <p className="text-[11px] font-bold text-slate-600">{u.email}</p>
-                      <p className="text-[9px] font-black text-indigo-500 uppercase mt-0.5">{u.mobileNumber || "---"}</p>
+                      <p className="text-[11px] font-bold text-[var(--text-main)] opacity-80">{u.email}</p>
+                      <p className="text-[9px] font-black text-indigo-500 uppercase mt-0.5">{u.profile?.mobileNumber || u.mobileNumber || "---"}</p>
+                  </td>
+                  <td className="px-5 py-1.5 text-center">
+                    <span className="px-2.5 py-1 text-[9px] font-black uppercase rounded-md border bg-[var(--bg-body)] text-slate-400 border-[var(--border-color)]">
+                      {u.department || u.profile?.designation || "Unassigned"}
+                    </span>
                   </td>
                   <td className="px-5 py-1.5 text-center">
                       <span className={`px-2.5 py-1 text-[9px] font-black uppercase rounded-md border ${
-                        u.isActive !== false ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-200'
+                        u.isActive !== false ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
                       }`}>
                         {u.isActive !== false ? 'Active' : 'Disabled'}
                       </span>
                   </td>
                   <td className="px-5 py-1.5 text-right">
-                    <button onClick={() => setSelectedUser(u)} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 transition-all">
+                    <button onClick={() => setSelectedUser(u)} className="p-2 hover:bg-indigo-500/10 rounded-lg text-slate-400 hover:text-indigo-500 transition-all">
                       <Eye size={16}/>
                     </button>
                   </td>
@@ -526,55 +628,114 @@ export default function Employees() {
             </tbody>
           </table>
 
-          {/* PAGINATION */}
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Showing {currentData.length} of {filteredUsers.length}</p>
+          {/* COMPACT PAGINATION */}
+          <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--border-color)] bg-[var(--bg-body)]/50">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing {currentData.length} of {filteredUsers.length}</p>
             <div className="flex items-center gap-1.5">
-              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="p-1.5 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-30"><ChevronLeft size={14} /></button>
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="p-1.5 border border-[var(--border-color)] rounded-lg bg-[var(--bg-card)] text-[var(--text-main)] hover:bg-[var(--bg-body)] disabled:opacity-30 transition-all"><ChevronLeft size={14} /></button>
               <div className="flex gap-1">
                 {[...Array(totalPages)].map((_, i) => (
-                  <button key={i} onClick={() => setCurrentPage(i + 1)} className={`h-7 w-7 rounded-lg text-[10px] font-black transition-all ${currentPage === i + 1 ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{i + 1}</button>
+                  <button key={i} onClick={() => setCurrentPage(i + 1)} className={`h-7 w-7 rounded-lg text-[10px] font-black transition-all ${currentPage === i + 1 ? 'bg-indigo-600 text-white shadow-md' : 'bg-[var(--bg-card)] border border-[var(--border-color)] text-slate-400 hover:bg-[var(--bg-body)]'}`}>{i + 1}</button>
                 ))}
               </div>
-              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="p-1.5 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-30"><ChevronRight size={14} /></button>
+              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="p-1.5 border border-[var(--border-color)] rounded-lg bg-[var(--bg-card)] text-[var(--text-main)] hover:bg-[var(--bg-body)] disabled:opacity-30 transition-all"><ChevronRight size={14} /></button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL SYSTEM */}
+      {/* COMPACT MODAL SYSTEM */}
       <AnimatePresence>
-        {createOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
+        {(createOpen || selectedUser) && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }} 
               animate={{ scale: 1, opacity: 1 }} 
               exit={{ scale: 0.95, opacity: 0 }} 
-              className="my-auto"
+              className="bg-[var(--bg-card)] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border border-[var(--border-color)] flex flex-col max-h-[90vh] transition-colors duration-300"
             >
-              <CreateUser 
-                onSuccess={() => { setCreateOpen(false); loadData(); }} 
-                onClose={() => setCreateOpen(false)} 
-              />
-            </motion.div>
-          </div>
-        )}
+               {/* MODAL HEADER */}
+               <div className="px-5 py-4 bg-[var(--bg-body)] border-b border-[var(--border-color)] flex justify-between items-center shrink-0">
+                 <div>
+                   <h3 className="text-[11px] font-black text-[var(--text-main)] uppercase tracking-widest">
+                     {createOpen ? "New Employee" : "Personnel Record"}
+                   </h3>
+                 </div>
+                 <button type="button" onClick={closeModal} className="p-1.5 hover:bg-[var(--bg-card)] rounded-full text-slate-400 hover:text-red-500 transition-colors"><X size={16}/></button>
+               </div>
 
-        {selectedUser && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-lg rounded-2xl p-6 shadow-2xl">
-                <div className="flex justify-between items-center mb-6 border-b pb-4">
-                  <h3 className="text-xl font-bold">Employee Record</h3>
-                  <button onClick={() => setSelectedUser(null)}><X size={20}/></button>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <DetailItem label="Username" value={selectedUser.username} />
-                  <DetailItem label="Email" value={selectedUser.email} />
-                  <DetailItem label="User ID" value={selectedUser.userId} />
-                  <DetailItem label="Status" value={selectedUser.isActive ? "Active" : "Inactive"} />
-                </div>
-                <button onClick={() => setSelectedUser(null)} className="w-full mt-8 py-2 bg-slate-900 text-white rounded-xl font-bold">Close</button>
-             </motion.div>
+               {/* MODAL BODY */}
+               <div className="p-4 overflow-y-auto custom-scrollbar">
+                  {createOpen ? (
+                    <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-x-3 gap-y-2" autoComplete="off">
+                      <InputField label="Username" required value={form.username} onChange={e => setForm({...form, username: e.target.value})} icon={<User size={12}/>} />
+                      <InputField label="Email Address" type="email" required value={form.email} onChange={e => setForm({...form, email: e.target.value})} icon={<Mail size={12}/>} />
+                      <InputField label="Mobile Number" required value={form.profile.mobileNumber} onChange={e => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        if(val.length <= 10) setForm({...form, profile: {...form.profile, mobileNumber: val}});
+                      }} icon={<Phone size={12}/>} />
+                      <InputField label="Designation" value={form.profile.designation} onChange={e => setForm({...form, profile: {...form.profile, designation: e.target.value}})} icon={<Briefcase size={12}/>} />
+                      <InputField label="First Name" value={form.profile.firstName} onChange={e => setForm({...form, profile: {...form.profile, firstName: e.target.value}})} />
+                      <InputField label="Last Name" value={form.profile.lastName} onChange={e => setForm({...form, profile: {...form.profile, lastName: e.target.value}})} />
+                      
+                      {/* DOMAIN DROP DOWN */}
+                      <div className="col-span-2 space-y-0.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">System Domain</label>
+                        <select 
+                          required
+                          value={form.domainCode}
+                          onChange={e => handleDomainChange(e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-bold outline-none focus:ring-1 focus:ring-indigo-500/30 text-[var(--text-main)]" 
+                        >
+                          <option value="" className="bg-[var(--bg-card)]">Select Domain...</option>
+                          {domains.map(d => <option key={d.domainId || d.domainCode} value={d.domainCode} className="bg-[var(--bg-card)]">{d.domainName}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="col-span-2 space-y-0.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Assign Security Roles</label>
+                        <div className="flex flex-wrap gap-1 p-1 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl max-h-16 overflow-y-auto">
+                          {roles.map(r => (
+                            <label key={r.roleCode} className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--text-main)] bg-[var(--bg-card)] px-2 py-1 rounded-lg border border-[var(--border-color)]/30 cursor-pointer hover:border-indigo-500/50 transition-all">
+                              <input type="checkbox" checked={form.roleCodes.includes(r.roleCode)} onChange={() => toggleRole(r.roleCode)} className="accent-indigo-600 w-2.5 h-2.5"/>
+                              {r.roleName}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="col-span-2 mt-0.5">
+                         <InputField label="Temp Password" type="password" required value={form.temporaryPassword} onChange={e => setForm({...form, temporaryPassword: e.target.value})} icon={<LockIcon size={12}/>} />
+                      </div>
+
+                      <div className="col-span-2 pt-2 flex justify-end gap-2 mt-1 border-t border-[var(--border-color)]/30">
+                        <button type="button" onClick={closeModal} className="px-5 py-1.5 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 rounded-xl transition-all">Cancel</button>
+                        <button type="submit" disabled={submitting} className="px-6 py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-md hover:bg-indigo-700 transition-all active:scale-95">
+                          {submitting ? "Processing..." : "Register"}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    /* VIEW MODE */
+                    <div className="grid grid-cols-2 gap-2.5">
+                       <DetailCard label="System ID" value={selectedUser?.userId} icon={<Fingerprint size={12}/>}/>
+                       <DetailCard label="Username" value={selectedUser?.username} icon={<User size={12}/>}/>
+                       <DetailCard label="Email Access" value={selectedUser?.email} icon={<Mail size={12}/>}/>
+                       <DetailCard label="Contact" value={selectedUser?.profile?.mobileNumber || selectedUser?.mobileNumber || "---"} icon={<Phone size={12}/>}/>
+                       <DetailCard label="First Name" value={selectedUser?.profile?.firstName || "---"} />
+                       <DetailCard label="Last Name" value={selectedUser?.profile?.lastName || "---"} />
+                       <DetailCard label="Department" value={selectedUser?.domainCode || "Corporate"} icon={<Globe size={12}/>}/>
+                       <DetailCard label="Designation" value={selectedUser?.profile?.designation || selectedUser?.designation || "Staff"} icon={<Briefcase size={12}/>}/>
+
+                       <div className="col-span-2 pt-2 flex justify-end mt-1">
+                          <button type="button" onClick={closeModal} className="px-6 py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-md hover:bg-indigo-700 transition-all tracking-widest active:scale-95">
+                              Close Record
+                          </button>
+                       </div>
+                    </div>
+                  )}
+               </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>
@@ -582,11 +743,31 @@ export default function Employees() {
   );
 }
 
-function DetailItem({ label, value }) {
-  return (
-    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-      <p className="text-[10px] font-bold text-slate-400 uppercase">{label}</p>
-      <p className="text-sm font-black text-slate-700">{value || "---"}</p>
+/* HELPER COMPONENTS */
+const InputField = ({ label, icon, ...props }) => (
+  <div className="space-y-0.5">
+    <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">{label}</label>
+    <div className="relative">
+      {icon && <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>}
+      <input 
+        {...props} 
+        className={`w-full ${icon ? 'pl-8' : 'px-2.5'} py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/40 text-[var(--text-main)] transition-all placeholder:text-slate-500`} 
+      />
     </div>
-  );
-}
+  </div>
+);
+
+const DetailCard = ({ label, value, icon }) => (
+  <div className="p-2.5 bg-[var(--bg-body)] border border-[var(--border-color)]/50 rounded-xl group hover:bg-[var(--bg-card)] hover:border-indigo-500/30 transition-all">
+    <div className="flex items-center gap-1.5 mb-0.5">
+      {icon && <span className="text-indigo-400 group-hover:text-indigo-600 transition-colors">{icon}</span>}
+      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+    </div>
+    <p className="text-[10px] font-black text-[var(--text-main)] uppercase tracking-tight truncate pl-0.5 opacity-90">{value || '---'}</p>
+  </div>
+);
+
+// Renamed from Lock to avoid conflict with potential internal names
+const LockIcon = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+);
