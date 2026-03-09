@@ -12,11 +12,12 @@ import Toast from "../../salesCRM/utils/toast";
 import { getDepartments } from "../../hr_CRM/api/hr.dept";
 import { useAuth } from "../../auth/AuthContext";
 
+
 import {
   FaUsers, FaTimesCircle, FaList, FaTh, FaSearch, FaSync, FaFileExport, FaFilter,
   FaChevronDown, FaCheck, FaTimes, FaEye,
   FaChevronRight, FaChevronLeft, FaSpinner,
-  FaCheckSquare, FaCalendarAlt
+  FaCheckSquare, FaCalendarAlt, FaBuilding,
 } from "react-icons/fa";
 
 const HUB_URL = BASE_URL.replace("/api", "") + "/hubs/leads";
@@ -201,15 +202,27 @@ export default function Leads() {
     reload,
     changeStatus,
     assignLead,
-    assignByFormToDepartment
+    assignByFormToDepartments,
+    removeDepartmentFromForm,
   } = useFacebookLeads();
 
   const [pages, setPages] = useState([]);
   const [forms, setForms] = useState([]);
   const users = useUsers();
   const [departments, setDepartments] = useState([]);
-  const [assignDeptId, setAssignDeptId] = useState("");
+
+  // ── Form → Multi-department assignment state ──────────────────────────────
+  const [assignDeptIds, setAssignDeptIds] = useState([]);
+  const [assignDeptNames, setAssignDeptNames] = useState({});
   const [assigningDept, setAssigningDept] = useState(false);
+  // ── Form → Department unified toggle state ───────────────────────────────
+  const [deptSearch, setDeptSearch] = useState("");
+  const [selectedDeptIds, setSelectedDeptIds] = useState([]);   // current checkbox state
+  const [appliedDeptIds, setAppliedDeptIds] = useState([]);     // last-saved server state
+  const [applying, setApplying] = useState(false);
+  const [assignStartDate, setAssignStartDate] = useState("");
+  const [assignEndDate, setAssignEndDate] = useState("");
+  const [showTimeRange, setShowTimeRange] = useState(false);
 
   const [remarkMap, setRemarkMap] = useState({});
   const [selectedLead, setSelectedLead] = useState(null);
@@ -408,22 +421,57 @@ useEffect(() => {
   };
 
   /* =========================
-     ASSIGN FORM LEADS TO DEPARTMENT
+     RESET DEPT SELECTION WHEN FORM CHANGES
      ========================= */
-  const handleAssignFormToDept = async () => {
+  useEffect(() => {
+    setSelectedDeptIds([]);
+    setAppliedDeptIds([]);
+    setDeptSearch("");
+  }, [filters.formId]);
+
+  /* =========================
+     APPLY DEPARTMENT CHANGES (assign newly checked, remove newly unchecked)
+     ========================= */
+  const handleApplyDeptChanges = async () => {
     if (!filters.formId) return Toast?.error("Select a form first");
-    if (!assignDeptId) return Toast?.error("Select a department");
-    const dept = departments.find(d => String(d.departmentId) === String(assignDeptId));
+
+    const toAssign = selectedDeptIds.filter(id => !appliedDeptIds.includes(id));
+    const toRemove = appliedDeptIds.filter(id => !selectedDeptIds.includes(id));
+
+    if (!toAssign.length && !toRemove.length) return Toast?.info?.("No changes to apply") || Toast?.success("No changes to apply");
+
     try {
-      setAssigningDept(true);
-      await assignByFormToDepartment(filters.formId, String(assignDeptId), dept?.departmentName ?? "");
-      Toast?.success("Leads assigned to department");
-      setAssignDeptId("");
+      setApplying(true);
+      if (toAssign.length) {
+        const depts = toAssign.map(id => ({
+          departmentId: id,
+          departmentName: departments.find(d => String(d.departmentId) === id)?.departmentName || "",
+        }));
+        await assignByFormToDepartments(
+          filters.formId,
+          depts,
+          showTimeRange && assignStartDate ? assignStartDate : null,
+          showTimeRange && assignEndDate ? assignEndDate : null,
+        );
+      }
+      for (const id of toRemove) {
+        await removeDepartmentFromForm(filters.formId, id);
+      }
+      setAppliedDeptIds([...selectedDeptIds]);
+      Toast?.success(
+        `Applied: ${toAssign.length} assigned, ${toRemove.length} removed`
+      );
     } catch {
-      Toast?.error("Failed to assign leads to department");
+      Toast?.error("Failed to apply department changes");
     } finally {
-      setAssigningDept(false);
+      setApplying(false);
     }
+  };
+
+  const toggleDeptSelect = (id) => {
+    setSelectedDeptIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
   };
 
   /* =========================
@@ -539,47 +587,137 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* ── Assign Form Leads to Department ── */}
-        <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm flex-wrap">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
-              <FaUsers className="w-3.5 h-3.5 text-indigo-500" />
+        {/* ── Department Assignment Panel (unified toggle) ── */}
+        <div className="bg-white rounded-xl border border-gray-100 px-4 py-4 shadow-sm space-y-3">
+          {/* Header row */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <FaBuilding className="w-3.5 h-3.5 text-indigo-500" />
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-gray-700">Form → Department Assignment</span>
+                <p className="text-xs text-gray-400 mt-0.5">Check to assign · Uncheck to remove · Apply to save changes</p>
+              </div>
             </div>
-            <span className="text-sm font-semibold text-gray-700">Assign Form Leads to Department</span>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Form selector */}
+              <select
+                value={filters.formId}
+                onChange={e => reload({ formId: e.target.value })}
+                disabled={!filters.pageId}
+                className={`text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all
+                  ${!filters.pageId ? "bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed" : "bg-white border-gray-200 text-gray-700"}`}
+              >
+                <option value="">— Select Form —</option>
+                {forms.map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+
+              {/* Time range toggle */}
+              <button
+                onClick={() => setShowTimeRange(p => !p)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all
+                  ${showTimeRange ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
+              >
+                <FaCalendarAlt className="w-3 h-3" />
+                {showTimeRange ? "Hide Range" : "Set Time Range"}
+              </button>
+
+              {/* Apply button */}
+              <button
+                onClick={handleApplyDeptChanges}
+                disabled={!filters.formId || applying}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+              >
+                {applying ? <FaSpinner className="w-3.5 h-3.5 animate-spin" /> : <FaCheck className="w-3.5 h-3.5" />}
+                {applying ? "Applying…" : "Apply Changes"}
+              </button>
+            </div>
           </div>
-          <div className="w-px h-5 bg-gray-200 hidden sm:block" />
-          <select
-            value={filters.formId}
-            onChange={val => reload({ formId: val.target.value })}
-            disabled={!filters.pageId}
-            className={`text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all
-              ${!filters.pageId ? "bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed" : "bg-white border-gray-200 text-gray-700"}`}
-          >
-            <option value="">— Select Form —</option>
-            {forms.map(f => (
-              <option key={f.id} value={f.id}>{f.name}</option>
-            ))}
-          </select>
-          <select
-            value={assignDeptId}
-            onChange={e => setAssignDeptId(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-700"
-          >
-            <option value="">— Select Department —</option>
-            {departments.map(d => (
-              <option key={d.departmentId} value={d.departmentId}>{d.departmentName}</option>
-            ))}
-          </select>
-          <button
-            onClick={handleAssignFormToDept}
-            disabled={!filters.formId || !assignDeptId || assigningDept}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
-          >
-            {assigningDept ? <FaSpinner className="w-3.5 h-3.5 animate-spin" /> : <FaCheck className="w-3.5 h-3.5" />}
-            {assigningDept ? "Assigning…" : "Assign to Department"}
-          </button>
-          {!filters.pageId && (
-            <span className="text-xs text-gray-400 italic ml-1">Select a page first to enable form selection</span>
+
+          {/* Time range row */}
+          {showTimeRange && (
+            <div className="flex items-center gap-3 flex-wrap pl-1">
+              <span className="text-xs text-gray-500 font-medium">Time range (for assigns):</span>
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+                <FaCalendarAlt className="w-3 h-3 text-gray-400" />
+                <input type="date" value={assignStartDate} onChange={e => setAssignStartDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-600 focus:outline-none" />
+                <span className="text-gray-400 text-xs px-1">to</span>
+                <input type="date" value={assignEndDate} onChange={e => setAssignEndDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-600 focus:outline-none" />
+                {(assignStartDate || assignEndDate) && (
+                  <button onClick={() => { setAssignStartDate(""); setAssignEndDate(""); }} className="ml-1 text-rose-400 hover:text-rose-600">
+                    <FaTimes className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 italic">Only leads created within this range will be assigned.</p>
+            </div>
+          )}
+
+          {/* Department checkbox grid */}
+          {!filters.formId ? (
+            <p className="text-xs text-gray-400 italic pl-1">
+              {!filters.pageId ? "Select a page then a form to manage department assignments." : "Select a form above to manage department assignments."}
+            </p>
+          ) : departments.length === 0 ? (
+            <p className="text-xs text-gray-400 italic pl-1">No departments available.</p>
+          ) : (
+            <div className="space-y-2">
+              {/* Search */}
+              <input
+                type="text"
+                placeholder="Search departments…"
+                value={deptSearch}
+                onChange={e => setDeptSearch(e.target.value)}
+                className="w-full sm:w-64 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+              {/* Grid of toggles */}
+              <div className="flex flex-wrap gap-2">
+                {departments
+                  .filter(d => (d.departmentName || "").toLowerCase().includes(deptSearch.toLowerCase()))
+                  .map(d => {
+                    const id = String(d.departmentId);
+                    const isChecked = selectedDeptIds.includes(id);
+                    const wasApplied = appliedDeptIds.includes(id);
+                    // visual state: applied+checked=green, checked-only=indigo(pending assign), applied+unchecked=rose(pending remove), none=gray
+                    let chipStyle = "bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300";
+                    let checkStyle = "border-gray-300";
+                    if (isChecked && wasApplied) {
+                      chipStyle = "bg-green-50 border-green-300 text-green-700";
+                      checkStyle = "bg-green-500 border-green-500";
+                    } else if (isChecked && !wasApplied) {
+                      chipStyle = "bg-indigo-50 border-indigo-300 text-indigo-700";
+                      checkStyle = "bg-indigo-600 border-indigo-600";
+                    } else if (!isChecked && wasApplied) {
+                      chipStyle = "bg-rose-50 border-rose-300 text-rose-600 line-through opacity-70";
+                      checkStyle = "border-rose-300";
+                    }
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => toggleDeptSelect(id)}
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium border rounded-lg transition-all select-none ${chipStyle}`}
+                      >
+                        <span className={`w-4 h-4 flex-shrink-0 rounded border flex items-center justify-center transition-colors ${checkStyle}`}>
+                          {isChecked && <FaCheck className="w-2.5 h-2.5 text-white" />}
+                        </span>
+                        {d.departmentName}
+                      </button>
+                    );
+                  })}
+              </div>
+              {/* Legend */}
+              <div className="flex items-center gap-4 pt-1 text-xs text-gray-400 flex-wrap">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" /> Pending assign</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-500 inline-block" /> Applied</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-400 inline-block" /> Pending remove</span>
+              </div>
+            </div>
           )}
         </div>
 
@@ -653,7 +791,7 @@ useEffect(() => {
                         />
                       </th>
                     )}
-                    {["Name", "Contact", "Status", "Assigned To", "Remark",  "Created At", "Actions"].map((h) => (
+                    {["Name", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
