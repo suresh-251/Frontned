@@ -1,15 +1,15 @@
 import { useRef, useState } from "react";
 import { useBrand } from "../context/BrandContext";
-import { uploadBrandLogo } from "../api/brand.api";
+import { uploadBrandLogo, getBrandLogoSrc } from "../api/brand.api";
 import toast from "react-hot-toast";
 
 function initials(name = "") {
   return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
-function LogoPicker({ current, onChange }) {
+function LogoPicker({ src, onChange }) {
   const ref = useRef(null);
-  const [preview, setPreview] = useState(current || null);
+  const [preview, setPreview] = useState(src || null);
 
   const handleFile = (e) => {
     const file = e.target.files?.[0];
@@ -39,7 +39,7 @@ function LogoPicker({ current, onChange }) {
   );
 }
 
-function EditModal({ brand, onClose, onSave }) {
+function EditModal({ brand, onClose, onSave, onRefresh }) {
   const [name, setName] = useState(brand.name);
   const [description, setDescription] = useState(brand.description ?? "");
   const [logoFile, setLogoFile] = useState(null);
@@ -50,12 +50,11 @@ function EditModal({ brand, onClose, onSave }) {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      let logoUrl = brand.logoUrl;
+      await onSave(brand.slug, { name: name.trim(), description: description.trim() || undefined });
       if (logoFile) {
-        const uploaded = await uploadBrandLogo(logoFile);
-        logoUrl = uploaded.url;
+        await uploadBrandLogo(brand.slug, logoFile);
+        await onRefresh();
       }
-      await onSave(brand.slug, { name: name.trim(), description: description.trim() || undefined, logoUrl });
       toast.success("Brand updated!");
       onClose();
     } catch (err) {
@@ -70,7 +69,7 @@ function EditModal({ brand, onClose, onSave }) {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-gray-900 mb-5">Edit Brand</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <LogoPicker current={brand.logoUrl} onChange={setLogoFile} />
+          <LogoPicker src={getBrandLogoSrc(brand)} onChange={setLogoFile} />
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Brand Name <span className="text-red-500">*</span></label>
             <input
@@ -157,7 +156,7 @@ function DeleteConfirmModal({ brand, onClose, onConfirm }) {
 }
 
 export default function BrandManager() {
-  const { brands, activeBrand, switchBrand, addBrand, updateBrand, removeBrand, loading } = useBrand();
+  const { brands, activeBrand, switchBrand, addBrand, updateBrand, removeBrand, loading, refresh } = useBrand();
 
   const [editBrand, setEditBrand] = useState(null);
   const [deleteBrand, setDeleteBrand] = useState(null);
@@ -185,12 +184,11 @@ export default function BrandManager() {
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      let logoUrl;
+      const brand = await addBrand({ name: newName.trim(), description: newDesc.trim() || undefined });
       if (newLogoFile) {
-        const uploaded = await uploadBrandLogo(newLogoFile);
-        logoUrl = uploaded.url;
+        await uploadBrandLogo(brand.slug, newLogoFile);
+        await refresh();
       }
-      await addBrand({ name: newName.trim(), description: newDesc.trim() || undefined, logoUrl });
       toast.success(`Brand "${newName}" created!`);
       setNewName(""); setNewDesc(""); setNewLogoFile(null);
       setShowCreate(false);
@@ -227,7 +225,7 @@ export default function BrandManager() {
           <div className="bg-white rounded-2xl border border-blue-200 shadow-sm p-6">
             <h2 className="text-base font-bold text-slate-800 mb-4">Create New Brand</h2>
             <form onSubmit={handleCreate} className="space-y-4">
-              <LogoPicker current={null} onChange={setNewLogoFile} />
+              <LogoPicker src={null} onChange={setNewLogoFile} />
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Brand Name <span className="text-red-500">*</span></label>
@@ -296,8 +294,8 @@ export default function BrandManager() {
                   <div className="p-5 flex items-center gap-4">
                     {/* Avatar */}
                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm overflow-hidden ${isActive ? "bg-gradient-to-br from-blue-600 to-purple-600" : "bg-gradient-to-br from-slate-400 to-slate-600"}`}>
-                      {brand.logoUrl ? (
-                        <img src={brand.logoUrl} alt={brand.name} className="w-12 h-12 object-cover" onError={(e) => { e.target.style.display="none"; }} />
+                      {getBrandLogoSrc(brand) ? (
+                        <img src={getBrandLogoSrc(brand)} alt={brand.name} className="w-12 h-12 object-cover" onError={(e) => { e.target.style.display="none"; }} />
                       ) : (
                         <span className="text-white text-sm font-bold">{initials(brand.name)}</span>
                       )}
@@ -374,7 +372,7 @@ export default function BrandManager() {
 
       {/* Modals */}
       {editBrand && (
-        <EditModal brand={editBrand} onClose={() => setEditBrand(null)} onSave={updateBrand} />
+        <EditModal brand={editBrand} onClose={() => setEditBrand(null)} onSave={updateBrand} onRefresh={refresh} />
       )}
       {deleteBrand && (
         <DeleteConfirmModal brand={deleteBrand} onClose={() => setDeleteBrand(null)} onConfirm={removeBrand} />

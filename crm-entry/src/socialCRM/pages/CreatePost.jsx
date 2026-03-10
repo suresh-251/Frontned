@@ -60,7 +60,8 @@ export default function CreatePost() {
   const normPlatform = (p) => { const m = {"facebook":"Facebook","instagram":"Instagram","linkedin":"LinkedIn"}; return m[(p??"").toLowerCase()] ?? p; };
   const currentType = POST_TYPES.find(t => t.key === mode);
 
-  // Load accounts scoped to the active brand (single call, correct platform names + real IG display names)
+  // Load accounts scoped to the active brand.
+  // The brands endpoint already resolves real IG usernames server-side via the Graph API.
   const loadAccounts = useCallback(async () => {
     if (!activeBrand?.slug) { setLoading(false); return; }
     setLoading(true);
@@ -84,6 +85,9 @@ export default function CreatePost() {
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
   useEffect(() => { setFiles([]); }, [mode]);
+
+  // Build a lookup map so post results can show correct account names
+  const accountsMap = new Map(accounts.map(a => [a.pageIdentifier, a]));
 
   // Group accounts by platform
   const byPlatform = accounts.reduce((acc, a) => {
@@ -138,8 +142,12 @@ export default function CreatePost() {
     }
   };
 
-  // ---- Scheduled time min = now+2min ----
-  const minDateTime = new Date(Date.now() + 2 * 60000).toISOString().slice(0, 16);
+  // ---- Scheduled time min = now+2min in LOCAL time (datetime-local expects local, not UTC) ----
+  const minDateTime = (() => {
+    const d = new Date(Date.now() + 2 * 60000);
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
@@ -400,7 +408,9 @@ export default function CreatePost() {
                       <div className="flex items-center gap-3">
                         <span>{r.success ? "✅" : "❌"}</span>
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{r.targetAccountName || r.targetAccountId}</p>
+                          <p className="text-sm font-medium text-gray-900">
+                            {accountsMap.get(r.targetAccountId)?.displayName || r.targetAccountName || r.targetAccountId}
+                          </p>
                           <p className={`text-xs ${r.success ? "text-green-600" : "text-red-600"}`}>{r.message || r.status}</p>
                         </div>
                       </div>

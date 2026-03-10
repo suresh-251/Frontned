@@ -1,22 +1,48 @@
+import { useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useBrand } from "../context/BrandContext";
+
+const LOGO_KEY = "nafaSocialLogo";
 
 export default function Sidebar() {
   const location = useLocation();
   const { activeBrand } = useBrand();
+  const fileRef = useRef(null);
+  const [logo, setLogo] = useState(() => localStorage.getItem(LOGO_KEY) || null);
 
   const isActive = (path) => location.pathname === path;
 
+  const handleLogoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      localStorage.setItem(LOGO_KEY, dataUrl);
+      setLogo(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col min-h-screen">
-      {/* Logo / Active Brand */}
+      {/* Logo / App Brand */}
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-            <span className="text-white text-xl font-bold">S</span>
+          <div
+            onClick={() => fileRef.current?.click()}
+            title="Click to change logo"
+            className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center cursor-pointer overflow-hidden flex-shrink-0 hover:opacity-80 transition-opacity"
+          >
+            {logo ? (
+              <img src={logo} alt="NaFa Social" className="w-10 h-10 object-cover" />
+            ) : (
+              <span className="text-white text-xl font-bold">N</span>
+            )}
           </div>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-gray-900">SocialMedia</h2>
+            <h2 className="text-lg font-bold text-gray-900">NaFa Social</h2>
             {activeBrand ? (
               <p className="text-xs text-blue-600 font-semibold truncate max-w-[130px]" title={activeBrand.name}>
                 {activeBrand.name}
@@ -46,18 +72,18 @@ export default function Sidebar() {
         </Link>
 
         <Link
-          to="/crm/socialmedia/post/create"
+          to="/crm/socialmedia/post/history"
           className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-            isActive("/crm/socialmedia/post/create")
+            location.pathname.startsWith("/crm/socialmedia/post")
               ? "bg-blue-50 text-blue-600 font-semibold shadow-sm"
               : "text-gray-700 hover:bg-gray-50"
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
           </svg>
-          <span>Compose Post</span>
+          <span>Posts</span>
         </Link>
 
         <div className="pt-4 pb-2">

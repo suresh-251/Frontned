@@ -118,3 +118,48 @@ export const assignLeadUsers = async (leadId, userIds) => {
 export const removeLeadUser = async (leadId, userId) => {
   await api.delete(`/facebook/leads/${leadId}/users/${userId}`);
 };
+
+// ─── Department / Assigned-User Leads (no brand required) ────────────────────
+
+/**
+ * Fetches leads assigned to the current authenticated user (via JWT) and/or
+ * a specific department. Does NOT require an active brand — safe for HR/Sales.
+ * @param {object} opts
+ * @param {number|string} [opts.departmentId] - Optional department filter
+ * @param {string}        [opts.status]       - Optional CRM status filter
+ */
+export const getAssignedLeads = async ({ departmentId, status } = {}) => {
+  const res = await api.get("/leads/assigned", {
+    params: {
+      departmentId: departmentId || undefined,
+      status:       status       || undefined,
+    },
+  });
+  return res.data || [];
+};
+
+/**
+ * Update CRM status for an assigned lead (no brand required).
+ * @param {number} leadId
+ * @param {string} status
+ */
+export const updateAssignedLeadStatus = async (leadId, status) => {
+  await api.put(
+    `/leads/${leadId}/status`,
+    JSON.stringify(status),
+    { headers: { "Content-Type": "application/json" } }
+  );
+};
+
+/**
+ * Save an internal remark on an assigned lead (no brand required).
+ * @param {number} leadId
+ * @param {string} remark
+ */
+export const saveAssignedLeadRemark = async (leadId, remark) => {
+  await api.put(
+    `/leads/${leadId}/remark`,
+    JSON.stringify(remark),
+    { headers: { "Content-Type": "application/json" } }
+  );
+};

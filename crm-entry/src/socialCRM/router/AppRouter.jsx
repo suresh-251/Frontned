@@ -1,10 +1,10 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "../pages/Login";
 import OAuthCallback from "../pages/OAuthCallback";
 import PageSelection from "../pages/PageSelection";
 import DashboardLayout from "../layout/DashboardLayout";
 import Dashboard from "../pages/Dashboard";
-import CreatePost from "../pages/CreatePost";
+import PostHistory from "../pages/PostHistory";
 import LeadForms from "../pages/LeadForms";
 import Leads from "../pages/Leads";
 import PageSubscriptions from "../pages/PageSubscriptions";
@@ -31,7 +31,8 @@ export default function AppRouter() {
           <Route element={<DashboardLayout />}>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="brands" element={<BrandManager />} />
-            <Route path="post/create" element={<CreatePost />} />
+            <Route path="post/create" element={<Navigate to="/crm/socialmedia/post/history" replace />} />
+            <Route path="post/history" element={<PostHistory />} />
             <Route path="leads/forms" element={<LeadForms />} />
             <Route path="leads" element={<Leads />} />
             <Route path="facebook/pages/subscriptions" element={<PageSubscriptions />} />

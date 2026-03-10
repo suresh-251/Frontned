@@ -10,60 +10,58 @@ import { useFacebookPage } from "../context/FacebookPageContext";
 
 export default function LeadForms() {
   const { activePage } = useFacebookPage();
+  // localPage tracks a page the user just selected in this session;
+  // it takes effect immediately even before the shared context syncs.
+  const [localPage, setLocalPage] = useState(null);
+  const currentPage = activePage || localPage;
+
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const loadForms = async (silent = false) => {
-    if (!activePage) {
-      setForms([]);
-      return;
-    }
-    
-    try {
-      if (!silent) setLoading(true);
-      setError(""); // Clear previous errors
-      const data = await getLeadForms(activePage.pageId);
-      setForms(data);
-    } catch (err) {
-      setError("Failed to load lead forms. Please try again.");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  // Handle page selection change - This is called AFTER context is updated
-  const handlePageChange = async (newPage) => {
-    // The onChange is called AFTER setActivePage completes
-    // So we don't need to wait - just trigger the load directly
+  // When the user picks a page in the selector, capture it locally so the
+  // render conditions work right away (context may still be null for this
+  // render cycle because PageSelector uses its own hook instance).
+  const handlePageChange = (newPage) => {
     if (newPage?.pageId) {
+      setLocalPage(newPage);
       setForms([]);
       setLoading(true);
       setError("");
-      
-      try {
-        const data = await getLeadForms(newPage.pageId);
-        setForms(data);
-      } catch (err) {
-        setError("Failed to load lead forms. Please try again.");
-      } finally {
-        setLoading(false);
-      }
     }
   };
 
-  // 🔁 Load forms when page changes and AUTO refresh (every 30 sec)
+  // Load / auto-refresh forms whenever the effective page changes.
   useEffect(() => {
-    // Initial load with loading state
-    loadForms(false);
+    if (!currentPage) {
+      setForms([]);
+      return;
+    }
 
-    // Auto refresh every 30 seconds (silent)
-    const interval = setInterval(() => {
-      loadForms(true);
-    }, 30000);
+    let cancelled = false;
 
-    return () => clearInterval(interval);
-  }, [activePage?.pageId]);
+    const doLoad = async (silent = false) => {
+      try {
+        if (!silent) setLoading(true);
+        setError("");
+        const data = await getLeadForms(currentPage.pageId);
+        if (!cancelled) setForms(data);
+      } catch {
+        if (!cancelled) setError("Failed to load lead forms. Please try again.");
+      } finally {
+        if (!silent && !cancelled) setLoading(false);
+      }
+    };
+
+    doLoad(false);
+
+    const interval = setInterval(() => doLoad(true), 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [currentPage?.pageId]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6 lg:p-8">
@@ -102,7 +100,7 @@ export default function LeadForms() {
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Loading Forms</h3>
               <p className="text-gray-600 font-medium">
-                {activePage ? `Fetching forms for ${activePage.name}...` : 'Please wait...'}
+                {currentPage ? `Fetching forms for ${currentPage.name}...` : 'Please wait...'}
               </p>
             </div>
           </div>
@@ -132,7 +130,7 @@ export default function LeadForms() {
         )}
 
         {/* No Page Selected */}
-        {!activePage && !loading && (
+        {!currentPage && !loading && (
           <div className="bg-white rounded-2xl shadow-xl border-2 border-gray-200 p-16 text-center">
             <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
               <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -147,7 +145,7 @@ export default function LeadForms() {
         )}
 
         {/* Forms Grid */}
-        {activePage && !loading && (
+        {currentPage && !loading && (
           <>
             {/* Stats Bar */}
             {forms.length > 0 && (

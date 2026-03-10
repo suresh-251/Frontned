@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useBrand } from "../context/BrandContext";
+import { getBrandLogoSrc } from "../api/brand.api";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
@@ -65,8 +66,12 @@ export default function BrandSwitcher() {
       >
         {activeBrand ? (
           <>
-            <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-purple-600 rounded-md flex items-center justify-center">
-              <span className="text-white text-xs font-bold">{initials(activeBrand.name)}</span>
+            <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-purple-600 rounded-md flex items-center justify-center overflow-hidden flex-shrink-0">
+              {getBrandLogoSrc(activeBrand) ? (
+                <img src={getBrandLogoSrc(activeBrand)} alt={activeBrand.name} className="w-6 h-6 object-cover" />
+              ) : (
+                <span className="text-white text-xs font-bold">{initials(activeBrand.name)}</span>
+              )}
             </div>
             <span className="text-sm font-semibold text-indigo-800 max-w-[120px] truncate">
               {activeBrand.name}
@@ -106,8 +111,12 @@ export default function BrandSwitcher() {
                   b.isActive ? "bg-blue-50" : ""
                 }`}
               >
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <span className="text-white text-xs font-bold">{initials(b.name)}</span>
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {getBrandLogoSrc(b) ? (
+                    <img src={getBrandLogoSrc(b)} alt={b.name} className="w-8 h-8 object-cover" />
+                  ) : (
+                    <span className="text-white text-xs font-bold">{initials(b.name)}</span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900 truncate">{b.name}</p>

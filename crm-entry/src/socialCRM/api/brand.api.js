@@ -12,25 +12,39 @@ export const getBrandBySlug = async (slug) => {
   return res.data;
 };
 
-/** Upload a logo image file, returns { url, blobName } */
-export const uploadBrandLogo = async (file) => {
+/**
+ * Upload a logo image for a brand. Stores as bytes in DB.
+ * Returns the updated brand response.
+ */
+export const uploadBrandLogo = async (slug, file) => {
   const form = new FormData();
   form.append("file", file);
-  const res = await api.post("/brands/logo", form, {
+  const res = await api.post(`/brands/${slug}/logo`, form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
   return res.data;
 };
 
+/**
+ * Returns a data-URI src string for a brand logo, or null if no logo.
+ * Usage: <img src={getBrandLogoSrc(brand)} />
+ */
+export const getBrandLogoSrc = (brand) => {
+  if (brand?.logoBase64 && brand?.logoContentType) {
+    return `data:${brand.logoContentType};base64,${brand.logoBase64}`;
+  }
+  return null;
+};
+
 /** Create a new brand (not active by default) */
-export const createBrand = async ({ name, logoUrl, description }) => {
-  const res = await api.post("/brands", { name, logoUrl, description });
+export const createBrand = async ({ name, description }) => {
+  const res = await api.post("/brands", { name, description });
   return res.data;
 };
 
 /** Update a brand's details */
-export const updateBrand = async (slug, { name, logoUrl, description }) => {
-  const res = await api.put(`/brands/${slug}`, { name, logoUrl, description });
+export const updateBrand = async (slug, { name, description }) => {
+  const res = await api.put(`/brands/${slug}`, { name, description });
   return res.data;
 };
 
