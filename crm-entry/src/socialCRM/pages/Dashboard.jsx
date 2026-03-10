@@ -55,15 +55,26 @@ export default function Dashboard() {
     Promise.allSettled([
       api.get(`/brands/${activeBrand.slug}/accounts`),
       api.get("/analytics/facebook/page"),
-    ]).then(([accsRes, analyticsRes]) => {
+      api.get("/instagram/accounts"),
+    ]).then(([accsRes, analyticsRes, igRes]) => {
       const raw = accsRes.status === "fulfilled" ? (accsRes.value.data.accounts ?? []) : [];
-      setAccounts(raw.map(a => ({
-        id:             a.pageIdentifier,
-        platform:       normP(a.platform),
-        pageIdentifier: a.pageIdentifier,
-        displayName:    a.displayName,
-        isActive:       a.isActive,
-      })));
+      const igList = igRes.status === "fulfilled" ? (igRes.value.data ?? []) : [];
+      const igMap = new Map(igList.map(a => [a.instagramBusinessId, a]));
+
+      setAccounts(raw.map(a => {
+        let displayName = a.displayName;
+        if (normP(a.platform) === "Instagram") {
+          const ig = igMap.get(a.pageIdentifier);
+          if (ig) displayName = ig.username || ig.name || ig.displayName || displayName;
+        }
+        return {
+          id:             a.pageIdentifier,
+          platform:       normP(a.platform),
+          pageIdentifier: a.pageIdentifier,
+          displayName,
+          isActive:       a.isActive,
+        };
+      }));
       setFbAnalytics(analyticsRes.status === "fulfilled" ? analyticsRes.value?.data ?? null : null);
     }).finally(() => setLoadingAccounts(false));
   }, [activeBrand?.slug]);

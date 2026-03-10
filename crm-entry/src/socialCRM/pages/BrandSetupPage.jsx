@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 
 export default function BrandSetupPage() {
   const navigate = useNavigate();
-  const { createBrand } = useBrand();
+  const { createBrand, refresh } = useBrand();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -27,12 +27,11 @@ export default function BrandSetupPage() {
     if (!name.trim()) return;
     try {
       setSubmitting(true);
-      let logoUrl;
+      const brand = await createBrand({ name: name.trim(), description: description.trim() || undefined });
       if (logoFile) {
-        const uploaded = await uploadBrandLogo(logoFile);
-        logoUrl = uploaded.url;
+        await uploadBrandLogo(brand.slug, logoFile);
+        await refresh();
       }
-      await createBrand({ name: name.trim(), description: description.trim() || undefined, logoUrl });
       toast.success(`Brand "${name}" created and activated!`);
       navigate("/crm/socialmedia/dashboard", { replace: true });
     } catch (err) {

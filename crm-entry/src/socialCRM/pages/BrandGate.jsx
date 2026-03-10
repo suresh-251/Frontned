@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useBrand } from "../context/BrandContext";
+import { getBrandLogoSrc } from "../api/brand.api";
 import toast from "react-hot-toast";
 
 function initials(name = "") {
@@ -79,8 +80,8 @@ export default function BrandGate() {
                   className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-4"
                 >
                   <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-slate-400 to-slate-600 shadow-sm">
-                    {brand.logoUrl ? (
-                      <img src={brand.logoUrl} alt={brand.name} className="w-11 h-11 rounded-xl object-cover"
+                    {getBrandLogoSrc(brand) ? (
+                      <img src={getBrandLogoSrc(brand)} alt={brand.name} className="w-11 h-11 rounded-xl object-cover"
                         onError={(e) => { e.target.style.display = "none"; }} />
                     ) : (
                       <span className="text-white text-sm font-bold">{initials(brand.name)}</span>
