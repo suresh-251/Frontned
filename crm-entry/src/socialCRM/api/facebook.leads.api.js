@@ -163,3 +163,13 @@ export const saveAssignedLeadRemark = async (leadId, remark) => {
     { headers: { "Content-Type": "application/json" } }
   );
 };
+
+/**
+ * Assign a lead to a user — brand-free (HR/Sales managers).
+ * Uses PUT /api/leads/{id}/assign in DepartmentLeadsController.
+ * @param {number} leadId
+ * @param {{ userId: number|null, userName: string|null, remark?: string }} payload
+ */
+export const assignDeptLead = async (leadId, { userId, userName, remark = "" }) => {
+  await api.put(`/leads/${leadId}/assign`, { userId, userName, remark });
+};
