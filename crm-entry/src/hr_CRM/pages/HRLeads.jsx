@@ -1,269 +1,360 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "../../auth/AuthContext";
 import useFacebookLeads from "../../socialCRM/hooks/useFacebookLeads";
+import { getDepartments } from "../api/hr.dept";
+import { useAuth } from "../../auth/AuthContext";
 import * as XLSX from "xlsx";
+import {
+  Users, Download, Eye, FileText, X,
+  MessageSquare, MousePointer2, Search, Building2, Loader2
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import toast, { Toaster } from "react-hot-toast";
+
+// Updated to use opacity-based backgrounds for theme compatibility
+const STATUS_COLORS = {
+  new:       "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  contacted: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+  qualified: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+  converted: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+  lost:      "bg-red-500/10 text-red-500 border-red-500/20",
+};
 
 export default function HRLeads() {
   const { user } = useAuth();
+  const myUserId = user?.sub || user?.id || user?.userId || user?.uid;
+
   const { leads, loading, reload, assignLead } = useFacebookLeads();
 
-  const [remarkMap, setRemarkMap] = useState({});
-  const [selectedLead, setSelectedLead] = useState(null);
+  const [departments, setDepartments]       = useState([]);
+  const [deptLoading, setDeptLoading]       = useState(true);
+  const [selectedDeptId, setSelectedDeptId] = useState("");
+
+  const [searchTerm, setSearchTerm]         = useState("");
+  const [selectedLead, setSelectedLead]     = useState(null);
+  const [remarkMap, setRemarkMap]           = useState({});
+  const [isSelectMode, setIsSelectMode]     = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
 
   useEffect(() => {
-    reload({});
+    getDepartments()
+      .then(data => setDepartments(Array.isArray(data) ? data : []))
+      .catch(() => toast.error("Failed to load departments"))
+      .finally(() => setDeptLoading(false));
   }, []);
 
-  // ✅ SHOW ONLY ASSIGNED LEADS
-  const assignedLeads = leads.filter(
-    (l) =>
-      l.assignedToUserId !== null &&
-      l.assignedToUserId !== undefined &&
-      l.assignedToUserId !== "" &&
-      l.assignedToUserName
+  useEffect(() => {
+    if (selectedDeptId) {
+      reload({ departmentId: selectedDeptId, assignedToUserId: undefined });
+    } else {
+      reload({ departmentId: undefined, assignedToUserId: myUserId });
+    }
+  }, [selectedDeptId, myUserId]);
+
+  const filteredLeads = leads.filter(l =>
+    l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    l.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    l.phone?.includes(searchTerm)
   );
 
-  const toggleLeadSelection = (id) => {
-    setSelectedLeadIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  };
-
-  const selectAllVisible = (checked) => {
-    setSelectedLeadIds(checked ? assignedLeads.map((l) => l.id) : []);
-  };
+  const toggleSelect = id =>
+    setSelectedLeadIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const exportToExcel = (mode) => {
-    if (!assignedLeads.length) return alert("No leads to export");
-
-    let exportLeads =
-      mode === "selected"
-        ? assignedLeads.filter((l) => selectedLeadIds.includes(l.id))
-        : assignedLeads;
-
-    if (!exportLeads.length) return alert("No leads match criteria");
-
-    const rows = exportLeads.map((l) => ({
+    const src = mode === "selected"
+      ? filteredLeads.filter(l => selectedLeadIds.includes(l.id))
+      : filteredLeads;
+    if (!src.length) return;
+    const rows = src.map(l => ({
       Name: l.name || "",
       Email: l.email || "",
       Phone: l.phone || "",
       Status: l.status || "",
+      Department: l.departmentName || "",
       AssignedTo: l.assignedToUserName || "",
       CreatedAt: new Date(l.createdAt).toLocaleString(),
       ...(l.fields || {}),
     }));
-
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
-    XLSX.writeFile(
-      workbook,
-      mode === "selected" ? "hr-leads-selected.xlsx" : "hr-leads-all.xlsx"
-    );
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Leads");
+    XLSX.writeFile(wb, `dept-leads-${mode}.xlsx`);
   };
 
-  const statusColors = {
-    New: "bg-blue-100 text-blue-700",
-    Contacted: "bg-yellow-100 text-yellow-700",
-    Qualified: "bg-green-100 text-green-700",
-    Lost: "bg-red-100 text-red-700",
-  };
+  const selectedDeptName = departments.find(
+    d => String(d.departmentId) === String(selectedDeptId)
+  )?.departmentName || "All Departments";
 
   return (
-    <div className="w-full h-full overflow-y-auto">
-      <div className="p-6">
+    <div className="max-w-7xl mx-auto space-y-4 p-2 font-sans text-[var(--text-main)] transition-colors duration-300">
+      <Toaster position="top-right" />
 
-        {/* ===== HEADER ===== */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <h1 className="text-2xl font-bold text-slate-800">
-            Leads Management
-          </h1>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => exportToExcel("all")}
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium shadow hover:bg-emerald-700 transition"
-            >
-              Export All
-            </button>
-
-            <button
-              onClick={() => exportToExcel("selected")}
-              disabled={selectedLeadIds.length === 0}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium shadow disabled:opacity-40 hover:bg-indigo-700 transition"
-            >
-              Export Selected ({selectedLeadIds.length})
-            </button>
-          </div>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between flex-wrap gap-3 px-1">
+        <div>
+          <h2 className="text-xl font-extrabold text-[var(--text-main)] tracking-tight flex items-center gap-2">
+            <Building2 size={22} className="text-indigo-500" /> Department Leads
+          </h2>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
+            Social CRM leads assigned by department
+          </p>
         </div>
 
-        {/* ===== TABLE ===== */}
-        <div className="bg-white rounded-2xl shadow border border-slate-200 overflow-x-auto">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Department selector */}
+          <div className="flex items-center gap-1.5 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg px-3 py-1.5">
+            <Building2 size={14} className="text-indigo-500 shrink-0" />
+            {deptLoading ? (
+              <Loader2 size={14} className="animate-spin text-slate-400" />
+            ) : (
+              <select
+                value={selectedDeptId}
+                onChange={e => { setSelectedDeptId(e.target.value); setSelectedLeadIds([]); }}
+                className="text-xs font-bold text-[var(--text-main)] bg-transparent outline-none cursor-pointer"
+              >
+                <option value="" className="bg-[var(--bg-card)]">All Departments</option>
+                {departments.map(d => (
+                  <option key={d.departmentId} value={d.departmentId} className="bg-[var(--bg-card)]">{d.departmentName}</option>
+                ))}
+              </select>
+            )}
+          </div>
 
-          {loading && (
-            <div className="p-10 text-center text-slate-500">
-              Loading leads...
-            </div>
-          )}
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <input
+              type="text"
+              placeholder="Search leads..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="text-xs font-bold bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg pl-9 pr-4 py-2 w-48 outline-none focus:ring-2 focus:ring-indigo-500/20 text-[var(--text-main)]"
+            />
+          </div>
 
-          {!loading && assignedLeads.length === 0 && (
-            <div className="p-10 text-center text-slate-500">
-              No assigned leads found
-            </div>
-          )}
+          {/* Select mode */}
+          <button
+            onClick={() => { setIsSelectMode(!isSelectMode); if (isSelectMode) setSelectedLeadIds([]); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              isSelectMode
+                ? "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                : "bg-indigo-600 text-white shadow-sm hover:bg-indigo-700"
+            }`}
+          >
+            {isSelectMode ? <X size={14} /> : <MousePointer2 size={14} />}
+            {isSelectMode ? "Cancel" : "Select Mode"}
+          </button>
+        </div>
+      </div>
 
-          {!loading && assignedLeads.length > 0 && (
-            <table className="w-full text-sm">
-              <thead className="bg-slate-100 border-b border-slate-200 sticky top-0">
-                <tr className="text-xs uppercase text-slate-600 tracking-wider">
-                  <th className="px-6 py-4 text-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedLeadIds.length === assignedLeads.length}
-                      onChange={(e) => selectAllVisible(e.target.checked)}
-                      className="w-4 h-4 accent-indigo-600"
-                    />
-                  </th>
-                  <th className="px-6 py-4 text-left">Name</th>
-                  <th className="px-6 py-4 text-left">Phone</th>
-                  <th className="px-6 py-4 text-left">Email</th>
-                  <th className="px-6 py-4 text-left">Status</th>
-                  <th className="px-6 py-4 text-left">Assigned To</th>
-                  <th className="px-6 py-4 text-left">Created At</th>
-                  <th className="px-6 py-4 text-left">Remark</th>
-                  <th className="px-6 py-4 text-center">Action</th>
-                </tr>
-              </thead>
+      {/* ── Stats badge ── */}
+      <div className="flex items-center gap-3 px-1">
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          {loading ? "Loading…" : `${filteredLeads.length} lead${filteredLeads.length !== 1 ? "s" : ""}`}
+        </span>
+        {selectedDeptId && (
+          <span className="px-2 py-0.5 text-[9px] font-black bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-full uppercase tracking-widest">
+            {selectedDeptName}
+          </span>
+        )}
+      </div>
 
-              <tbody>
-                {assignedLeads.map((l, index) => (
-                  <tr
-                    key={l.id}
-                    className={`border-b border-slate-100 transition hover:bg-indigo-50 ${
-                      index % 2 === 0 ? "bg-white" : "bg-slate-50"
-                    }`}
-                  >
-                    <td className="px-6 py-4 text-center">
+      {/* ── Table ── */}
+      <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-color)] shadow-sm overflow-hidden transition-colors">
+        {loading ? (
+          <div className="flex items-center justify-center py-16 gap-3 text-slate-400">
+            <Loader2 size={20} className="animate-spin text-indigo-500" />
+            <span className="text-xs font-bold uppercase tracking-widest">Loading leads…</span>
+          </div>
+        ) : filteredLeads.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+            <Users size={32} className="mb-2 opacity-30" />
+            <p className="text-xs font-bold uppercase tracking-widest">
+              {selectedDeptId ? "No leads assigned to this department" : "No leads found"}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-[var(--bg-body)] border-b border-[var(--border-color)]">
+                  {isSelectMode && (
+                    <th className="px-4 py-3 text-center w-10">
                       <input
                         type="checkbox"
-                        checked={selectedLeadIds.includes(l.id)}
-                        onChange={() => toggleLeadSelection(l.id)}
-                        className="w-4 h-4 accent-indigo-600"
+                        checked={selectedLeadIds.length === filteredLeads.length && filteredLeads.length > 0}
+                        onChange={e => setSelectedLeadIds(e.target.checked ? filteredLeads.map(l => l.id) : [])}
+                        className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer"
                       />
+                    </th>
+                  )}
+                  <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Lead</th>
+                  <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Contact</th>
+                  <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Department</th>
+                  <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                  <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Assigned To</th>
+                  <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">View</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-color)]/30">
+                {filteredLeads.map(l => (
+                  <tr key={l.id} className={`transition-all ${selectedLeadIds.includes(l.id) ? "bg-indigo-500/5" : "hover:bg-indigo-500/[0.02]"}`}>
+                    {isSelectMode && (
+                      <td className="px-4 py-4 text-center border-r border-[var(--border-color)]/30">
+                        <input
+                          type="checkbox"
+                          checked={selectedLeadIds.includes(l.id)}
+                          onChange={() => toggleSelect(l.id)}
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer"
+                        />
+                      </td>
+                    )}
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 font-black text-[10px] border border-indigo-500/20 uppercase">
+                          {l.name?.charAt(0) || "L"}
+                        </div>
+                        <div>
+                          <p className="text-[12px] font-black text-[var(--text-main)] uppercase leading-tight">{l.name || "Unknown"}</p>
+                          <span className="text-[8px] font-bold text-slate-400">#{String(l.id).slice(-6)}</span>
+                        </div>
+                      </div>
                     </td>
-
-                    <td className="px-6 py-4 font-semibold text-slate-800">
-                      {l.name || "-"}
+                    <td className="px-5 py-3.5 text-center">
+                      <p className="text-[11px] font-bold text-[var(--text-main)] opacity-80">{l.email || "—"}</p>
+                      <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">{l.phone || "—"}</p>
                     </td>
-
-                    <td className="px-6 py-4 text-slate-600">
-                      {l.phone || "-"}
-                    </td>
-
-                    <td className="px-6 py-4 text-slate-600">
-                      {l.email || "-"}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-3 py-1 text-xs font-medium rounded-full ${
-                          statusColors[l.status] ||
-                          "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {l.status}
+                    <td className="px-5 py-3.5 text-center">
+                      <span className="px-2 py-0.5 text-[9px] font-black bg-[var(--bg-body)] text-slate-400 border border-[var(--border-color)] rounded-full uppercase tracking-widest">
+                        {l.departmentName || "—"}
                       </span>
                     </td>
-
-                    <td className="px-6 py-4 text-slate-700 font-medium">
-                      {l.assignedToUserName}
+                    <td className="px-5 py-3.5 text-center">
+                      <span className={`px-2.5 py-1 text-[9px] font-black uppercase rounded-md border ${STATUS_COLORS[l.status?.toLowerCase()] || "bg-slate-500/10 text-slate-500 border-slate-500/20"}`}>
+                        {l.status || "New"}
+                      </span>
                     </td>
-
-                    <td className="px-6 py-4 text-xs text-slate-500">
-                      {new Date(l.createdAt).toLocaleString()}
+                    <td className="px-5 py-3.5 text-center">
+                      <span className="text-[10px] font-bold text-[var(--text-main)] opacity-70">{l.assignedToUserName || "—"}</span>
                     </td>
-
-                    <td className="px-6 py-4">
-                      <input
-                        type="text"
-                        value={remarkMap[l.id] ?? l.remark ?? ""}
-                        onChange={(e) =>
-                          setRemarkMap((prev) => ({
-                            ...prev,
-                            [l.id]: e.target.value,
-                          }))
-                        }
-                        onBlur={() =>
-                          assignLead(
-                            l.id,
-                            l.assignedToUserId,
-                            l.assignedToUserName,
-                            remarkMap[l.id]
-                          )
-                        }
-                        className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none"
-                        placeholder="Add remark..."
-                      />
-                    </td>
-
-                    <td className="px-6 py-4 text-center">
+                    <td className="px-5 py-3.5 text-right">
                       <button
                         onClick={() => setSelectedLead(l)}
-                        className="px-4 py-2 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
+                        className="p-1.5 bg-[var(--bg-body)] rounded-md text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors border border-[var(--border-color)]"
                       >
-                        View
+                        <Eye size={14} />
                       </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* ===== MODAL ===== */}
-      {selectedLead && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          onClick={() => setSelectedLead(null)}
-        >
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-
-          <div
-            className="relative bg-white w-full max-w-2xl mx-4 rounded-2xl shadow-2xl border border-slate-200 p-8 max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+      {/* ── Floating action bar ── */}
+      <AnimatePresence>
+        {isSelectMode && selectedLeadIds.length > 0 && (
+          <motion.div
+            initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 px-6 py-3 rounded-xl shadow-2xl flex items-center gap-6 border border-slate-700 z-40"
           >
-            <h3 className="text-xl font-bold mb-6 text-slate-800">
-              Lead Details
-            </h3>
+            <span className="text-[10px] font-black text-white uppercase tracking-widest border-r border-slate-700 pr-6">
+              {selectedLeadIds.length} Selected
+            </span>
+            <button
+              onClick={() => exportToExcel("selected")}
+              className="px-4 py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-indigo-500 transition-all flex items-center gap-2"
+            >
+              <Download size={12} /> Export Excel
+            </button>
+            <button
+              onClick={() => exportToExcel("all")}
+              className="px-4 py-1.5 bg-slate-700 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-slate-600 transition-all flex items-center gap-2"
+            >
+              <Download size={12} /> Export All
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              {selectedLead.fields &&
-                Object.entries(selectedLead.fields).map(([k, v]) => (
-                  <div key={k}>
-                    <p className="text-xs text-slate-500 uppercase">
-                      {k.replace(/_/g, " ")}
-                    </p>
-                    <p className="font-medium text-slate-800">
-                      {v || "-"}
-                    </p>
+      {/* ── Lead detail modal ── */}
+      <AnimatePresence>
+        {selectedLead && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setSelectedLead(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[var(--bg-card)] w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-[var(--border-color)] flex flex-col transition-colors"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="px-5 py-4 bg-[var(--bg-body)] border-b border-[var(--border-color)] flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <FileText size={16} className="text-indigo-500" />
+                  <h3 className="text-[10px] font-black text-[var(--text-main)] uppercase tracking-widest">Lead Profile</h3>
+                </div>
+                <button onClick={() => setSelectedLead(null)} className="p-1.5 hover:bg-[var(--bg-card)] rounded-full text-slate-400 hover:text-red-500 transition-all">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-5 overflow-y-auto max-h-[70vh] space-y-3 custom-scrollbar">
+                {/* Department & Status badges */}
+                <div className="flex gap-2 flex-wrap">
+                  {selectedLead.departmentName && (
+                    <span className="px-2 py-0.5 text-[9px] font-black bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-full uppercase tracking-widest">
+                      {selectedLead.departmentName}
+                    </span>
+                  )}
+                  {selectedLead.status && (
+                    <span className={`px-2 py-0.5 text-[9px] font-black rounded-full border uppercase tracking-widest ${STATUS_COLORS[selectedLead.status?.toLowerCase()] || "bg-slate-500/10 text-slate-500 border-slate-500/20"}`}>
+                      {selectedLead.status}
+                    </span>
+                  )}
+                </div>
+
+                {/* Form fields */}
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedLead.fields && Object.entries(selectedLead.fields).map(([k, v]) => (
+                    <div key={k} className="p-2.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5 truncate">{k.replace(/_/g, " ")}</p>
+                      <p className="text-[11px] font-black text-[var(--text-main)] uppercase tracking-tight truncate">{v || "—"}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Assigned to */}
+                {selectedLead.assignedToUserName && (
+                  <div className="p-2.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Assigned To</p>
+                    <p className="text-[11px] font-black text-[var(--text-main)]">{selectedLead.assignedToUserName}</p>
                   </div>
-                ))}
-            </div>
+                )}
 
-            <div className="mt-8 flex justify-end">
-              <button
-                onClick={() => setSelectedLead(null)}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition"
-              >
-                Close
-              </button>
-            </div>
+                {/* Remarks */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-indigo-500 uppercase ml-1 tracking-widest flex items-center gap-1">
+                    <MessageSquare size={12} /> Internal Remarks
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Type notes and press Enter..."
+                    value={remarkMap[selectedLead.id] ?? selectedLead.remark ?? ""}
+                    onChange={e => setRemarkMap(prev => ({ ...prev, [selectedLead.id]: e.target.value }))}
+                    onBlur={() => assignLead(selectedLead.id, selectedLead.assignedToUserId, selectedLead.assignedToUserName, remarkMap[selectedLead.id])}
+                    className="w-full px-3 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-[var(--text-main)] transition-all"
+                  />
+                </div>
+
+                <button onClick={() => setSelectedLead(null)} className="w-full py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-indigo-700 transition-all tracking-widest shadow-md">
+                  Close
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }

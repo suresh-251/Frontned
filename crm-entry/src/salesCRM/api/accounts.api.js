@@ -1,49 +1,41 @@
 import apiClient from './apiClient';
 
-/**
- * Accounts API Service
- * Handles all account-related API calls
- */
-
 const accountsAPI = {
-  // Get all accounts
   getAll: async () => {
-    const response = await apiClient.get('/Accounts');
-    return response.data;
+    const res = await apiClient.get('/Accounts');
+    return res.data;
   },
 
-  // Get account by ID
   getById: async (id) => {
-    const response = await apiClient.get(`/Accounts/${id}`);
-    return response.data;
+    const res = await apiClient.get(`/Accounts/${id}`);
+    return res.data;
   },
 
-  // Create new account
-  create: async (accountData) => {
-    const response = await apiClient.post('/Accounts', accountData);
-    return response.data;
-  },
-
-  // Update account
-  update: async (id, accountData) => {
-    const response = await apiClient.put(`/Accounts/${id}`, {
-      id,
-      ...accountData
+  create: async (data) => {
+    const res = await apiClient.post('/Accounts', {
+      ...data,
+      createdAt: new Date().toISOString()
     });
-    return response.data;
+    return res.data;
   },
 
-  // Delete account
+  update: async (id, data) => {
+    const res = await apiClient.put(`/Accounts/${id}`, {
+      id,
+      ...data
+    });
+    return res.data;
+  },
+
   delete: async (id) => {
-    const response = await apiClient.delete(`/Accounts/${id}`);
-    return response.data;
+    const res = await apiClient.delete(`/Accounts/${id}`);
+    return res.data;
   },
 
-  // Get deals for an account
   getDeals: async (id) => {
-    const response = await apiClient.get(`/Accounts/${id}/deals`);
-    return response.data;
-  },
+    const res = await apiClient.get(`/Accounts/${id}/deals`);
+    return res.data;
+  }
 };
 
 export default accountsAPI;

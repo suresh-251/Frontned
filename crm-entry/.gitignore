@@ -1,4 +1,6 @@
+# ----------------------------
 # Logs
+# ----------------------------
 logs
 *.log
 .vs/
@@ -8,18 +10,52 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# ----------------------------
+# Node / React
+# ----------------------------
+node_modules/
+dist/
+dist-ssr/
+build/
+coverage/
 *.local
 
-# Editor directories and files
+# ----------------------------
+# Environment files
+# ----------------------------
+.env
+.env.*
+!.env.example
+
+# ----------------------------
+# Visual Studio
+# ----------------------------
+.vs/
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vsidx
+
+# ----------------------------
+# .NET Build folders
+# ----------------------------
+bin/
+obj/
+TestResults/
+
+# ----------------------------
+# OS files
+# ----------------------------
+.DS_Store
+Thumbs.db
+
+# ----------------------------
+# Visual Studio project files
+# ----------------------------
 *.ntvs*
 *.njsproj
-*.sln
 *.sw?

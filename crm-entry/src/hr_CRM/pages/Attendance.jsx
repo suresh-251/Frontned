@@ -1,657 +1,321 @@
-// import { useEffect, useState } from "react";
-// import { getAdminUsers } from "../../api/admin/users.api";
-// import {
-//   checkIn,
-//   checkOut,
-//   getTotalHours,
-//   getAttendanceHistory,
-//   updateAttendanceStatus,
-// } from "../api/api.attendance";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { 
+  Search, Loader2, Activity, History, X, 
+  Calendar as CalendarIcon, Clock, ArrowRight, User, LogIn, LogOut, ChevronLeft, ChevronRight
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import toast, { Toaster } from "react-hot-toast";
+import { jwtDecode } from "jwt-decode";
 
-// export default function Attendance() {
-//   const [employees, setEmployees] = useState([]);
-//   const [attendanceMap, setAttendanceMap] = useState({});
-//   const [historyData, setHistoryData] = useState([]);
-//   const [selectedUserId, setSelectedUserId] = useState(null);
-//   const [showModal, setShowModal] = useState(false);
-
-//   /* ===== Format TimeSpan ===== */
-//   const formatTime = (time) => {
-//     if (!time) return "-";
-//     return time.split(".")[0];
-//   };
-
-//   const formatTotal = (time) => {
-//     if (!time) return "0 hrs";
-//     const [h, m] = time.split(":");
-//     return `${parseInt(h)} hrs ${parseInt(m)} mins`;
-//   };
-
-//   /* ===== Load Employees ===== */
-//   useEffect(() => {
-//     const load = async () => {
-//       const res = await getAdminUsers({ page: 1, pageSize: 50 });
-//       setEmployees(res?.users ?? []);
-//     };
-//     load();
-//   }, []);
-
-//   /* ===== Load Attendance ===== */
-//   useEffect(() => {
-//     if (!employees.length) return;
-
-//     const loadAttendance = async () => {
-//       const map = {};
-
-//       for (let emp of employees) {
-//         try {
-//           const res = await getTotalHours(emp.userId);
-//           map[emp.userId] = res.data;
-//         } catch (err) {
-//           map[emp.userId] = null;
-//         }
-//       }
-
-//       setAttendanceMap(map);
-//     };
-
-//     loadAttendance();
-//   }, [employees]);
-
-//   /* ===== Check In ===== */
-// const handleCheckIn = async (userId) => {
-//   try {
-//     await checkIn(userId);
-
-//     // ✅ Update status instantly in table
-//     setAttendanceMap((prev) => ({
-//       ...prev,
-//       [userId]: {
-//         ...prev[userId],
-//         status: "Present",
-//       },
-//     }));
-
-//     alert("Checked In");
-//   } catch (err) {
-//     alert(err.response?.data || "Error");
-//   }
-// };
-//   /* ===== Check Out ===== */
-//   /* ===== Check Out ===== */
-// const handleCheckOut = async (userId) => {
-//   try {
-//     await checkOut(userId);
-
-//     // ✅ Keep status as Present after checkout
-//     setAttendanceMap((prev) => ({
-//       ...prev,
-//       [userId]: {
-//         ...prev[userId],
-//         status: "Present",
-//       },
-//     }));
-
-//     alert("Checked Out");
-//   } catch (err) {
-//     alert(err.response?.data || "Error");
-//   }
-// };
-//   /* ===== View History ===== */
-//   const handleViewHistory = async (userId) => {
-//     try {
-//       const res = await getAttendanceHistory(userId);
-//       setHistoryData(res.data);
-//       setSelectedUserId(userId);
-//       setShowModal(true);
-//     } catch {
-//       alert("No history found");
-//     }
-//   };
-
-//   /* ===== Change Status ===== */
-//   const handleStatusChange = async (attendanceId, status) => {
-//     try {
-//       await updateAttendanceStatus(selectedUserId, status);
-//       alert("Status Updated");
-
-//       const res = await getAttendanceHistory(selectedUserId);
-//       setHistoryData(res.data);
-//     } catch {
-//       alert("Status update failed");
-//     }
-//   };
-
-//   return (
-//     <div className="h-full overflow-y-auto p-4">
-
-//       {/* HEADER */}
-//       <div className="flex justify-between items-center mb-6">
-//         <div>
-//           <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-//             Attendance Management
-//           </h2>
-//           <p className="text-sm text-gray-500 mt-1">
-//             Manage employee attendance records
-//           </p>
-//         </div>
-//       </div>
-
-//       {/* TABLE */}
-//       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-//         <div className="max-h-[420px] overflow-y-auto">
-
-//           <table className="w-full text-xs">
-
-//             <thead className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white uppercase tracking-wide sticky top-0">
-//               <tr>
-//                 <th className="px-4 py-3 text-left">ID</th>
-//                 <th className="px-4 py-3 text-left">Name</th>
-//                 <th className="px-4 py-3 text-left">Email</th>
-//                 <th className="px-4 py-3 text-left">Total</th>
-//                 <th className="px-4 py-3 text-left">Status</th>
-//                 <th className="px-4 py-3 text-center">Actions</th>
-//                 <th className="px-4 py-3 text-center">History</th>
-//               </tr>
-//             </thead>
-
-//             <tbody className="divide-y divide-gray-100">
-//               {employees.map((emp, index) => {
-//                 const record = attendanceMap[emp.userId];
-
-//                 return (
-//                   <tr
-//                     key={emp.userId}
-//                     className={`hover:bg-indigo-50 transition ${
-//                       index % 2 === 0 ? "bg-gray-50" : "bg-white"
-//                     }`}
-//                   >
-//                     <td className="px-4 py-3 text-gray-500">
-//                       {emp.userId}
-//                     </td>
-
-//                     <td className="px-4 py-3 font-medium text-gray-800">
-//                       {emp.name || emp.username}
-//                     </td>
-
-//                     <td className="px-4 py-3 text-gray-600">
-//                       {emp.email}
-//                     </td>
-
-//                     <td className="px-4 py-3 text-gray-600">
-//                       {formatTotal(record?.totalHours)}
-//                     </td>
-
-//                     {/* STATUS */}
-//                     <td className="px-4 py-3">
-//                       <span
-//                         className={`px-2 py-1 rounded-full text-[10px] font-medium ${
-//                           record?.status === "Present"
-//                             ? "bg-green-100 text-green-600"
-//                             : record?.status === "Absent"
-//                             ? "bg-red-100 text-red-600"
-//                             : record?.status === "Leave"
-//                             ? "bg-yellow-100 text-yellow-600"
-//                             : "bg-gray-100 text-gray-500"
-//                         }`}
-//                       >
-//                         {record?.status || "N/A"}
-//                       </span>
-//                     </td>
-
-//                     {/* ACTIONS */}
-//                     <td className="px-4 py-3 text-center">
-//                       <div className="flex justify-center gap-2">
-//                         <button
-//                           onClick={() => handleCheckIn(emp.userId)}
-//                           className="bg-green-600 text-white px-3 py-1 rounded-md text-[11px] hover:opacity-90"
-//                         >
-//                           In
-//                         </button>
-
-//                         <button
-//                           onClick={() => handleCheckOut(emp.userId)}
-//                           className="bg-red-600 text-white px-3 py-1 rounded-md text-[11px] hover:opacity-90"
-//                         >
-//                           Out
-//                         </button>
-//                       </div>
-//                     </td>
-
-//                     <td className="px-4 py-3 text-center">
-//                       <button
-//                         onClick={() => handleViewHistory(emp.userId)}
-//                         className="bg-indigo-600 text-white px-3 py-1 rounded-md text-[11px] hover:opacity-90"
-//                       >
-//                         View
-//                       </button>
-//                     </td>
-//                   </tr>
-//                 );
-//               })}
-
-//               {employees.length === 0 && (
-//                 <tr>
-//                   <td colSpan={7} className="text-center py-8 text-gray-400">
-//                     No employees found
-//                   </td>
-//                 </tr>
-//               )}
-//             </tbody>
-
-//           </table>
-//         </div>
-//       </div>
-
-//       {/* MODAL */}
-//       {showModal && (
-//         <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
-
-//           <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6">
-
-//             <h3 className="text-lg font-semibold mb-4 text-indigo-700">
-//               Attendance History
-//             </h3>
-
-//             <div className="max-h-[400px] overflow-y-auto">
-//               <table className="w-full text-xs">
-//                 <thead className="bg-gray-100 text-gray-700 uppercase">
-//                   <tr>
-//                     <th className="px-4 py-3 text-left">Date</th>
-//                     <th className="px-4 py-3 text-left">Check-In</th>
-//                     <th className="px-4 py-3 text-left">Check-Out</th>
-//                     <th className="px-4 py-3 text-left">Total</th>
-//                     <th className="px-4 py-3 text-left">Status</th>
-//                   </tr>
-//                 </thead>
-
-//                 <tbody className="divide-y divide-gray-100">
-//                   {historyData.map((item, index) => (
-//                     <tr key={item.attendanceId}>
-//                       <td className="px-4 py-3">
-//                         {new Date(item.attendanceDate).toLocaleDateString()}
-//                       </td>
-//                       <td className="px-4 py-3">
-//                         {formatTime(item.checkInTime)}
-//                       </td>
-//                       <td className="px-4 py-3">
-//                         {formatTime(item.checkOutTime)}
-//                       </td>
-//                       <td className="px-4 py-3">
-//                         {formatTotal(item.totalHours)}
-//                       </td>
-//                       <td className="px-4 py-3">
-//                         <select
-//                           value={item.status}
-//                           onChange={(e) =>
-//                             handleStatusChange(
-//                               item.attendanceId,
-//                               e.target.value
-//                             )
-//                           }
-//                           className="border rounded-md px-2 py-1 text-xs"
-//                         >
-//                           <option value="Present">Present</option>
-//                           <option value="Absent">Absent</option>
-//                           <option value="Leave">Leave</option>
-//                         </select>
-//                       </td>
-//                     </tr>
-//                   ))}
-//                 </tbody>
-//               </table>
-//             </div>
-
-//             <div className="flex justify-end mt-4">
-//               <button
-//                 onClick={() => setShowModal(false)}
-//                 className="bg-red-600 text-white px-4 py-1.5 rounded-md text-xs hover:opacity-90"
-//               >
-//                 Close
-//               </button>
-//             </div>
-
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { useEffect, useState } from "react";
+// API IMPORTS
 import { getAdminUsers } from "../../api/admin/users.api";
-import {
-  checkIn,
-  checkOut,
-  getAttendanceHistory,
-  updateAttendanceStatus,
-} from "../api/api.attendance";
+import { checkIn, checkOut, getAttendanceHistory, getTotalHours } from "../api/api.attendance";
 
 export default function Attendance() {
   const [employees, setEmployees] = useState([]);
   const [attendanceMap, setAttendanceMap] = useState({});
-  const [historyData, setHistoryData] = useState([]);
-  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  
+  // Modal & History States
   const [showModal, setShowModal] = useState(false);
+  const [historyData, setHistoryData] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('sv')); 
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [modalTotalHours, setModalTotalHours] = useState("00:00:00");
 
-  /* ================= LOAD EMPLOYEES ================= */
-  useEffect(() => {
-    const loadEmployees = async () => {
-      try {
-        const res = await getAdminUsers({ page: 1, pageSize: 50 });
-        setEmployees(res?.users ?? []);
-      } catch {
-        setEmployees([]);
-      }
-    };
-    loadEmployees();
+  const auth = useMemo(() => {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return { userId: null, isManager: false };
+    try {
+      const decoded = jwtDecode(token);
+      const ROLE_CLAIM = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
+      return { 
+        userId: Number(decoded.sub || decoded.id), 
+        isManager: decoded[ROLE_CLAIM] === "HR_MANAGER" || decoded.role === "ADMIN",
+        name: decoded.username || decoded.unique_name || "Me"
+      };
+    } catch (e) { return { userId: null, isManager: false }; }
   }, []);
 
-  /* ================= LOAD MAIN TABLE STATUS ================= */
-  useEffect(() => {
-    if (!employees.length) return;
-
-    const loadAttendanceStatus = async () => {
-      const map = {};
-
-      await Promise.all(
-        employees.map(async (emp) => {
-          try {
-            const res = await getAttendanceHistory(emp.userId);
-            const history = res.data || [];
-
-            if (history.length > 0) {
-              const latest = history.reduce((prev, current) =>
-                new Date(current.attendanceDate) >
-                new Date(prev.attendanceDate)
-                  ? current
-                  : prev
-              );
-
-              map[emp.userId] = {
-                status: latest.status,
-              };
-            } else {
-              map[emp.userId] = { status: "Absent" };
-            }
-          } catch {
-            map[emp.userId] = { status: "Absent" };
-          }
-        })
-      );
-
-      setAttendanceMap(map);
-    };
-
-    loadAttendanceStatus();
-  }, [employees]);
-
-  /* ================= CHECK IN ================= */
-  const handleCheckIn = async (userId) => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      await checkIn(userId);
-
-      setAttendanceMap((prev) => ({
-        ...prev,
-        [userId]: { status: "Present" },
-      }));
-
-      alert("Checked In");
-    } catch (err) {
-      alert(err.response?.data || "Error");
-    }
-  };
-
-  /* ================= CHECK OUT ================= */
-  const handleCheckOut = async (userId) => {
-    try {
-      await checkOut(userId);
-
-      setAttendanceMap((prev) => ({
-        ...prev,
-        [userId]: { status: "Present" },
-      }));
-
-      alert("Checked Out");
-    } catch (err) {
-      alert(err.response?.data || "Error");
-    }
-  };
-
-  /* ================= VIEW HISTORY ================= */
-  const handleViewHistory = async (userId) => {
-    try {
-      const res = await getAttendanceHistory(userId);
-      setHistoryData(res.data || []);
-      setSelectedUserId(userId);
-      setShowModal(true);
-    } catch {
-      alert("No history found");
-    }
-  };
-
-  /* ================= UPDATE STATUS ================= */
-  const handleStatusChange = async (status) => {
-    try {
-      // send correct userId
-      await updateAttendanceStatus(selectedUserId, status);
-
-      // reload history
-      const res = await getAttendanceHistory(selectedUserId);
-      const updatedHistory = res.data || [];
-      setHistoryData(updatedHistory);
-
-      // update main table with latest status
-      if (updatedHistory.length > 0) {
-        const latest = updatedHistory.reduce((prev, current) =>
-          new Date(current.attendanceDate) >
-          new Date(prev.attendanceDate)
-            ? current
-            : prev
-        );
-
-        setAttendanceMap((prev) => ({
-          ...prev,
-          [selectedUserId]: {
-            status: latest.status,
-          },
-        }));
+      let usersToProcess = [];
+      if (auth.isManager) {
+        const uRes = await getAdminUsers({ page: 1, pageSize: 100 });
+        usersToProcess = uRes?.users ?? [];
+      } else {
+        usersToProcess = [{ userId: auth.userId, username: auth.name }];
       }
 
-      alert("Status Updated");
-    } catch (err) {
-      console.log(err);
-      alert("Status update failed");
-    }
+      const localToday = new Date().toLocaleDateString('sv');
+      const newMap = {};
+
+      await Promise.all(usersToProcess.map(async (emp) => {
+        let state = { isCheckedIn: false, count: 0, lastAction: "---", totalToday: "00:00:00", rawTime: null };
+        try {
+          const hRes = await getAttendanceHistory(emp.userId);
+          const history = hRes?.data || [];
+          
+          if (Array.isArray(history) && history.length > 0) {
+            const todayLogs = history.filter(l => l.attendanceDate?.split('T')[0] === localToday);
+            state.count = todayLogs.length; // This is the (4 --> no. of checkins) logic
+            
+            if (todayLogs.length > 0) {
+              const latest = todayLogs.sort((a,b) => new Date(b.checkInTime) - new Date(a.checkInTime))[0];
+              state.isCheckedIn = !!latest.checkInTime && !latest.checkOutTime;
+              state.rawTime = latest.checkInTime; // For live activity sorting
+              state.lastAction = latest.checkOutTime 
+                ? `OUT ${latest.checkOutTime.slice(11, 16)}` 
+                : `IN ${latest.checkInTime.slice(11, 16)}`;
+            }
+          }
+          
+          if (emp.userId === auth.userId) {
+            const tRes = await getTotalHours(emp.userId);
+            state.totalToday = tRes.data?.totalHours?.split('.')[0] || "00:00:00";
+          }
+        } catch (e) {}
+        newMap[emp.userId] = state;
+      }));
+
+      setAttendanceMap(newMap);
+      setEmployees(usersToProcess);
+    } catch (err) { toast.error("Sync Failed"); }
+    finally { setLoading(false); }
+  }, [auth]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handlePunch = async (userId) => {
+    const isCurrentlyIn = attendanceMap[userId]?.isCheckedIn;
+    const tid = toast.loading(isCurrentlyIn ? "Checking Out..." : "Checking In...");
+    try {
+      isCurrentlyIn ? await checkOut(userId) : await checkIn(userId);
+      toast.success("Success", { id: tid });
+      await loadData(); 
+    } catch (e) { toast.error("Action Failed", { id: tid }); }
   };
 
+  const daysInMonth = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const date = new Date(year, month, 1);
+    const days = [];
+    while (date.getMonth() === month) {
+      days.push(new Date(date));
+      date.setDate(date.getDate() + 1);
+    }
+    return days;
+  }, [currentMonth]);
+
+  const modalDailyStats = useMemo(() => {
+    const logs = historyData.filter(h => h.attendanceDate.split('T')[0] === selectedDate);
+    return {
+      count: logs.length,
+      logs: logs.sort((a, b) => new Date(a.checkInTime) - new Date(b.checkInTime))
+    };
+  }, [historyData, selectedDate]);
+
+  const filteredEmployees = useMemo(() => {
+    return employees.filter(e => 
+      (e.username || e.name || "").toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [employees, searchTerm]);
+
+  // LIVE ACTIVITY LOGIC
+  const liveActivity = useMemo(() => {
+    return employees
+      .filter(e => attendanceMap[e.userId]?.rawTime)
+      .sort((a, b) => new Date(attendanceMap[b.userId].rawTime) - new Date(attendanceMap[a.userId].rawTime))
+      .slice(0, 5);
+  }, [employees, attendanceMap]);
+
   return (
-    <div className="h-full overflow-y-auto p-4">
+    <div className="flex h-[550px] w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-sm font-sans transition-colors duration-300">
+      <Toaster position="top-right" />
 
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-            Attendance Management
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Manage employee attendance records
-          </p>
-        </div>
-      </div>
-
-      {/* TABLE */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-        <div className="max-h-[420px] overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white uppercase tracking-wide sticky top-0">
-              <tr>
-                <th className="px-4 py-3 text-left">ID</th>
-                <th className="px-4 py-3 text-left">Name</th>
-                <th className="px-4 py-3 text-left">Email</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-center">Actions</th>
-                <th className="px-4 py-3 text-center">History</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-gray-100">
-              {employees.map((emp, index) => {
-                const record = attendanceMap[emp.userId];
-
-                return (
-                  <tr
-                    key={emp.userId}
-                    className={`hover:bg-indigo-50 transition ${
-                      index % 2 === 0 ? "bg-gray-50" : "bg-white"
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-gray-500">
-                      {emp.userId}
-                    </td>
-
-                    <td className="px-4 py-3 font-medium text-gray-800">
-                      {emp.name || emp.username}
-                    </td>
-
-                    <td className="px-4 py-3 text-gray-600">
-                      {emp.email}
-                    </td>
-
-                    {/* VIEW ONLY STATUS */}
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
-                          record?.status === "Present"
-                            ? "bg-green-100 text-green-700"
-                            : record?.status === "Leave"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {record?.status || "Absent"}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex justify-center gap-2">
-                        <button
-                          onClick={() => handleCheckIn(emp.userId)}
-                          className="bg-green-600 text-white px-3 py-1 rounded-md text-[11px]"
-                        >
-                          In
-                        </button>
-
-                        <button
-                          onClick={() => handleCheckOut(emp.userId)}
-                          className="bg-red-600 text-white px-3 py-1 rounded-md text-[11px]"
-                        >
-                          Out
-                        </button>
-                      </div>
-                    </td>
-
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => handleViewHistory(emp.userId)}
-                        className="bg-indigo-600 text-white px-3 py-1 rounded-md text-[11px]"
-                      >
-                        View
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {employees.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="text-center py-8 text-gray-400">
-                    No employees found
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* MODAL */}
-      {showModal && (
-        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6">
-
-            <h3 className="text-lg font-semibold mb-4 text-indigo-700">
-              Attendance History
-            </h3>
-
-            <div className="max-h-[400px] overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-100 text-gray-700 uppercase">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Date</th>
-                    <th className="px-4 py-3 text-left">Check-In</th>
-                    <th className="px-4 py-3 text-left">Check-Out</th>
-                    <th className="px-4 py-3 text-left">Total</th>
-                    <th className="px-4 py-3 text-left">Status</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-gray-100">
-                  {historyData.map((item) => (
-                    <tr key={item.attendanceId}>
-                      <td className="px-4 py-3">
-                        {new Date(item.attendanceDate).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3">{item.checkInTime}</td>
-                      <td className="px-4 py-3">{item.checkOutTime}</td>
-                      <td className="px-4 py-3">{item.totalHours}</td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={item.status}
-                          onChange={(e) =>
-                            handleStatusChange(e.target.value)
-                          }
-                          className="border rounded-md px-2 py-1 text-xs"
-                        >
-                          <option value="Present">Present</option>
-                          <option value="Absent">Absent</option>
-                          <option value="Leave">Leave</option>
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {/* SIDEBAR (Managers Only) */}
+      {auth.isManager && (
+        <div className="w-64 border-r border-[var(--border-color)] flex flex-col shrink-0 bg-[var(--bg-card)]">
+          <div className="p-4 border-b border-[var(--border-color)] bg-[var(--bg-body)]/30">
+            <h2 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Dashboard</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-4 bg-[var(--bg-body)]/30 custom-scrollbar">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-3 bg-[var(--bg-card)] rounded-xl border border-[var(--border-color)] shadow-sm text-center">
+                <p className="text-[8px] font-black text-slate-400 uppercase">Active</p>
+                <p className="text-lg font-black text-emerald-500">{Object.values(attendanceMap).filter(v => v.isCheckedIn).length}</p>
+              </div>
+              <div className="p-3 bg-[var(--bg-card)] rounded-xl border border-[var(--border-color)] shadow-sm text-center">
+                <p className="text-[8px] font-black text-slate-400 uppercase">Staff</p>
+                <p className="text-lg font-black text-[var(--text-main)]">{employees.length}</p>
+              </div>
             </div>
 
-            <div className="flex justify-end mt-4">
-              <button
-                onClick={() => setShowModal(false)}
-                className="bg-red-600 text-white px-4 py-1.5 rounded-md text-xs"
-              >
-                Close
-              </button>
+            {/* LIVE ACTIVITY SECTION */}
+            <div className="space-y-1.5">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 mb-2">Live Activity</p>
+              {liveActivity.map(emp => (
+                <div key={emp.userId} className="flex items-center justify-between p-2 bg-[var(--bg-card)] rounded-lg border border-[var(--border-color)] shadow-sm">
+                   <div className="flex items-center gap-2 overflow-hidden">
+                      <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${attendanceMap[emp.userId]?.isCheckedIn ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                      <p className="text-[9px] font-bold text-[var(--text-main)] truncate uppercase">{emp.username || emp.name}</p>
+                   </div>
+                   <span className="text-[7px] font-black text-indigo-500 bg-indigo-500/5 px-1 rounded uppercase tracking-tighter">{attendanceMap[emp.userId]?.lastAction.split(' ')[0]}</span>
+                </div>
+              ))}
             </div>
-
           </div>
         </div>
       )}
+
+      {/* MAIN CONTENT AREA */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[var(--bg-card)]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg"><Activity size={18} /></div>
+            <div>
+              <h2 className="text-sm font-black text-[var(--text-main)] uppercase tracking-tight">Attendance Log</h2>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{auth.isManager ? 'Manager' : 'Personal'} View</p>
+            </div>
+          </div>
+          {auth.isManager && (
+            <input type="text" placeholder="Search team..." className="text-[10px] font-bold bg-[var(--bg-body)] border border-[var(--border-color)] rounded-lg px-4 py-1.5 outline-none text-[var(--text-main)] w-48 shadow-inner" onChange={(e) => setSearchTerm(e.target.value)} />
+          )}
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 bg-[var(--bg-body)]/20 custom-scrollbar">
+          <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl overflow-hidden shadow-sm">
+            <table className="w-full text-left">
+              <thead className="bg-[var(--bg-body)] border-b border-[var(--border-color)]">
+                <tr>
+                  <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Personnel</th>
+                  <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase text-center tracking-widest">Logs</th>
+                  <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase text-center tracking-widest">Status</th>
+                  <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase text-right tracking-widest">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-color)]/30">
+                {filteredEmployees.map((emp) => {
+                  const st = attendanceMap[emp.userId] || {};
+                  const isSelf = Number(emp.userId) === auth.userId;
+                  return (
+                    <tr key={emp.userId} className="hover:bg-indigo-500/[0.01] transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-8 w-8 rounded-lg flex items-center justify-center text-[10px] font-black border ${st.isCheckedIn ? 'bg-indigo-600 text-white border-indigo-500 shadow-md' : 'bg-[var(--bg-body)] text-slate-400 border-[var(--border-color)]'}`}>
+                            {emp.username?.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black text-[var(--text-main)] uppercase leading-none">{emp.name || emp.username}</p>
+                            <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">ID: {emp.userId}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex flex-col">
+                           <span className="text-[10px] font-black text-[var(--text-main)]">{st.count} Sessions</span>
+                           {isSelf && <span className="text-[8px] font-bold text-indigo-500 uppercase">{st.totalToday} Worked</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase border ${st.isCheckedIn ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shadow-sm" : "bg-slate-100 text-slate-400 border-transparent"}`}>
+                          {st.lastAction}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          {isSelf && (
+                            <button 
+                              onClick={() => handlePunch(emp.userId)} 
+                              className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all shadow-md active:scale-95 ${st.isCheckedIn ? 'bg-rose-500 text-white shadow-rose-500/20' : 'bg-indigo-600 text-white shadow-indigo-500/20'}`}
+                            >
+                              {st.isCheckedIn ? 'Punch Out' : 'Punch In'}
+                            </button>
+                          )}
+                          <button onClick={() => { 
+                            setSelectedUser(emp); 
+                            setShowModal(true); 
+                            getAttendanceHistory(emp.userId).then(r => setHistoryData(r?.data || [])); 
+                            if(isSelf) getTotalHours(emp.userId).then(r => setModalTotalHours(r.data?.totalHours?.split('.')[0] || "00:00:00"));
+                          }} className="p-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-lg text-slate-400 hover:text-indigo-500 transition-all hover:bg-white hover:shadow-sm">
+                            <CalendarIcon size={14}/>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* VIEW MODAL (Logic for selected date history) */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 flex items-center justify-center z-[110] backdrop-blur-sm bg-slate-900/60 p-4" onClick={() => setShowModal(false)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[var(--bg-card)] w-full max-w-2xl rounded-2xl shadow-2xl p-6 border border-[var(--border-color)] flex flex-col md:flex-row gap-6" onClick={e => e.stopPropagation()}>
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-black uppercase text-[var(--text-main)]">Employee Calendar</h3>
+                  <div className="flex gap-2">
+                    <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="p-1.5 hover:bg-[var(--bg-body)] rounded-lg"><ChevronLeft size={14}/></button>
+                    <span className="text-[10px] font-black uppercase text-indigo-500 mt-1">{currentMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                    <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="p-1.5 hover:bg-[var(--bg-body)] rounded-lg"><ChevronRight size={14}/></button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                   {['S','M','T','W','T','F','S'].map(d => <span key={d} className="text-[8px] font-black text-slate-400">{d}</span>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                   {Array(daysInMonth[0]?.getDay()).fill(0).map((_, i) => <div key={i} />)}
+                   {daysInMonth.map(date => {
+                      const dStr = date.toLocaleDateString('sv');
+                      const hasData = historyData.some(h => h.attendanceDate.split('T')[0] === dStr);
+                      const isSelected = selectedDate === dStr;
+                      return (
+                        <button key={dStr} onClick={() => setSelectedDate(dStr)} className={`h-8 w-full rounded-lg text-[9px] font-bold transition-all ${hasData ? 'bg-emerald-500 text-white shadow-sm' : 'bg-[var(--bg-body)] text-slate-400'} ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`}>
+                          {date.getDate()}
+                        </button>
+                      )
+                   })}
+                </div>
+              </div>
+              <div className="w-full md:w-64 border-t md:border-t-0 md:border-l border-[var(--border-color)] pt-4 md:pt-0 md:pl-6 flex flex-col">
+                <div className="mb-4">
+                  <h4 className="text-sm font-black text-indigo-500 uppercase tracking-tight truncate">{selectedUser?.username || selectedUser?.name}</h4>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase">{new Date(selectedDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long' })}</p>
+                </div>
+                <div className="bg-[var(--bg-body)] rounded-xl p-3 mb-4 border border-[var(--border-color)]">
+                   <div className="flex justify-between items-center mb-1">
+                      <span className="text-[8px] font-black text-slate-400 uppercase">Sessions</span>
+                      <span className="text-[10px] font-black text-[var(--text-main)]">{modalDailyStats.count} Logs</span>
+                   </div>
+                   <div className="flex justify-between items-center">
+                      <span className="text-[8px] font-black text-slate-400 uppercase">Total Hours</span>
+                      <span className="text-[10px] font-black text-indigo-500">{selectedDate === new Date().toLocaleDateString('sv') && Number(selectedUser?.userId) === auth.userId ? modalTotalHours : '--:--'}</span>
+                   </div>
+                </div>
+                <div className="flex-1 space-y-2 overflow-y-auto max-h-48 custom-scrollbar pr-1">
+                  {modalDailyStats.logs.map((log, i) => (
+                    <div key={i} className="p-2.5 bg-[var(--bg-body)] rounded-lg border border-[var(--border-color)] flex items-center justify-between">
+                       <Clock size={12} className="text-slate-400" />
+                       <p className="text-[9px] font-bold text-[var(--text-main)] uppercase">{log.checkInTime.slice(11, 16)} — {log.checkOutTime?.slice(11, 16) || 'ACTIVE'}</p>
+                    </div>
+                  ))}
+                  {modalDailyStats.logs.length === 0 && <p className="text-[9px] text-center text-slate-400 py-6 uppercase font-bold italic tracking-widest opacity-50">Empty Record</p>}
+                </div>
+                <button onClick={() => setShowModal(false)} className="mt-4 w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-md active:scale-95 transition-all">Close Viewer</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

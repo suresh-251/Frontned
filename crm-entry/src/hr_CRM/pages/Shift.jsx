@@ -1,0 +1,281 @@
+// THEME CHNAGE 
+
+import React, { useEffect, useState, useMemo } from "react";
+import { 
+  Clock, X, Search, Plus, Loader2, Users, Lock 
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import toast, { Toaster } from "react-hot-toast";
+import { jwtDecode } from "jwt-decode";
+
+import { getShifts, createShift, getAssignedUsers, assignShiftToUser } from "../api/shift.api";
+import { getDepartments } from "../api/hr.dept";
+import { getAdminUsers } from "../../api/admin/users.api";
+
+export default function Shift() {
+  const [shifts, setShifts] = useState([]);
+  const [assignedUsers, setAssignedUsers] = useState([]);
+  const [userLookup, setUserLookup] = useState({});
+  const [departments, setDepartments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showAddShift, setShowAddShift] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedShiftId, setSelectedShiftId] = useState(null);
+
+  // --- 🔑 PERMISSION SYSTEM ---
+  const token = localStorage.getItem("accessToken");
+  
+  const auth = useMemo(() => {
+    if (!token) return { perms: [], isManager: false };
+    try {
+      const decoded = jwtDecode(token);
+      const ROLE_CLAIM = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
+      
+      return {
+        perms: Array.isArray(decoded.perm) ? decoded.perm : [], 
+        isManager: decoded[ROLE_CLAIM] === "HR_MANAGER"
+      };
+    } catch (e) {
+      console.error("Token Decode Error:", e);
+      return { perms: [], isManager: false };
+    }
+  }, [token]);
+
+  const canView = auth.perms.includes("SHIFT_VIEW") || auth.isManager;
+  const canCreate = auth.perms.includes("SHIFT_CREATE") || auth.isManager;
+  const canAssign = auth.perms.includes("SHIFT_ASSIGN") || auth.isManager;
+  const canSeeDepts = auth.perms.includes("DOMAIN_VIEW") || auth.isManager;
+  const canSeeUsers = auth.perms.includes("USER_VIEW_ALL") || auth.isManager;
+
+  const [shiftForm, setShiftForm] = useState({ shiftName: "", startTime: "", endTime: "", departmentId: "" });
+  const [assignForm, setAssignForm] = useState({ userId: "", shiftId: "" });
+
+  const loadAllData = async () => {
+    if (!canView) return;
+    setLoading(true);
+    try {
+      const [sData, aData] = await Promise.all([
+        getShifts(),
+        getAssignedUsers()
+      ]);
+      setShifts(sData || []);
+      setAssignedUsers(aData || []);
+
+      if (canSeeDepts || canSeeUsers) {
+        const [dData, uData] = await Promise.all([
+          getDepartments(),
+          getAdminUsers({ page: 1, pageSize: 200 })
+        ]);
+        setDepartments(dData || []);
+        const lookup = {};
+        (uData?.users || []).forEach(u => lookup[u.userId] = u.username || u.name);
+        setUserLookup(lookup);
+      }
+    } catch (err) {
+      if (err.response?.status !== 403) toast.error("Sync Error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadAllData(); }, [canView]);
+
+  const handleCreateShift = async (e) => {
+    e.preventDefault();
+    if (!canCreate) return toast.error("Action Blocked: Missing SHIFT_CREATE");
+    try {
+      await createShift({ ...shiftForm, departmentId: Number(shiftForm.departmentId) });
+      toast.success("Shift Created");
+      setShowAddShift(false);
+      loadAllData();
+    } catch { toast.error("Failed to create shift"); }
+  };
+
+  const handleAssignShift = async (e) => {
+    e.preventDefault();
+    if (!canAssign) return toast.error("Action Blocked: Missing SHIFT_ASSIGN");
+    try {
+      await assignShiftToUser(Number(assignForm.userId), Number(assignForm.shiftId));
+      toast.success("Staff Assigned");
+      setShowAssignModal(false);
+      loadAllData();
+    } catch { toast.error("Assignment Failed"); }
+  };
+
+  if (!canView) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-slate-500 transition-colors duration-300">
+        <div className="bg-[var(--bg-card)] p-6 rounded-full mb-4 border border-[var(--border-color)] shadow-sm">
+           <Lock size={40} className="opacity-40" />
+        </div>
+        <p className="font-black uppercase text-[10px] tracking-widest text-center">
+          Access Denied <br /> SHIFT_VIEW Permission Required
+        </p>
+      </div>
+    );
+  }
+
+  const displayedUsers = selectedShiftId 
+    ? assignedUsers.filter(u => u.shiftId === selectedShiftId)
+    : assignedUsers;
+
+  const selectedShiftName = shifts.find(s => s.shiftId === selectedShiftId)?.shiftName;
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-4 p-2 font-sans text-[var(--text-main)] transition-colors duration-300">
+      <Toaster position="top-right" />
+
+      {/* HEADER */}
+      <div className="flex items-center justify-between px-1">
+        <div>
+          <h2 className="text-xl font-extrabold text-[var(--text-main)] tracking-tight flex items-center gap-2">
+            <Clock size={22} className="text-indigo-500" /> Shift Terminal
+          </h2>
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Schedules</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {canAssign && (
+            <button onClick={() => setShowAssignModal(true)} className="bg-[var(--bg-card)] text-[var(--text-main)] border border-[var(--border-color)] px-4 py-2 rounded-lg text-[10px] font-black uppercase hover:bg-indigo-500/10 transition-all active:scale-95">
+              Assign Staff
+            </button>
+          )}
+          {canCreate && (
+            <button onClick={() => setShowAddShift(true)} className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-[10px] font-black uppercase shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95">
+              <Plus size={14} strokeWidth={3} /> Create Shift
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-12 gap-4">
+        {/* LEFT: Shifts */}
+        <div className="col-span-12 lg:col-span-7 space-y-2">
+          <SectionHeader title="Templates" count={shifts.length} />
+          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-color)] shadow-sm overflow-hidden transition-colors">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-[var(--bg-body)] border-b border-[var(--border-color)]">
+                <tr>
+                  <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Shift Name</th>
+                  <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Hours</th>
+                  <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-color)]/30">
+                {shifts.map((s) => (
+                  <tr key={s.shiftId} onClick={() => setSelectedShiftId(s.shiftId)} className={`cursor-pointer transition-all ${selectedShiftId === s.shiftId ? "bg-indigo-500/10" : "hover:bg-indigo-500/[0.02]"}`}>
+                    <td className="px-5 py-3.5 relative text-[12px]">
+                      {selectedShiftId === s.shiftId && <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500" />}
+                      <p className="font-black text-[var(--text-main)] uppercase leading-none">{s.shiftName}</p>
+                      <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase">ID: {s.shiftId}</p>
+                    </td>
+                    <td className="px-5 py-3.5 text-center">
+                      <span className="text-[11px] font-black text-indigo-500 bg-indigo-500/10 px-2.5 py-1 rounded-md border border-indigo-500/20 uppercase">
+                        {s.startTime} — {s.endTime}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right"><span className="text-[8px] font-black px-2 py-0.5 bg-[var(--bg-body)] text-slate-400 rounded border border-[var(--border-color)] uppercase">Active</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* RIGHT: Staff List */}
+        <div className="col-span-12 lg:col-span-5 space-y-2">
+          <SectionHeader title={selectedShiftId ? `Staff: ${selectedShiftName}` : "Global Staff"} count={displayedUsers.length} />
+          <div className="space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar pr-1">
+            {displayedUsers.map((user, idx) => {
+              const username = userLookup[user.userId] || `Staff Member #${user.userId}`;
+              return (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} key={idx} className="bg-[var(--bg-card)] p-3 rounded-xl border border-[var(--border-color)] shadow-sm flex items-center justify-between transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-lg flex items-center justify-center font-black text-[11px] border uppercase bg-indigo-500/10 text-indigo-500 border-indigo-500/20">
+                      {username.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-black text-[var(--text-main)] uppercase leading-none mb-0.5">{username}</p>
+                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">UID: #{user.userId}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+            {displayedUsers.length === 0 && !loading && (
+                <p className="text-[10px] text-center text-slate-500 py-10 font-bold uppercase italic opacity-60">No staff allocated</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* MODALS */}
+      <AnimatePresence>
+        {canCreate && showAddShift && (
+          <Modal title="Create Shift" onClose={() => setShowAddShift(false)}>
+            <form onSubmit={handleCreateShift} className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <InputField label="Name" value={shiftForm.shiftName} onChange={e => setShiftForm({...shiftForm, shiftName: e.target.value})} required />
+              </div>
+              <InputField label="Start" type="time" value={shiftForm.startTime} onChange={e => setShiftForm({...shiftForm, startTime: e.target.value})} required />
+              <InputField label="End" type="time" value={shiftForm.endTime} onChange={e => setShiftForm({...shiftForm, endTime: e.target.value})} required />
+              <div className="col-span-2 space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase ml-1 tracking-widest">Department</label>
+                <select className="w-full px-3 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] text-[var(--text-main)] rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" value={shiftForm.departmentId} onChange={e => setShiftForm({...shiftForm, departmentId: e.target.value})} required>
+                  <option value="" className="bg-[var(--bg-card)]">Select...</option>
+                  {departments.map(d => <option key={d.departmentId} value={d.departmentId} className="bg-[var(--bg-card)]">{d.departmentName}</option>)}
+                </select>
+              </div>
+              <button type="submit" className="col-span-2 py-3 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95">Save Template</button>
+            </form>
+          </Modal>
+        )}
+
+        {canAssign && showAssignModal && (
+          <Modal title="Assign Staff" onClose={() => setShowAssignModal(false)}>
+            <form onSubmit={handleAssignShift} className="space-y-4">
+              <InputField label="User ID" type="number" value={assignForm.userId} onChange={e => setAssignForm({...assignForm, userId: e.target.value})} required />
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase ml-1 tracking-widest">Shift</label>
+                <select className="w-full px-3 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] text-[var(--text-main)] rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" value={assignForm.shiftId} onChange={e => setAssignForm({...assignForm, shiftId: e.target.value})} required>
+                  <option value="" className="bg-[var(--bg-card)]">Select...</option>
+                  {shifts.map(s => <option key={s.shiftId} value={s.shiftId} className="bg-[var(--bg-card)]">{s.shiftName}</option>)}
+                </select>
+              </div>
+              <button type="submit" className="w-full py-3 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95">Confirm</button>
+            </form>
+          </Modal>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+const SectionHeader = ({ title, count }) => (
+  <div className="flex items-center gap-2 mb-1 px-1">
+    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{title}</h3>
+    <span className="text-[9px] font-black bg-indigo-500/10 text-indigo-500 px-2 py-0.5 rounded-full border border-indigo-500/20">{count}</span>
+  </div>
+);
+
+const Modal = ({ title, children, onClose }) => (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
+    <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} 
+      className="bg-[var(--bg-card)] w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-[var(--border-color)] transition-colors duration-300"
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="px-5 py-4 bg-[var(--bg-body)] border-b border-[var(--border-color)] flex justify-between items-center">
+        <h3 className="text-[10px] font-black text-[var(--text-main)] uppercase tracking-widest">{title}</h3>
+        <button onClick={onClose}><X size={18} className="text-slate-500 hover:text-rose-500 transition-colors"/></button>
+      </div>
+      <div className="p-6">{children}</div>
+    </motion.div>
+  </div>
+);
+
+const InputField = ({ label, ...props }) => (
+  <div className="space-y-1">
+    <label className="text-[9px] font-black text-slate-500 uppercase ml-1 tracking-widest">{label}</label>
+    <input {...props} className="w-full px-3 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] text-[var(--text-main)] rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all" />
+  </div>
+);

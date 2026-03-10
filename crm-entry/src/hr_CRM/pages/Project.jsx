@@ -1,136 +1,79 @@
-import { useEffect, useState } from "react";
-import {
-  getProjects,
-  createProject,
-  updateProject,
-  deleteProject,
-} from "../api/project.api";
+import React, { useEffect, useState } from "react";
+import { 
+  Briefcase, Plus, Search, Trash2, 
+  Calendar, User, Building, Loader2, 
+  Edit3, Clock, MapPin, 
+} from "lucide-react";
+import toast, { Toaster } from "react-hot-toast";
+import { useRole } from "../hooks/useRole"; // Import your permission hook
 
+// API IMPORTS
+import { getProjects, createProject, updateProject, deleteProject } from "../api/project.api";
 import { getManagers } from "../../api/users/users.api";
 import { getDepartments } from "../api/hr.dept";
+import { getBranches } from "../api/api.branch";
 
-/* ================= PROJECT TABLE ================= */
-const ProjectTable = ({ projects = [], onEdit, onDelete }) => {
-  return (
-    <div className="relative h-full rounded-2xl border border-indigo-100 shadow-xl bg-white overflow-auto">
-      <table className="min-w-full text-sm">
-        <thead className="sticky top-0 z-10">
-          <tr className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-xs uppercase tracking-wider">
-            <th className="px-6 py-4 text-left">Name</th>
-            <th className="px-6 py-4 text-left">Duration</th>
-            <th className="px-6 py-4 text-left">Status</th>
-            <th className="px-6 py-4 text-left">Manager</th>
-            <th className="px-6 py-4 text-left">Department</th>
-            <th className="px-6 py-4 text-center">Actions</th>
-          </tr>
-        </thead>
-
-        <tbody className="divide-y divide-gray-100">
-          {projects.map((p, index) => (
-            <tr
-              key={p.projectId}
-              className={`hover:bg-indigo-50 transition ${
-                index % 2 === 0 ? "bg-slate-50" : "bg-white"
-              }`}
-            >
-              <td className="px-6 py-4 font-semibold">{p.projectName}</td>
-              <td className="px-6 py-4">{p.duration}</td>
-              <td className="px-6 py-4">
-                <span className="px-3 py-1 text-xs bg-indigo-100 text-indigo-700 rounded-full">
-                  {p.status}
-                </span>
-              </td>
-              <td className="px-6 py-4">{p.managerName}</td>
-              <td className="px-6 py-4">
-                {p.departmentName} - {p.branchName} - {p.location}
-              </td>
-              <td className="px-6 py-4 text-center space-x-2">
-                <button
-                  onClick={() => onEdit(p)}
-                  className="bg-yellow-500 text-white px-3 py-1.5 rounded-md text-xs hover:bg-yellow-600 transition"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => onDelete(p.projectId)}
-                  className="bg-red-600 text-white px-3 py-1.5 rounded-md text-xs hover:bg-red-700 transition"
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {projects.length === 0 && (
-        <div className="text-center py-10 text-gray-500">
-          No projects found
-        </div>
-      )}
-    </div>
-  );
-};
-
-/* ================= MAIN COMPONENT ================= */
 export default function Project() {
+  const { isManager } = useRole(); // Check for HR_MANAGER or CRM_FULL_ACCESS
   const [projects, setProjects] = useState([]);
   const [managers, setManagers] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [branches, setBranches] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [formData, setFormData] = useState({
-    projectName: "",
-    duration: "",
-    status: "",
-    managerId: "",
-    departmentId: "",
+    projectName: "", duration: "", status: "Active", managerId: "", departmentId: "",
   });
 
-  const loadProjects = async () => {
-    const data = await getProjects();
-    setProjects(data || []);
+  const loadAllData = async () => {
+    setLoading(true);
+    try {
+      const [proj, depts, mans, branc] = await Promise.all([
+        getProjects(), 
+        getDepartments(), 
+        getManagers("SOCIALMEDIA"),
+        getBranches()
+      ]);
+      setProjects(proj || []);
+      setDepartments(depts || []);
+      setManagers(mans || []);
+      setBranches(branc || []);
+    } catch (err) {
+      toast.error("Data Sync Error");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => {
-    loadProjects();
-    getManagers("SOCIALMEDIA").then(setManagers);
-    getDepartments().then(setDepartments);
-  }, []);
+  useEffect(() => { loadAllData(); }, []);
 
-  const handleSubmit = async () => {
-    if (!formData.status) {
-      alert("Please select status");
-      return;
-    }
-
-    const payload = {
-      ...formData,
-      managerId: Number(formData.managerId),
-      departmentId: Number(formData.departmentId),
-    };
-
-    if (editingId) {
-      await updateProject(editingId, payload);
-    } else {
-      await createProject(payload);
-    }
-
-    closeModal();
-    loadProjects();
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const closeModal = () => {
-    setModalOpen(false);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingId) {
+        await updateProject(editingId, formData);
+        toast.success("Project Updated");
+      } else {
+        await createProject(formData);
+        toast.success("Project Created");
+      }
+      resetForm();
+      loadAllData();
+    } catch (err) {
+      toast.error("Process Failed");
+    }
+  };
+
+  const resetForm = () => {
     setEditingId(null);
-    setFormData({
-      projectName: "",
-      duration: "",
-      status: "",
-      managerId: "",
-      departmentId: "",
-    });
+    setFormData({ projectName: "", duration: "", status: "Active", managerId: "", departmentId: "" });
   };
 
   const handleEdit = (p) => {
@@ -138,148 +81,192 @@ export default function Project() {
     setFormData({
       projectName: p.projectName,
       duration: p.duration,
-      status: p.status,
-      managerId: p.managerId?.toString(),
-      departmentId: p.departmentId?.toString(),
+      status: p.status || "Active",
+      managerId: p.managerId,
+      departmentId: p.departmentId
     });
-    setModalOpen(true);
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure?")) return;
-    await deleteProject(id);
-    loadProjects();
+    if (!window.confirm("Permanent Delete?")) return;
+    try {
+      await deleteProject(id);
+      toast.success("Deleted");
+      loadAllData();
+    } catch (err) {
+      toast.error("Delete Failed");
+    }
   };
 
+  const getDeptInfo = (deptId) => {
+    const dept = departments.find(d => String(d.departmentId) === String(deptId));
+    if (!dept) return { name: "Not Assigned", location: "---" };
+    const branch = branches.find(b => String(b.branchId) === String(dept.branchId));
+    return {
+      name: dept.departmentName,
+      location: branch?.location || branch?.branchName || "HQ"
+    };
+  };
+
+  const filteredProjects = projects.filter(p => 
+    p.projectName?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex h-[520px] w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-sm font-sans mt-1 transition-colors duration-300">
+      <Toaster position="top-right" />
 
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-          Project Management
-        </h2>
+      {/* FORM SIDEBAR - Only visible to Managers/Admins */}
+      {isManager && (
+        <div className="w-80 border-r border-[var(--border-color)] flex flex-col shrink-0 bg-[var(--bg-card)]">
+          <div className="p-4 border-b border-[var(--border-color)] bg-[var(--bg-body)]/50">
+            <h2 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2">
+              {editingId ? <Edit3 size={14} /> : <Plus size={14} />} 
+              {editingId ? "Update Project" : "Add Project"}
+            </h2>
+          </div>
 
-        <button
-          onClick={() => setModalOpen(true)}
-          className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-5 py-2.5 rounded-xl shadow hover:opacity-90 transition"
-        >
-          + Create Project
-        </button>
-      </div>
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="space-y-1">
+                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Title</label>
+                 <input type="text" name="projectName" value={formData.projectName} onChange={handleChange} required placeholder="PROJECT NAME" className="w-full text-[10px] font-black uppercase bg-[var(--bg-body)] border border-[var(--border-color)] p-2 rounded-lg outline-none text-[var(--text-main)]" />
+              </div>
 
-      {/* TABLE */}
-      <div className="flex-1 min-h-0">
-        <ProjectTable
-          projects={projects}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-        />
-      </div>
+              <div className="space-y-1">
+                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Duration</label>
+                 <input type="text" name="duration" value={formData.duration} onChange={handleChange} required placeholder="e.g. 1 YEAR" className="w-full text-[10px] font-bold bg-[var(--bg-body)] border border-[var(--border-color)] p-2 rounded-lg outline-none text-[var(--text-main)]" />
+              </div>
 
-      {/* ================= MODAL ================= */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={closeModal}
-          />
+              <div className="space-y-1">
+                <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Lifecycle Status</label>
+                <select name="status" value={formData.status} onChange={handleChange} className="w-full text-[10px] font-bold bg-[var(--bg-body)] border border-[var(--border-color)] p-2 rounded-lg uppercase outline-none text-[var(--text-main)]">
+                  <option value="Active" className="bg-[var(--bg-card)]">Operational</option>
+                  <option value="Pending" className="bg-[var(--bg-card)]">In Pipeline</option>
+                  <option value="Completed" className="bg-[var(--bg-card)]">Closed</option>
+                </select>
+              </div>
 
-          <div className="relative bg-white w-full max-w-3xl mx-4 rounded-2xl shadow-2xl border border-indigo-200 p-8 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-indigo-700 mb-6">
-              {editingId ? "Update Project" : "Create Project"}
-            </h3>
+              <div className="space-y-1">
+                <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Manager</label>
+                <select required name="managerId" value={formData.managerId} onChange={handleChange} className="w-full text-[10px] font-bold bg-[var(--bg-body)] border border-[var(--border-color)] p-2 rounded-lg outline-none text-[var(--text-main)]">
+                  <option value="" className="bg-[var(--bg-card)]">SELECT MANAGER...</option>
+                  {managers.map(m => <option key={m.userId} value={m.userId} className="bg-[var(--bg-card)]">{m.name}</option>)}
+                </select>
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-1">
+                <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Department Slot</label>
+                <select required name="departmentId" value={formData.departmentId} onChange={handleChange} className="w-full text-[10px] font-bold bg-[var(--bg-body)] border border-[var(--border-color)] p-2 rounded-lg outline-none text-[var(--text-main)]">
+                  <option value="" className="bg-[var(--bg-card)]">SELECT DEPT...</option>
+                  {departments.map(d => {
+                    const branch = branches.find(b => String(b.branchId) === String(d.branchId));
+                    return (
+                      <option key={d.departmentId} value={d.departmentId} className="bg-[var(--bg-card)]">
+                        {d.departmentName} — {branch?.location || branch?.branchName || 'HQ'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
 
-              <Input
-                placeholder="Project Name"
-                value={formData.projectName}
-                onChange={(e) =>
-                  setFormData({ ...formData, projectName: e.target.value })
-                }
-              />
-
-              <Input
-                placeholder="Duration"
-                value={formData.duration}
-                onChange={(e) =>
-                  setFormData({ ...formData, duration: e.target.value })
-                }
-              />
-
-              <select
-                value={formData.status}
-                onChange={(e) =>
-                  setFormData({ ...formData, status: e.target.value })
-                }
-                className="col-span-2 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-400 outline-none"
-                required
-              >
-                <option value="">Select Status</option>
-                <option value="Pending">Pending</option>
-                <option value="Active">Active</option>
-                <option value="Completed">Completed</option>
-              </select>
-
-              <select
-                value={formData.managerId}
-                onChange={(e) =>
-                  setFormData({ ...formData, managerId: e.target.value })
-                }
-                className="col-span-2 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-400 outline-none"
-              >
-                <option value="">Select Manager</option>
-                {managers?.map((m) => (
-                  <option key={m.userId} value={m.userId}>
-                    {m.name} ({m.domainCode})
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={formData.departmentId}
-                onChange={(e) =>
-                  setFormData({ ...formData, departmentId: e.target.value })
-                }
-                className="col-span-2 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-400 outline-none"
-              >
-                <option value="">Select Department</option>
-                {departments?.map((d) => (
-                  <option key={d.departmentId} value={d.departmentId}>
-                    {d.departmentName} - {d.branchName} - {d.location}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="mt-8 flex justify-end gap-3">
-              <button
-                onClick={handleSubmit}
-                className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition"
-              >
-                {editingId ? "Update" : "Create"}
+              <button type="submit" className="w-full py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition active:scale-95">
+                {editingId ? "Save Changes" : "Confirm Project"}
               </button>
-
-              <button
-                onClick={closeModal}
-                className="bg-gray-200 px-6 py-2.5 rounded-xl hover:bg-gray-300 transition"
-              >
-                Cancel
-              </button>
-            </div>
-
+              {editingId && (
+                <button type="button" onClick={resetForm} className="w-full py-2 bg-[var(--bg-body)] text-slate-400 text-[9px] font-black uppercase rounded-lg border border-[var(--border-color)]">Cancel</button>
+              )}
+            </form>
           </div>
         </div>
       )}
+
+      {/* MAIN TABLE AREA */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[var(--bg-card)]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-500"><Briefcase size={18} /></div>
+            <div>
+                <h2 className="text-xs font-black text-[var(--text-main)] uppercase tracking-tight">Project Hub</h2>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Control Panel</p>
+            </div>
+          </div>
+
+          <div className="relative w-48">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+            <input 
+              type="text" placeholder="Filter..."
+              className="w-full text-[10px] font-bold bg-[var(--bg-body)] border border-[var(--border-color)] rounded-lg pl-8 py-1.5 outline-none text-[var(--text-main)] focus:ring-1 focus:ring-indigo-500/30"
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto bg-[var(--bg-body)]/20 p-4 custom-scrollbar">
+          {loading ? (
+            <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" /></div>
+          ) : (
+            <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl overflow-hidden shadow-sm transition-colors">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-[var(--bg-body)] border-b border-[var(--border-color)]">
+                  <tr>
+                    <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-wider w-1/3">Project</th>
+                    <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-wider w-1/3">Meta Resources</th>
+                    <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-wider text-center">Status</th>
+                    {isManager && <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-wider text-right">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-color)]/30">
+                  {filteredProjects.map((p) => {
+                    const deptInfo = getDeptInfo(p.departmentId);
+                    return (
+                      <tr key={p.projectId} className="hover:bg-indigo-500/[0.02] transition-colors group">
+                        <td className="px-4 py-3">
+                          <p className="text-[10px] font-black text-[var(--text-main)] uppercase leading-none mb-1">{p.projectName}</p>
+                          <div className="flex items-center gap-1">
+                            <Clock size={8} className="text-indigo-400"/>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">{p.duration}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5">
+                                  <User size={10} className="text-slate-400"/>
+                                  <span className="text-[9px] font-bold text-[var(--text-main)] opacity-80 uppercase">
+                                    {managers.find(m => String(m.userId) === String(p.managerId))?.name || "N/A"}
+                                  </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                  <MapPin size={10} className="text-slate-400"/>
+                                  <span className="text-[8px] font-medium text-slate-400 uppercase">
+                                    {deptInfo.name} • <span className="text-indigo-500 font-bold">{deptInfo.location}</span>
+                                  </span>
+                              </div>
+                            </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase border ${
+                               p.status === 'Active' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 
+                               p.status === 'Completed' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                            }`}>{p.status || 'Active'}</span>
+                        </td>
+                        {isManager && (
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => handleEdit(p)} className="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-md transition-all"><Edit3 size={14}/></button>
+                              <button onClick={() => handleDelete(p.projectId)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"><Trash2 size={14}/></button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
-
-/* ================= REUSABLE INPUT ================= */
-const Input = ({ className = "", ...props }) => (
-  <input
-    {...props}
-    className={`border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-400 outline-none ${className}`}
-  />
-);

@@ -104,27 +104,35 @@ const Login = () => {
   }
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (loading) return;
+  if (e) e.preventDefault();
+  if (loading) return;
 
-    setError(null);
-    setLoading(true);
+  setError(null);
+  setLoading(true);
 
-    try {
-      const data = await login({
-        email: email.trim(),
-        password,
-      });
+  try {
+    const data = await login({
+      email: email.trim(),
+      password,
+    });
 
-      setSession(data.accessToken);
-
-      navigate("/", { replace: true });
-    } catch {
-      setError("Invalid email or password");
-    } finally {
-      setLoading(false);
+    if (!data?.accessToken) {
+      throw new Error("Invalid credentials");
     }
-  };
+
+    setSession(data.accessToken);
+
+    // Only navigate after successful login
+    navigate("/", { replace: true });
+
+  } catch (err) {
+    setError("Invalid email or password");
+    // DO NOT navigate
+    // DO NOT reload
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
@@ -197,7 +205,14 @@ const Login = () => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form
+  onSubmit={(e) => {
+    e.preventDefault();
+    handleSubmit(e);
+  }}
+  noValidate
+  className="space-y-5"
+>
               {/* Email Input */}
               <div className="group">
                 <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -324,3 +339,6 @@ const Login = () => {
 };
 
 export default Login;
+
+
+

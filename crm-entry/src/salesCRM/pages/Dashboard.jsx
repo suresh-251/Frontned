@@ -112,26 +112,34 @@ const Dashboard = () => {
       {/* Gradient Background */}
       <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-5`}></div>
       
-      <div className="relative p-6">
+      <div className="relative p-3">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className={`p-3 rounded-xl bg-gradient-to-br ${gradient} shadow-lg`}>
-            <Icon className="w-6 h-6 text-white" />
-          </div>
-          {trend && (
-            <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-bold ${trend === 'up' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-              {trend === 'up' ? <FaArrowUp /> : <FaArrowDown />}
-              <span>{trendValue}%</span>
-            </div>
-          )}
-        </div>
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+  
+  {/* Icon */}
+  <div className={`p-3 rounded-xl bg-gradient-to-br ${gradient} shadow-lg shrink-0`}>
+    <Icon className="w-5 h-5 text-white" />
+  </div>
+
+  {/* Title */}
+  <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide flex-1 min-w-0">
+    {title}
+  </p>
+
+  {/* Trend */}
+  {trend && (
+    <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-bold shrink-0 ${
+      trend === 'up' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+    }`}>
+      {trend === 'up' ? <FaArrowUp /> : <FaArrowDown />}
+      <span>{trendValue}%</span>
+    </div>
+  )}
+</div>
 
         {/* Content */}
         <div>
-          <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            {title}
-          </p>
-          <p className="text-4xl font-extrabold text-gray-900">
+          <p className="text-4xl font-extrabold text-gray-900 text-center">
             {loading ? (
               <span className="inline-block w-24 h-10 bg-gray-200 rounded-lg shimmer"></span>
             ) : (
@@ -141,7 +149,7 @@ const Dashboard = () => {
         </div>
 
         {/* Decorative Line */}
-        <div className={`mt-4 h-1 w-20 rounded-full bg-gradient-to-r ${gradient}`}></div>
+        <div className={`mt-4 h-1 w-20 mx-auto rounded-full bg-gradient-to-r ${gradient}`}></div>
       </div>
     </div>
   );
@@ -149,10 +157,10 @@ const Dashboard = () => {
   return (
     <div className="space-y-6 fade-in">
       {/* Header */}
-      <div className="slide-in-right bg-white rounded-2xl shadow-md p-6 border border-gray-100">
+      <div className="slide-in-right bg-white rounded-2xl shadow-md p-4 border border-gray-100">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-5xl font-black bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent flex items-center">
+          <div flex gap-2>
+            <h1 className="text-4xl font-black bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent flex items-center">
               <FaChartLine className="text-blue-600 mr-4" />
               Sales Dashboard
             </h1>
@@ -222,7 +230,7 @@ const Dashboard = () => {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-2xl font-bold text-gray-900 flex items-center">
-                <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg mr-3">
+                <div className="p-1 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg mr-3">
                   <FaFire className="text-white w-5 h-5" />
                 </div>
                 Revenue Trend
@@ -345,7 +353,7 @@ const Dashboard = () => {
         <div className="absolute top-0 right-0 -mt-20 -mr-20 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl"></div>
         <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl"></div>
         
-        <div className="relative p-10 text-center">
+        <div className="relative p-5 text-center">
           <div className="flex items-center justify-center mb-6">
             <div className="p-4 bg-white/20 backdrop-blur-sm rounded-2xl shadow-xl">
               <FaTrophy className="w-12 h-12 text-yellow-300 animate-pulse" />

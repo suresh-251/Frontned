@@ -1,27 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Table, Modal, Input, Select } from '../components/common';
-import { dealsAPI } from '../api';
-import Toast from '../utils/toast';
-import { FaChartLine, FaDollarSign, FaPlus, FaEdit, FaTrash, FaCheckCircle, FaTimesCircle, FaTrophy } from 'react-icons/fa';
+import dealsAPI from '../api/deals.api';
 
 const Deals = () => {
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(null);
+
   const [formData, setFormData] = useState({
+    accountId: '',
+    contactId: '',
     title: '',
     value: '',
-    stage: 'Prospecting'
+    stage: 'New',
+    expectedCloseDate: '',
+    assignedEmployeeId: ''
   });
 
   const stages = [
-    { value: 'Prospecting', label: 'Prospecting' },
-    { value: 'Qualification', label: 'Qualification' },
-    { value: 'Proposal', label: 'Proposal' },
-    { value: 'Negotiation', label: 'Negotiation' },
-    { value: 'Closed Won', label: 'Closed Won' },
-    { value: 'Closed Lost', label: 'Closed Lost' }
+    'New',
+    'Prospect',
+    'Qualification',
+    'Qualified',
+    'Proposal',
+    'ProposalSent',
+    'Negotiation',
+    'ClosedWon',
+    'ClosedLost'
   ];
 
   useEffect(() => {
@@ -33,8 +40,9 @@ const Deals = () => {
       setLoading(true);
       const data = await dealsAPI.getAll();
       setDeals(data);
-    } catch (error) {
-      console.error('Error fetching deals:', error);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to load deals");
     } finally {
       setLoading(false);
     }
@@ -47,195 +55,286 @@ const Deals = () => {
     });
   };
 
-  const handleSubmit = async (e) => {
+  const handleCreate = async (e) => {
     e.preventDefault();
+
     try {
-      if (selectedDeal) {
-        await dealsAPI.updateStage(selectedDeal.id, formData.stage);
-      } else {
-        await dealsAPI.create(formData);
-      }
+      const payload = {
+        accountId: Number(formData.accountId),
+        contactId: Number(formData.contactId),
+        title: formData.title,
+        value: Number(formData.value),
+        stage: formData.stage,
+        expectedCloseDate: formData.expectedCloseDate
+          ? new Date(formData.expectedCloseDate).toISOString()
+          : null,
+        assignedEmployeeId: Number(formData.assignedEmployeeId),
+        createdAt: new Date().toISOString()
+      };
+
+      await dealsAPI.create(payload);
+
       setIsModalOpen(false);
-      setFormData({ title: '', value: '', stage: 'Prospecting' });
-      setSelectedDeal(null);
       fetchDeals();
-    } catch (error) {
-      console.error('Error saving deal:', error);
-      alert('Failed to save deal. Please try again.');
+      resetForm();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create deal");
     }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      accountId: '',
+      contactId: '',
+      title: '',
+      value: '',
+      stage: 'Proposal',
+      expectedCloseDate: '',
+      assignedEmployeeId: ''
+    });
   };
 
   const handleUpdateStage = async (deal, newStage) => {
     try {
       await dealsAPI.updateStage(deal.id, newStage);
       fetchDeals();
-    } catch (error) {
-      console.error('Error updating deal stage:', error);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update stage");
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this deal?')) {
+    if (window.confirm("Delete this deal?")) {
       try {
         await dealsAPI.delete(id);
         fetchDeals();
-      } catch (error) {
-        console.error('Error deleting deal:', error);
-        alert('Failed to delete deal. Please try again.');
+      } catch (err) {
+        console.error(err);
       }
     }
   };
 
-  const getStageBadge = (stage) => {
-    const colors = {
-      'Prospecting': 'bg-blue-100 text-blue-800',
-      'Qualification': 'bg-yellow-100 text-yellow-800',
-      'Proposal': 'bg-purple-100 text-purple-800',
-      'Negotiation': 'bg-orange-100 text-orange-800',
-      'Closed Won': 'bg-green-100 text-green-800',
-      'Closed Lost': 'bg-red-100 text-red-800'
-    };
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${colors[stage] || 'bg-gray-100 text-gray-800'}`}>
-        {stage}
-      </span>
-    );
+  const openView = async (id) => {
+    try {
+      const data = await dealsAPI.getById(id);
+      setSelectedDeal(data);
+      setIsViewOpen(true);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+  const formatStatus = (status) => {
+    if (!status) return "—";
+    return status.replace(/([A-Z])/g, ' $1').trim();
   };
+
+  const formatLabel = (key) => {
+    if (!key) return "";
+    return key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, str => str.toUpperCase())
+      .trim();
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+    } catch (err) {
+      return "—";
+    }
+  };
+
+  const getSafeValue = (obj, path, defaultValue = "—") => {
+    if (!obj || !path) return defaultValue;
+    
+    const parts = path.split('.');
+    let current = obj;
+    
+    for (const part of parts) {
+      if (current == null) return defaultValue;
+      current = current[part];
+    }
+    
+    return current ?? defaultValue;
+  };
+
+  const formatValue = (key, value) => {
+    if (!value) return "—";
+
+    if (key.toLowerCase().includes("date") || key === "createdAt") {
+      try {
+        const date = new Date(value);
+        return date.toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true
+        })
+        .replace("am", "AM")
+        .replace("pm", "PM");
+      } catch {
+        return "—";
+      }
+    }
+
+    if (key === "value") {
+      return `₹ ${Number(value).toLocaleString("en-IN")}`;
+    }
+
+    if (typeof value === "object") {
+      return "—";
+    }
+
+    return value;
+  };
+
+  const hiddenFields = ["lead"];
 
   const columns = [
-    { header: 'Title', accessor: 'title' },
-    { 
-      header: 'Value', 
-      render: (row) => <span className="font-semibold text-green-600">{formatCurrency(row.value)}</span>
+    { header: "Deal ID", accessor: "id" },
+    {
+      header: "Lead Name",
+      render: (row) => getSafeValue(row, 'leadName')
     },
     {
-      header: 'Stage',
-      render: (row) => (
-        <select
-          value={row.stage}
-          onChange={(e) => handleUpdateStage(row, e.target.value)}
-          className="px-2 py-1 border rounded text-sm"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {stages.map(stage => (
-            <option key={stage.value} value={stage.value}>{stage.label}</option>
-          ))}
-        </select>
-      )
+      header: "Phone",
+      render: (row) => getSafeValue(row, 'phone')
     },
     {
-      header: 'Actions',
+      header: "Value",
+      render: (row) => {
+        const val = getSafeValue(row, 'value');
+        return val !== "—" ? `₹ ${Number(val).toLocaleString("en-IN")}` : val;
+      }
+    },
+    {
+      header: "Stage",
+      render: (row) => {
+        const stage = getSafeValue(row, 'stage');
+        return stage !== "—" ? formatStatus(stage) : stage;
+      }
+    },
+    {
+      header: "Status",
+      render: (row) => {
+        const status = getSafeValue(row, 'status');
+        return status !== "—" ? formatStatus(status) : status;
+      }
+    },
+    {
+      header: "Expected Close Date",
+      render: (row) => formatDate(row.expectedCloseDate)
+    },
+    {
+      header: "Score",
+      render: (row) => getSafeValue(row, 'score')
+    },
+    {
+      header: "Actions",
       render: (row) => (
-        <Button size="sm" variant="danger" onClick={() => handleDelete(row.id)}>
-          Delete
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => openView(row.id)}>
+            View
+          </Button>
+          <Button size="sm" variant="danger" onClick={() => handleDelete(row.id)}>
+            Delete
+          </Button>
+        </div>
       )
     }
   ];
 
   return (
-    <div className="p-6 space-y-6 fade-in">
-      <div className="flex justify-between items-center slide-in-right">
-        <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-teal-600 bg-clip-text text-transparent flex items-center">
-            <svg className="w-10 h-10 mr-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Deals
-          </h1>
-          <p className="text-gray-600 mt-2 flex items-center">
-            <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
-            Manage your sales pipeline
-          </p>
-        </div>
-        <Button onClick={() => setIsModalOpen(true)} variant="success" size="lg" className="shadow-xl">
-          <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Deal
-        </Button>
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Deals</h1>
+        {/* Add Deal button hidden for now */}
       </div>
 
-      <Card gradient className="slide-in-up">
-        <Table
-          columns={columns}
-          data={deals}
-          loading={loading}
-          emptyMessage="No deals found. Create your first deal!"
-        />
+      <Card>
+        <Table columns={columns} data={deals} loading={loading} />
       </Card>
 
+      {/* ADD DEAL MODAL */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSelectedDeal(null);
-          setFormData({ title: '', value: '', stage: 'Prospecting' });
-        }}
-        title={selectedDeal ? '📝 Update Deal Stage' : '💰 Add New Deal'}
-        size="md"
-        footer={
-          <div className="flex justify-end space-x-3">
-            <Button 
-              variant="ghost" 
-              onClick={() => setIsModalOpen(false)}
-              className="hover:bg-gray-200"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} variant={selectedDeal ? 'warning' : 'success'}>
-              <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              {selectedDeal ? 'Update Deal' : 'Create Deal'}
-            </Button>
-          </div>
-        }
+        onClose={() => setIsModalOpen(false)}
+        title="Add New Deal"
       >
-        <form onSubmit={handleSubmit} className="space-y-1">
-          <Input
-            label="Deal Title"
-            name="title"
-            value={formData.title}
-            onChange={handleInputChange}
-            required
-            placeholder="Enter deal title"
-            icon={(props) => (
-              <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            )}
-          />
-          <Input
-            label="Deal Value"
-            name="value"
-            type="number"
-            value={formData.value}
-            onChange={handleInputChange}
-            required
-            placeholder="Enter deal value"
-            icon={(props) => (
-              <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            )}
-          />
+        <form onSubmit={handleCreate} className="space-y-3">
+
+          <Input label="Account ID" name="accountId" type="number" value={formData.accountId} onChange={handleInputChange} required />
+          <Input label="Contact ID" name="contactId" type="number" value={formData.contactId} onChange={handleInputChange} required />
+          <Input label="Title" name="title" value={formData.title} onChange={handleInputChange} required />
+          <Input label="Value" name="value" type="number" value={formData.value} onChange={handleInputChange} required />
+
           <Select
             label="Stage"
             name="stage"
             value={formData.stage}
             onChange={handleInputChange}
-            options={stages}
+            options={stages.map(s => ({
+              value: s,
+              label: formatStatus(s)
+            }))}
+          />
+
+          <Input
+            label="Expected Close Date"
+            name="expectedCloseDate"
+            type="datetime-local"
+            value={formData.expectedCloseDate}
+            onChange={handleInputChange}
+          />
+
+          <Input
+            label="Assigned Employee ID"
+            name="assignedEmployeeId"
+            type="number"
+            value={formData.assignedEmployeeId}
+            onChange={handleInputChange}
             required
           />
+
+          <div className="flex justify-end">
+            <Button type="submit">Create Deal</Button>
+          </div>
         </form>
+      </Modal>
+
+      {/* VIEW DETAILS MODAL */}
+      <Modal
+        isOpen={isViewOpen}
+        onClose={() => setIsViewOpen(false)}
+        title="Deal Details"
+      >
+        {selectedDeal && (
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+            {Object.entries(selectedDeal)
+              .filter(([key]) => !hiddenFields.includes(key))
+              .map(([key, value]) => (
+                <React.Fragment key={key}>
+                  <div className="text-sm font-semibold text-gray-600">
+                    {formatLabel(key)}
+                  </div>
+                  <div className="text-sm text-gray-800 break-words">
+                    {formatValue(key, value)}
+                  </div>
+                </React.Fragment>
+              ))}
+          </div>
+        )}
       </Modal>
     </div>
   );

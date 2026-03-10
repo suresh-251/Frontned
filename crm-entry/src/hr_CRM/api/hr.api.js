@@ -2,7 +2,7 @@ import axios from "axios";
 
 // HR CRM Axios Instance
 const hrApi = axios.create({
-  baseURL: "http://89.116.20.215:9095/", // HR Backend
+  baseURL: "https://crmhr.metagensoft.com/", // HR Backend
   headers: {
     "Content-Type": "application/json",
   },

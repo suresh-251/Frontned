@@ -9,9 +9,18 @@ export default defineConfig({
   ],
 
   server: {
-    host: "localhost",   
-    port: 5173,          // fixed port
-    strictPort: true,    // fail if port is already in use
-    open: true,          // auto-open browser
+    host: "localhost",
+    port: 5173,
+    strictPort: true,
+    open: true,
+
+    // ✅ ADD THIS BLOCK
+    proxy: {
+      "/api": {
+        target: "http://89.116.20.215:9096",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 });
