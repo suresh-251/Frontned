@@ -2,24 +2,13 @@ import React, { useState, useEffect, cloneElement } from "react";
 import useFacebookDashboard from "../hooks/useFacebookDashboard";
 import api from "../api/apiClient";
 import { connectPlatform } from "../api/auth.api";
+import { selectPage } from "../api/facebook.pages.api";
+import { activateInstagramAccount } from "../api/instagram.accounts.api";
 import { useBrand } from "../context/BrandContext";
 import { useNavigate } from "react-router-dom";
-import { FiEdit, FiUsers, FiFileText, FiSettings, FiActivity, FiInfo } from "react-icons/fi";
+import { FiEdit, FiUsers, FiFileText, FiSettings, FiActivity, FiInfo, FiZap, FiWifi, FiWifiOff, FiChevronDown } from "react-icons/fi";
 
-const FB_COLOR   = "text-blue-600 bg-blue-50";
-const IG_COLOR   = "text-pink-500 bg-pink-50";
-const LI_COLOR   = "text-sky-700 bg-sky-50";
-
-function PlatformBadge({ platform }) {
-  const MAP = {
-    Facebook:  { label: "Facebook",  cls: "bg-blue-100 text-blue-700"  },
-    Instagram: { label: "Instagram", cls: "bg-pink-100 text-pink-700"  },
-    LinkedIn:  { label: "LinkedIn",  cls: "bg-sky-100 text-sky-700"    },
-  };
-  const m = MAP[platform] ?? { label: platform, cls: "bg-gray-100 text-gray-600" };
-  return <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${m.cls}`}>{m.label}</span>;
-}
-
+// ── Platform helpers ────────────────────────────────────────────────────────
 function PlatformIcon({ platform, size = 18 }) {
   if (platform === "Facebook") return (
     <svg width={size} height={size} fill="currentColor" viewBox="0 0 24 24" className="text-blue-600">
@@ -38,164 +27,286 @@ function PlatformIcon({ platform, size = 18 }) {
   );
 }
 
+// ── Stat cell ───────────────────────────────────────────────────────────────
+function StatCell({ value }) {
+  if (value == null || value === "—") return <span className="text-slate-300 font-semibold">—</span>;
+  const n = typeof value === "number" ? value.toLocaleString() : value;
+  return <span className="font-bold text-slate-800">{n}</span>;
+}
+
 export default function Dashboard() {
-  const stats = useFacebookDashboard();
+  const rawStats = useFacebookDashboard();
+  const stats = rawStats ?? { totalLeads: 0, newLeads: 0, enabledForms: 0, pageName: null };
   const navigate = useNavigate();
   const { activeBrand } = useBrand();
 
-  const [accounts, setAccounts] = useState([]);   // all accounts for active brand
-  const [fbAnalytics, setFbAnalytics] = useState(null);  // page analytics (active page)
-  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  // All accounts grouped by platform
+  const [accountsByPlatform, setAccountsByPlatform] = useState({});
+  // Selected account per platform (for dropdown)
+  const [selectedAccount, setSelectedAccount] = useState({});
+  // Analytics per platform
+  const [analytics, setAnalytics] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [activating, setActivating] = useState(null);
 
-  // Load brand-scoped accounts (single call) + FB analytics in parallel
-  useEffect(() => {
-    if (!activeBrand?.slug) { setLoadingAccounts(false); return; }
-    setLoadingAccounts(true);
-    const normP = (p) => ({ facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn" }[(p ?? "").toLowerCase()] ?? p);
-    Promise.allSettled([
-      api.get(`/brands/${activeBrand.slug}/accounts`),
-      api.get("/analytics/facebook/page"),
-      api.get("/instagram/accounts"),
-    ]).then(([accsRes, analyticsRes, igRes]) => {
-      const raw = accsRes.status === "fulfilled" ? (accsRes.value.data.accounts ?? []) : [];
+  const PLATFORMS = ["Facebook", "Instagram", "LinkedIn"];
+  const normPlatform = (p) =>
+    ({ facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn" }[(p ?? "").toLowerCase()] ?? p);
+
+  const loadData = async (slug) => {
+    if (!slug) { setLoading(false); return; }
+    setLoading(true);
+    try {
+      const [accsRes, fbRes, igRes] = await Promise.allSettled([
+        api.get(`/brands/${slug}/accounts`),
+        api.get("/analytics/facebook/page"),
+        api.get("/instagram/accounts"),
+      ]);
+      const rawAccs = accsRes.status === "fulfilled" ? (accsRes.value.data.accounts ?? []) : [];
       const igList = igRes.status === "fulfilled" ? (igRes.value.data ?? []) : [];
       const igMap = new Map(igList.map(a => [a.instagramBusinessId, a]));
+      const fbData = fbRes.status === "fulfilled" ? fbRes.value?.data ?? null : null;
 
-      setAccounts(raw.map(a => {
+      // Group by platform
+      const grouped = {};
+      for (const a of rawAccs) {
+        const plat = normPlatform(a.platform);
         let displayName = a.displayName;
-        if (normP(a.platform) === "Instagram") {
+        if (plat === "Instagram") {
           const ig = igMap.get(a.pageIdentifier);
           if (ig) displayName = ig.username || ig.name || ig.displayName || displayName;
         }
-        return {
-          id:             a.pageIdentifier,
-          platform:       normP(a.platform),
-          pageIdentifier: a.pageIdentifier,
-          displayName,
-          isActive:       a.isActive,
-        };
-      }));
-      setFbAnalytics(analyticsRes.status === "fulfilled" ? analyticsRes.value?.data ?? null : null);
-    }).finally(() => setLoadingAccounts(false));
-  }, [activeBrand?.slug]);
+        if (!grouped[plat]) grouped[plat] = [];
+        grouped[plat].push({ ...a, platform: plat, displayName });
+      }
+      setAccountsByPlatform(grouped);
 
-  if (!stats) return null;
+      // Default selected = active account per platform
+      const sel = {};
+      for (const [plat, accs] of Object.entries(grouped)) {
+        sel[plat] = (accs.find(a => a.isActive) ?? accs[0])?.pageIdentifier ?? null;
+      }
+      setSelectedAccount(sel);
+
+      // Analytics: Facebook from /analytics endpoint
+      setAnalytics({ Facebook: fbData });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadData(activeBrand?.slug); }, [activeBrand?.slug]);
+
+  const activateAccount = async (platform, pageIdentifier) => {
+    setActivating(pageIdentifier);
+    try {
+      if (platform === "Facebook") await selectPage(pageIdentifier);
+      else if (platform === "Instagram") await activateInstagramAccount(pageIdentifier);
+      await loadData(activeBrand?.slug);
+    } catch (e) { console.error("Activate failed", e); }
+    finally { setActivating(null); }
+  };
+
+  const handleAccountSelect = async (platform, pageIdentifier) => {
+    setSelectedAccount(prev => ({ ...prev, [platform]: pageIdentifier }));
+    // Also activate it
+    await activateAccount(platform, pageIdentifier);
+  };
+
+  if (!activeBrand) return (
+    <div className="w-full min-h-screen bg-[#F8FAFC] p-6 flex items-center justify-center">
+      <p className="text-slate-400 font-medium text-sm">No active brand — please select or create a brand first.</p>
+    </div>
+  );
+
+  const getMetrics = (platform) => {
+    const accs = accountsByPlatform[platform] ?? [];
+    const selId = selectedAccount[platform];
+    const acc = accs.find(a => a.pageIdentifier === selId) ?? accs[0];
+    const fbData = analytics["Facebook"];
+
+    if (!acc) return null;
+
+    if (platform === "Facebook" && fbData) {
+      return {
+        acc,
+        totalFollowers: fbData.fan_count ?? fbData.followers_count,
+        newFollowers: null, // not available from current API
+        reach: fbData.reach ?? null,
+        engagement: fbData.totalEngagement ?? null,
+        leads: stats.totalLeads ?? null,
+      };
+    }
+    return { acc, totalFollowers: null, newFollowers: null, reach: null, engagement: null, leads: null };
+  };
 
   return (
-    <div className="w-full min-h-screen bg-[#F8FAFC] p-6 animate-in fade-in duration-500">
-      <div className="mb-8">
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Dashboard</h1>
-        <p className="text-xs text-slate-500 font-medium">
-          {activeBrand ? <>Brand: <span className="font-bold text-slate-700">{activeBrand.name}</span></> : "Welcome back!"}
-        </p>
+    <div className="w-full min-h-screen bg-[#F8FAFC] p-6">
+      {/* Page header */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-black text-slate-800 tracking-tight">Dashboard</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Brand: <span className="font-bold text-slate-700">{activeBrand.name}</span>
+          </p>
+        </div>
+        <button onClick={() => navigate("/crm/socialmedia/post/create")}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 shadow-sm transition-all">
+          <FiEdit size={14} /> New Post
+        </button>
       </div>
 
       <div className="grid grid-cols-12 gap-6">
-
-        {/* LEFT: Brand Health + Growth */}
         <div className="col-span-12 lg:col-span-8 space-y-6">
 
-          {/* BRAND HEALTH TABLE */}
+          {/* ── Section 1: Connected Channels ──────────────────────────────── */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+            <div className="px-6 py-4 border-b border-slate-100">
               <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                Brand Health <FiInfo className="text-slate-300" size={14} />
+                <FiWifi className="text-green-500" size={14} /> Connected Channels
               </h3>
-              {activeBrand && (
-                <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
-                  {activeBrand.name}
-                </span>
-              )}
+            </div>
+            <div className="divide-y divide-slate-50">
+              {PLATFORMS.map(plat => {
+                const accs = accountsByPlatform[plat] ?? [];
+                const connected = accs.length > 0;
+                const active = accs.find(a => a.isActive);
+                return (
+                  <div key={plat} className="px-6 py-3 flex items-center gap-4">
+                    <PlatformIcon platform={plat} size={20} />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-slate-800">{plat}</p>
+                      {connected && (
+                        <p className="text-xs text-slate-500">{active?.displayName || accs[0]?.displayName || "Connected"}</p>
+                      )}
+                    </div>
+                    {connected ? (
+                      <span className="flex items-center gap-1.5 text-xs font-semibold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
+                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Connected
+                      </span>
+                    ) : (
+                      <button onClick={() => connectPlatform(plat.toLowerCase())}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 border border-blue-200 px-3 py-1 rounded-full transition-all">
+                        <FiWifiOff size={12} /> Connect
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Section 2: Performance Metrics Table ───────────────────────── */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                <FiActivity className="text-blue-500" size={14} /> Performance Metrics
+              </h3>
             </div>
 
-            <div className="overflow-y-auto max-h-[320px]">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider sticky top-0 z-10 border-b border-slate-100">
-                  <tr>
-                    <th className="px-6 py-3">Channel</th>
-                    <th className="px-6 py-3">Followers / Fans</th>
-                    <th className="px-6 py-3">Reach</th>
-                    <th className="px-6 py-3">Leads</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {loadingAccounts ? (
-                    <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400 text-sm animate-pulse">Loading channels...</td></tr>
-                  ) : accounts.length === 0 ? (
-                    <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400 text-sm">No accounts connected to this brand</td></tr>
-                  ) : (
-                    accounts.map(acc => {
-                      // For the active FB page, show real analytics; otherwise show "—"
-                      const isFbActive = acc.platform === "Facebook" && acc.isActive;
-                      const followers = isFbActive && fbAnalytics
-                        ? (fbAnalytics.followers_count ?? fbAnalytics.fan_count ?? "—").toLocaleString?.() ?? fbAnalytics.followers_count ?? fbAnalytics.fan_count
-                        : "—";
-                      const reach = isFbActive && fbAnalytics?.reach ? fbAnalytics.reach.toLocaleString?.() ?? fbAnalytics.reach : "—";
+            {loading ? (
+              <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading metrics…</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
+                    <tr>
+                      <th className="px-5 py-3">Connected Channel</th>
+                      <th className="px-5 py-3 text-right">Total Followers</th>
+                      <th className="px-5 py-3 text-right">New Followers</th>
+                      <th className="px-5 py-3 text-right">Reach</th>
+                      <th className="px-5 py-3 text-right">Engagement</th>
+                      <th className="px-5 py-3 text-right">Leads</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {PLATFORMS.map(plat => {
+                      const accs = accountsByPlatform[plat] ?? [];
+                      const metrics = getMetrics(plat);
+                      if (accs.length === 0) {
+                        return (
+                          <tr key={plat} className="hover:bg-slate-50/50">
+                            <td className="px-5 py-4">
+                              <div className="flex items-center gap-3">
+                                <PlatformIcon platform={plat} size={18} />
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-400 italic">Not connected</p>
+                                  <button onClick={() => connectPlatform(plat.toLowerCase())}
+                                    className="text-[10px] text-blue-600 font-medium hover:underline mt-0.5">+ Connect {plat}</button>
+                                </div>
+                              </div>
+                            </td>
+                            {[...Array(5)].map((_, i) => (
+                              <td key={i} className="px-5 py-4 text-right text-slate-300 text-sm">—</td>
+                            ))}
+                          </tr>
+                        );
+                      }
+
+                      const selId = selectedAccount[plat];
+                      const selAcc = accs.find(a => a.pageIdentifier === selId) ?? accs[0];
+                      const isActivating = activating === selId;
+
                       return (
-                        <tr key={acc.id} className="hover:bg-slate-50/80 transition-colors group">
-                          <td className="px-6 py-4">
+                        <tr key={plat} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
-                              <PlatformIcon platform={acc.platform} size={18} />
-                              <div>
-                                <p className="text-[11px] font-bold text-slate-700 leading-tight">{acc.displayName || acc.pageIdentifier}</p>
+                              <PlatformIcon platform={plat} size={18} />
+                              <div className="min-w-0">
+                                {/* Account dropdown if multiple */}
+                                {accs.length > 1 ? (
+                                  <div className="relative inline-block">
+                                    <select
+                                      value={selId ?? ""}
+                                      onChange={e => handleAccountSelect(plat, e.target.value)}
+                                      disabled={isActivating}
+                                      className="text-sm font-bold text-slate-800 bg-transparent pr-5 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300 rounded"
+                                    >
+                                      {accs.map(a => (
+                                        <option key={a.pageIdentifier} value={a.pageIdentifier}>
+                                          {a.displayName || a.pageIdentifier}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <FiChevronDown size={12} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                  </div>
+                                ) : (
+                                  <p className="text-sm font-bold text-slate-800 truncate max-w-[160px]">
+                                    {selAcc?.displayName || selAcc?.pageIdentifier}
+                                  </p>
+                                )}
                                 <div className="flex items-center gap-1.5 mt-0.5">
-                                  <PlatformBadge platform={acc.platform} />
-                                  {acc.isActive && <span className="text-[9px] text-green-600 font-semibold">● active</span>}
+                                  <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide">{plat}</span>
+                                  {selAcc?.isActive
+                                    ? <span className="text-[9px] text-green-600 font-semibold">● active</span>
+                                    : plat !== "LinkedIn" && (
+                                      <button onClick={() => activateAccount(plat, selId)}
+                                        disabled={isActivating}
+                                        className="text-[9px] text-blue-600 font-semibold flex items-center gap-0.5 hover:text-blue-800 disabled:opacity-50">
+                                        {isActivating ? <span className="w-2 h-2 border border-blue-600 border-t-transparent rounded-full animate-spin" /> : <FiZap size={8} />}
+                                        {isActivating ? "…" : "Activate"}
+                                      </button>
+                                    )}
                                 </div>
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{followers}</td>
-                          <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{reach}</td>
-                          <td className="px-6 py-4">
-                            <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-                              {acc.platform === "Facebook" ? stats.totalLeads : "—"}
-                            </span>
-                          </td>
+                          <td className="px-5 py-4 text-right text-sm"><StatCell value={metrics?.totalFollowers} /></td>
+                          <td className="px-5 py-4 text-right text-sm"><StatCell value={metrics?.newFollowers} /></td>
+                          <td className="px-5 py-4 text-right text-sm"><StatCell value={metrics?.reach} /></td>
+                          <td className="px-5 py-4 text-right text-sm"><StatCell value={metrics?.engagement} /></td>
+                          <td className="px-5 py-4 text-right text-sm"><StatCell value={metrics?.leads} /></td>
                         </tr>
                       );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Connect new */}
-            <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Connect New:</span>
-              <div className="flex gap-5">
-                <button onClick={() => connectPlatform("facebook")} className="flex items-center gap-1.5 text-slate-300 hover:text-blue-600 transition-all hover:scale-105 text-[9px] font-black uppercase tracking-tighter">
-                  <PlatformIcon platform="Facebook" size={14}/> Facebook
-                </button>
-                <button onClick={() => connectPlatform("facebook")} className="flex items-center gap-1.5 text-slate-300 hover:text-pink-500 transition-all hover:scale-105 text-[9px] font-black uppercase tracking-tighter">
-                  <PlatformIcon platform="Instagram" size={14}/> Instagram
-                </button>
-                <button onClick={() => connectPlatform("linkedin")} className="flex items-center gap-1.5 text-slate-300 hover:text-sky-700 transition-all hover:scale-105 text-[9px] font-black uppercase tracking-tighter">
-                  <PlatformIcon platform="LinkedIn" size={14}/> LinkedIn
-                </button>
+                    })}
+                  </tbody>
+                </table>
               </div>
-            </div>
+            )}
           </div>
-
-          {/* FB ANALYTICS CARD (only when active page has data) */}
-          {fbAnalytics && (
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { label: "Page Fans",      value: fbAnalytics.fan_count?.toLocaleString() ?? "—",       icon: "👥" },
-                { label: "Followers",      value: fbAnalytics.followers_count?.toLocaleString() ?? "—", icon: "📣" },
-                { label: "Category",       value: fbAnalytics.category ?? "—",                          icon: "🏷️" },
-              ].map(m => (
-                <div key={m.label} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">{m.icon} {m.label}</p>
-                  <p className="text-xl font-black text-slate-800">{m.value}</p>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
-        {/* RIGHT: Quick Actions + Activity */}
+        {/* ── RIGHT: Quick Actions + Activity ──────────────────────────────── */}
         <div className="col-span-12 lg:col-span-4 space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-slate-800 font-bold text-[10px] uppercase tracking-widest mb-5">Quick Actions</h3>

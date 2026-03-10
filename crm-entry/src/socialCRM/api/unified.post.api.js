@@ -1,4 +1,5 @@
 import api from "./apiClient";
+import { BASE_URL } from "./apiClient";
 
 export const createUnifiedPost = async (payload) => {
   const formData = new FormData();
@@ -19,10 +20,14 @@ export const createUnifiedPost = async (payload) => {
   }
 
   const res = await api.post("/post", formData, {
-    headers: {
-      "Content-Type": "multipart/form-data"
-    }
+    headers: { "Content-Type": "multipart/form-data" }
   });
 
   return res.data;
 };
+
+export const deletePost = (id) => api.delete(`/post/history/${id}`);
+
+export const editPost = (id, content) => api.patch(`/post/history/${id}`, { content });
+
+export const getPostMediaUrl = (id) => `${BASE_URL}/post/${id}/media`;
