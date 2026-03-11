@@ -91,11 +91,23 @@ export const assignLeadsByFormToDepartment = async (formId, departmentId, depart
  * @param {string|null} endDate    ISO date string, e.g. "2024-12-31"
  */
 export const assignLeadsByFormToDepartments = async (formId, departments, startDate = null, endDate = null) => {
-  await api.post(`/facebook/leads/forms/${formId}/assign-departments`, {
+  const res = await api.post(`/facebook/leads/forms/${formId}/assign-departments`, {
     departments,
     startDate: startDate || null,
     endDate: endDate || null,
   });
+  return res.data; // { message, added }
+};
+
+/** Preview: count how many leads in a form match the date range (MetaCreatedAt only). */
+export const countFormLeads = async (formId, startDate = null, endDate = null) => {
+  const res = await api.get(`/facebook/leads/forms/${formId}/count`, {
+    params: {
+      ...(startDate ? { startDate } : {}),
+      ...(endDate ? { endDate } : {}),
+    },
+  });
+  return res.data?.count ?? 0;
 };
 
 /** Remove a department assignment from every lead in a form */
@@ -136,10 +148,10 @@ export const getLeadUsers = async (leadId) => {
 /**
  * Assigns one or more users to a lead.
  * @param {string|number} leadId
- * @param {number[]} userIds
+ * @param {Array<{userId: number, userName: string}>} users
  */
-export const assignLeadUsers = async (leadId, userIds) => {
-  await api.post(`/facebook/leads/${leadId}/users`, { userIds });
+export const assignLeadUsers = async (leadId, users) => {
+  await api.post(`/facebook/leads/${leadId}/users`, { users });
 };
 
 /** Removes a user assignment from a specific lead */

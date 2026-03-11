@@ -293,7 +293,12 @@ function UsersTab({ lead, allUsers, onAssign, onRemove }) {
     if (!selectedIds.length) return;
     setSaving(true);
     try {
-      await onAssign.addUsers(lead.id, selectedIds.map(Number));
+      // Build [{userId, userName}] objects — backend requires this shape
+      const usersToAssign = availableToAdd
+        .filter((u) => selectedIds.includes(String(u.userId)))
+        .map((u) => ({ userId: Number(u.userId), userName: u.name || String(u.userId) }));
+      if (!usersToAssign.length) return;
+      await onAssign.addUsers(lead.id, usersToAssign);
       setSelectedIds([]);
       await refresh();
     } catch (err) {

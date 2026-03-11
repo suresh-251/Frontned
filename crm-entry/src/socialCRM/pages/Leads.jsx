@@ -204,6 +204,7 @@ export default function Leads() {
     assignLead,
     assignByFormToDepartments,
     removeDepartmentFromForm,
+    countFormLeads,
     getLeadDepartments,
     assignLeadDepartments,
     removeLeadDepartment,
@@ -229,6 +230,7 @@ export default function Leads() {
   const [assignStartDate, setAssignStartDate] = useState("");
   const [assignEndDate, setAssignEndDate] = useState("");
   const [showTimeRange, setShowTimeRange] = useState(false);
+  const [formLeadCount, setFormLeadCount] = useState(null); // preview count for dept assignment
 
   const [remarkMap, setRemarkMap] = useState({});
   const [selectedLead, setSelectedLead] = useState(null);
@@ -321,6 +323,20 @@ useEffect(() => {
     }
     getLeadForms(filters.pageId).then(setForms);
   }, [filters.pageId]);
+
+  // Live preview: count leads in selected form matching date range
+  useEffect(() => {
+    if (!filters.formId) { setFormLeadCount(null); return; }
+    const timer = setTimeout(() => {
+      countFormLeads(
+        filters.formId,
+        assignStartDate || null,
+        assignEndDate || null
+      ).then(setFormLeadCount);
+    }, 400);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.formId, assignStartDate, assignEndDate]);
 
   /* =========================
      SELECT LEADS LOGIC
@@ -476,20 +492,24 @@ useEffect(() => {
           departmentId: id,
           departmentName: departments.find(d => String(d.departmentId) === id)?.departmentName || "",
         }));
-        await assignByFormToDepartments(
+        const result = await assignByFormToDepartments(
           filters.formId,
           depts,
-          showTimeRange && assignStartDate ? assignStartDate : null,
-          showTimeRange && assignEndDate ? assignEndDate : null,
+          assignStartDate || null,
+          assignEndDate || null,
         );
+        const leadAssigned = result?.added ?? "?";
+        Toast?.success(
+          `Assigned ${leadAssigned} lead(s) to ${toAssign.length} department(s)` +
+          (toRemove.length ? `, removed ${toRemove.length} department(s)` : "")
+        );
+      } else {
+        Toast?.success(`Removed ${toRemove.length} department(s)`);
       }
       for (const id of toRemove) {
         await removeDepartmentFromForm(filters.formId, id);
       }
       setAppliedDeptIds([...selectedDeptIds]);
-      Toast?.success(
-        `Applied: ${toAssign.length} assigned, ${toRemove.length} removed`
-      );
     } catch {
       Toast?.error("Failed to apply department changes");
     } finally {
@@ -684,6 +704,15 @@ useEffect(() => {
                 <FaCalendarAlt className="w-3 h-3" />
                 {showTimeRange ? "Hide Range" : "Set Time Range"}
               </button>
+
+              {/* Lead count preview badge */}
+              {filters.formId && formLeadCount !== null && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700">
+                  <FaUsers className="w-3 h-3" />
+                  {formLeadCount} lead{formLeadCount !== 1 ? "s" : ""}
+                  {(assignStartDate || assignEndDate) ? " in range" : " in form"}
+                </span>
+              )}
 
               {/* Apply button */}
               <button
