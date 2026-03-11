@@ -94,4 +94,7 @@ export const USER_MENU = [
   },
 
   { type: 'link', label: "Project", path: "/crm/hr/project", icon: FolderKanban },
+
+
+  
 ];
