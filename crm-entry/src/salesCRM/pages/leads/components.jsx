@@ -108,98 +108,41 @@ export const StatCard = memo(({ label, value, detailValue = 0, detailLabel = "du
 ));
 
 export function FilterModal({ onClose, filters, activeFilterCount, onApply }) {
-  const inferDateMode = (from, to) => {
-    const today = todayStr();
-    const tomorrow = offsetDay(1);
-    if (!from && !to) return "range";
-    if (from === today && to === today) return "today";
-    if (from === tomorrow && to === tomorrow) return "tomorrow";
-    if (from && to && from !== to) return "range";
-    return "custom";
-  };
-
   const [localFilters, setLocalFilters] = useState(filters);
-  const [dateModes, setDateModes] = useState({
-    created: inferDateMode(filters.createdDateFrom, filters.createdDateTo),
-    followUp: inferDateMode(filters.followUpDateFrom, filters.followUpDateTo),
-  });
-  useEffect(() => {
-    setLocalFilters(filters);
-    setDateModes({
-      created: inferDateMode(filters.createdDateFrom, filters.createdDateTo),
-      followUp: inferDateMode(filters.followUpDateFrom, filters.followUpDateTo),
-    });
-  }, [filters]);
   const assignees = useMemo(() => ["All", "Monica Jones", "James Carter", "Amanda Blake", "Samantha Clark", "Anthony Cruz"], []);
   const updateFilter = (key, value) => setLocalFilters((prev) => ({ ...prev, [key]: value }));
-  const handleApply = () => onApply(localFilters);
-  const handleClear = () => {
-    setLocalFilters(CLEARED_FILTERS);
-    setDateModes({ created: "range", followUp: "range" });
+  const handleApply = () => {
+    onApply(localFilters);
+    onClose();
   };
-
-  const applyDateMode = (prefix, mode, customValue = "") => {
-    const modeKey = prefix === "createdDate" ? "created" : "followUp";
-    setDateModes((prev) => ({ ...prev, [modeKey]: mode }));
-
-    if (mode === "range") return;
-
-    if (mode === "custom" && !customValue) {
-      const existingDate = localFilters[`${prefix}From`] || localFilters[`${prefix}To`] || todayStr();
-      setLocalFilters((prev) => ({ ...prev, [`${prefix}From`]: existingDate, [`${prefix}To`]: existingDate }));
-      return;
-    }
-
-    const targetDate = mode === "today" ? todayStr() : mode === "tomorrow" ? offsetDay(1) : customValue || todayStr();
-    setLocalFilters((prev) => ({
-      ...prev,
-      [`${prefix}From`]: targetDate,
-      [`${prefix}To`]: targetDate,
-    }));
-  };
-
-  const updateDateRange = (prefix, edge, value) => {
-    setDateModes((prev) => ({ ...prev, [prefix === "createdDate" ? "created" : "followUp"]: "range" }));
-    setLocalFilters((prev) => ({ ...prev, [`${prefix}${edge}`]: value }));
-  };
-
-  const createdMode = dateModes.created;
-  const followUpMode = dateModes.followUp;
+  const handleClear = () => setLocalFilters(CLEARED_FILTERS);
 
   return (
-    <div className="filter-drawer-overlay" onClick={onClose}>
-      <div className="filter-drawer" onClick={(event) => event.stopPropagation()}>
-        <div className="filter-drawer__header">
-          <div className="filter-drawer__header-main">
-            <div className="filter-drawer__icon"><IFilter s={16} c="#4f46e5" /></div>
-            <div>
-              <div className="filter-drawer__eyebrow">Lead workspace</div>
-              <div className="filter-drawer__title-row">
-                <span className="filter-drawer__title">Filter Leads</span>
-                {activeFilterCount > 0 && <span className="filter-drawer__badge">{activeFilterCount} active</span>}
-              </div>
-              <p className="filter-drawer__subtitle">Refine the list by ownership, activity, timeline, and location.</p>
-            </div>
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.35)", zIndex: 500 }} />
+      <div style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: "340px", background: "white", boxShadow: "4px 0 20px rgba(0,0,0,0.15)", zIndex: 501, display: "flex", flexDirection: "column", animation: "slideIn 0.25s ease-out" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <IFilter s={16} c="#4f46e5" />
+            <span style={{ fontSize: "15px", fontWeight: 600, color: "#111827" }}>Filter Leads</span>
+            {activeFilterCount > 0 && <span style={{ background: "#4f46e5", color: "white", fontSize: "11px", fontWeight: 700, padding: "2px 6px", borderRadius: "12px" }}>{activeFilterCount}</span>}
           </div>
-          <button className="icon-btn filter-drawer__close" onClick={onClose}><IX s={16} /></button>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", display: "flex", borderRadius: "4px" }}><IX s={16} c="#6b7280" /></button>
         </div>
 
-        <div className="filter-drawer__body">
-          <section className="filter-panel-section">
-            <div className="filter-panel-section__header">
-              <h4 className="filter-panel-section__title">Lead details</h4>
-              <span className="filter-panel-section__tag">Core</span>
-            </div>
-            <div className="filter-field">
-              <label className="filter-field__label">Status</label>
-              <select className="filter-field__control" value={localFilters.status} onChange={(event) => updateFilter("status", event.target.value)}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+          <div style={{ marginBottom: "20px" }}>
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6b7280", margin: "0 0 12px 0" }}>Lead Filters</h4>
+            <div style={{ marginBottom: "12px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Status</label>
+              <select value={localFilters.status} onChange={(event) => updateFilter("status", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", cursor: "pointer" }}>
                 <option value="All">All Statuses</option>
                 {STATUS_LIST.map((status) => <option key={status} value={status}>{status}</option>)}
               </select>
             </div>
-            <div className="filter-field">
-              <label className="filter-field__label">Source</label>
-              <select className="filter-field__control" value={localFilters.source} onChange={(event) => updateFilter("source", event.target.value)}>
+            <div style={{ marginBottom: "12px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Source</label>
+              <select value={localFilters.source} onChange={(event) => updateFilter("source", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", cursor: "pointer" }}>
                 <option value="All">All Sources</option>
                 <option value="Inbound">Inbound</option>
                 <option value="Outbound">Outbound</option>
@@ -207,135 +150,70 @@ export function FilterModal({ onClose, filters, activeFilterCount, onApply }) {
                 <option value="Warm">Warm</option>
               </select>
             </div>
-            <div className="filter-field">
-              <label className="filter-field__label">Assigned To</label>
-              <select className="filter-field__control" value={localFilters.assignee} onChange={(event) => updateFilter("assignee", event.target.value)}>
+            <div style={{ marginBottom: "12px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Assigned To</label>
+              <select value={localFilters.assignee} onChange={(event) => updateFilter("assignee", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", cursor: "pointer" }}>
                 {assignees.map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
               </select>
             </div>
-          </section>
+          </div>
 
-          <section className="filter-panel-section">
-            <div className="filter-panel-section__header">
-              <h4 className="filter-panel-section__title">Activity</h4>
-              <span className="filter-panel-section__tag">Engagement</span>
+          <div style={{ marginBottom: "20px" }}>
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6b7280", margin: "0 0 12px 0" }}>Activity</h4>
+            <div style={{ marginBottom: "12px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Last Contacted (days)</label>
+              <input type="number" placeholder="Enter days" min="0" value={localFilters.lastContactedDays} onChange={(event) => updateFilter("lastContactedDays", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px" }} />
             </div>
-            <div className="filter-field">
-              <label className="filter-field__label">Last Contacted (days)</label>
-              <input className="filter-field__control" type="number" placeholder="Enter days" min="0" value={localFilters.lastContactedDays} onChange={(event) => updateFilter("lastContactedDays", event.target.value)} />
-            </div>
-            <div className="filter-field">
-              <label className="filter-field__label">Responded To</label>
-              <select className="filter-field__control" value={localFilters.respondedTo} onChange={(event) => updateFilter("respondedTo", event.target.value)}>
+            <div style={{ marginBottom: "12px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Responded To</label>
+              <select value={localFilters.respondedTo} onChange={(event) => updateFilter("respondedTo", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", cursor: "pointer" }}>
                 {RESPONSE_TYPES.map((responseType) => <option key={responseType} value={responseType}>{responseType}</option>)}
               </select>
             </div>
-          </section>
+          </div>
 
-          <section className="filter-panel-section filter-panel-section--dates">
-            <div className="filter-panel-section__header">
-              <h4 className="filter-panel-section__title">Dates</h4>
-              <span className="filter-panel-section__tag">Realtime</span>
-            </div>
-            <div className="filter-date-stack">
-              <div className="filter-date-card">
-                <div className="filter-date-card__head">
-                  <div>
-                    <div className="filter-date-card__title">Created date</div>
-                    <div className="filter-date-card__subtitle">Filter by a date range or jump straight to the most relevant day.</div>
-                  </div>
-                  <div className="filter-date-pills">
-                    {[["range", "Time range"], ["today", "Today"], ["tomorrow", "Tomorrow"], ["custom", "Custom"]].map(([value, label]) => (
-                      <button key={value} type="button" className={`filter-date-pill ${createdMode === value ? "filter-date-pill--active" : ""}`} onClick={() => applyDateMode("createdDate", value)}>{label}</button>
-                    ))}
-                  </div>
-                </div>
-                {createdMode === "range" && (
-                  <div className="filter-date-card__range">
-                    <div className="filter-field">
-                      <label className="filter-field__label">From</label>
-                      <input className="filter-field__control" type="date" value={localFilters.createdDateFrom} onChange={(event) => updateDateRange("createdDate", "From", event.target.value)} />
-                    </div>
-                    <div className="filter-field">
-                      <label className="filter-field__label">To</label>
-                      <input className="filter-field__control" type="date" value={localFilters.createdDateTo} onChange={(event) => updateDateRange("createdDate", "To", event.target.value)} />
-                    </div>
-                  </div>
-                )}
-                {createdMode === "custom" && (
-                  <div className="filter-date-card__custom">
-                    <label className="filter-field__label">Pick day</label>
-                    <input className="filter-field__control" type="date" value={localFilters.createdDateFrom || localFilters.createdDateTo || todayStr()} onChange={(event) => applyDateMode("createdDate", "custom", event.target.value)} />
-                  </div>
-                )}
-                <div className="filter-date-card__current">Filtering: {createdMode === "range" ? (localFilters.createdDateFrom || localFilters.createdDateTo ? `${localFilters.createdDateFrom || "Any"} to ${localFilters.createdDateTo || "Any"}` : "Any time range") : localFilters.createdDateFrom || "Custom day"}</div>
+          <div style={{ marginBottom: "20px" }}>
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6b7280", margin: "0 0 12px 0" }}>Dates</h4>
+            {[["Created Date From", "createdDateFrom"], ["Created Date To", "createdDateTo"], ["Follow-up From", "followUpDateFrom"], ["Follow-up To", "followUpDateTo"]].map(([label, key]) => (
+              <div key={key} style={{ marginBottom: key === "followUpDateTo" ? "0" : "12px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>{label}</label>
+                <input type="date" value={localFilters[key]} onChange={(event) => updateFilter(key, event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px" }} />
               </div>
+            ))}
+          </div>
 
-              <div className="filter-date-card">
-                <div className="filter-date-card__head">
-                  <div>
-                    <div className="filter-date-card__title">Follow-up date</div>
-                    <div className="filter-date-card__subtitle">Narrow the table to upcoming work based on a range or a specific day.</div>
-                  </div>
-                  <div className="filter-date-pills">
-                    {[["range", "Time range"], ["today", "Today"], ["tomorrow", "Tomorrow"], ["custom", "Custom"]].map(([value, label]) => (
-                      <button key={value} type="button" className={`filter-date-pill ${followUpMode === value ? "filter-date-pill--active" : ""}`} onClick={() => applyDateMode("followUpDate", value)}>{label}</button>
-                    ))}
-                  </div>
-                </div>
-                {followUpMode === "range" && (
-                  <div className="filter-date-card__range">
-                    <div className="filter-field">
-                      <label className="filter-field__label">From</label>
-                      <input className="filter-field__control" type="date" value={localFilters.followUpDateFrom} onChange={(event) => updateDateRange("followUpDate", "From", event.target.value)} />
-                    </div>
-                    <div className="filter-field">
-                      <label className="filter-field__label">To</label>
-                      <input className="filter-field__control" type="date" value={localFilters.followUpDateTo} onChange={(event) => updateDateRange("followUpDate", "To", event.target.value)} />
-                    </div>
-                  </div>
-                )}
-                {followUpMode === "custom" && (
-                  <div className="filter-date-card__custom">
-                    <label className="filter-field__label">Pick day</label>
-                    <input className="filter-field__control" type="date" value={localFilters.followUpDateFrom || localFilters.followUpDateTo || todayStr()} onChange={(event) => applyDateMode("followUpDate", "custom", event.target.value)} />
-                  </div>
-                )}
-                <div className="filter-date-card__current">Filtering: {followUpMode === "range" ? (localFilters.followUpDateFrom || localFilters.followUpDateTo ? `${localFilters.followUpDateFrom || "Any"} to ${localFilters.followUpDateTo || "Any"}` : "Any time range") : localFilters.followUpDateFrom || "Custom day"}</div>
-              </div>
+          <div style={{ marginBottom: "20px" }}>
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6b7280", margin: "0 0 12px 0" }}>Location</h4>
+            <div style={{ marginBottom: "8px" }}>
+              <input type="text" placeholder="City" value={localFilters.city} onChange={(event) => updateFilter("city", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", marginBottom: "8px" }} />
             </div>
-          </section>
-
-          <section className="filter-panel-section">
-            <div className="filter-panel-section__header">
-              <h4 className="filter-panel-section__title">Location</h4>
-              <span className="filter-panel-section__tag">Geo</span>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+              <input type="text" placeholder="State" value={localFilters.state} onChange={(event) => updateFilter("state", event.target.value)} style={{ padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px" }} />
+              <input type="text" placeholder="Zip" value={localFilters.zip} onChange={(event) => updateFilter("zip", event.target.value)} style={{ padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px" }} />
             </div>
-            <div className="filter-field">
-              <label className="filter-field__label">City</label>
-              <input className="filter-field__control" type="text" placeholder="City" value={localFilters.city} onChange={(event) => updateFilter("city", event.target.value)} />
-            </div>
-            <div className="filter-field-grid">
-              <div className="filter-field">
-                <label className="filter-field__label">State</label>
-                <input className="filter-field__control" type="text" placeholder="State" value={localFilters.state} onChange={(event) => updateFilter("state", event.target.value)} />
-              </div>
-              <div className="filter-field">
-                <label className="filter-field__label">Zip</label>
-                <input className="filter-field__control" type="text" placeholder="Zip" value={localFilters.zip} onChange={(event) => updateFilter("zip", event.target.value)} />
-              </div>
-            </div>
-          </section>
+          </div>
         </div>
 
-        <div className="filter-drawer__footer">
-          <button className="btn-ghost filter-drawer__footer-btn" onClick={handleClear}>Clear All</button>
-          <button className="btn-primary filter-drawer__footer-btn" onClick={handleApply}>Apply Filters{activeFilterCount > 0 && ` (${activeFilterCount})`}</button>
+        <div style={{ padding: "16px 20px", borderTop: "1px solid #e5e7eb", display: "flex", gap: "8px", background: "#fafafa" }}>
+          <button onClick={handleClear} style={{ flex: 1, padding: "8px 12px", background: "white", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", fontWeight: 500, color: "#374151", cursor: "pointer" }}>Clear All</button>
+          <button onClick={handleApply} style={{ flex: 1, padding: "8px 12px", background: "#4f46e5", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "white", cursor: "pointer" }}>Apply {activeFilterCount > 0 && `(${activeFilterCount})`}</button>
         </div>
       </div>
-    </div>
+
+      <style>{`
+        @keyframes slideIn {
+          from {
+            transform: translateX(-100%);
+          }
+          to {
+            transform: translateX(0);
+          }
+        }
+      `}</style>
+    </>
   );
 }
+
 export function StatusCell({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -344,7 +222,7 @@ export function StatusCell({ value, onChange }) {
 
   return (
     <div className="status-cell" ref={ref}>
-      <button className="status-pill" style={{ color: meta.color, background: meta.bg }} onClick={() => setOpen((current) => !current)}>
+      <button className="status-pill" style={{ color: meta.color }} onClick={() => setOpen((current) => !current)}>
         <span className="status-dot" style={{ background: meta.color }} />
         <span className="status-pill-label">{formatStatus(value)}</span>
         <span className="status-pill-caret"><IChevD s={9} c={meta.color} /></span>
@@ -898,6 +776,7 @@ export function KanbanBoard({ leads, groupBy, onUpdateLead, onOpenDetails, onAdj
     </div>
   );
 }
+
 
 
 
