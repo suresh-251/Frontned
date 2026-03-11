@@ -86,16 +86,23 @@ function useClickOutside(ref, cb) {
   }, [ref, cb]);
 }
 
-export const StatCard = memo(({ label, value, change, icon, alert, c, delay }) => (
+export const StatCard = memo(({ label, value, detailValue = 0, detailLabel = "due today", helper, icon, alert, c, delay }) => (
   <div className="stat-card" style={{ "--sc-delay": delay, "--sc-card": c.card, "--sc-icon": c.icon, "--sc-ink": c.ink }}>
     <div className="stat-header">
       <div className="stat-icon-wrap"><Icon id={icon} size={18} color="var(--sc-ink)" /></div>
       <span className="stat-label">{label}</span>
-      <div className="stat-alert"><Icon id={alert} size={14} color="var(--sc-ink)" sw={2} /></div>
+      <div className="stat-alert">
+        <Icon id={alert} size={14} color="var(--sc-ink)" sw={2} />
+      </div>
     </div>
     <div className="stat-body">
-      <div className="stat-value">{value}</div>
-      <div className="stat-change"><TrendingUp size={12} color="var(--sc-ink)" strokeWidth={2.5} aria-hidden="true" /><span>5 due today</span></div>
+      <div className="stat-value-row">
+        <div className="stat-value">{value}</div>
+        <div className="stat-change">
+          <TrendingUp size={12} color="var(--sc-ink)" strokeWidth={2.5} aria-hidden="true" />
+          <span>{detailValue} {detailLabel}</span>
+        </div>
+      </div>
     </div>
   </div>
 ));
@@ -215,8 +222,10 @@ export function StatusCell({ value, onChange }) {
 
   return (
     <div className="status-cell" ref={ref}>
-      <button className="status-pill" style={{ color: meta.color, background: meta.bg }} onClick={() => setOpen((current) => !current)}>
-        {formatStatus(value)}<IChevD s={9} c={meta.color} />
+      <button className="status-pill" style={{ color: meta.color }} onClick={() => setOpen((current) => !current)}>
+        <span className="status-dot" style={{ background: meta.color }} />
+        <span className="status-pill-label">{formatStatus(value)}</span>
+        <span className="status-pill-caret"><IChevD s={9} c={meta.color} /></span>
       </button>
       {open && (
         <div className="status-menu">
@@ -224,6 +233,7 @@ export function StatusCell({ value, onChange }) {
             const currentMeta = STATUS_META[status];
             return (
               <button key={status} className={`status-opt ${value === status ? "status-opt--on" : ""}`} onClick={() => { onChange(status); setOpen(false); }}>
+                <span className="status-opt-dot" style={{ background: currentMeta.color }} />
                 <span style={{ color: currentMeta.color }}>{formatStatus(status)}</span>
               </button>
             );
@@ -233,7 +243,6 @@ export function StatusCell({ value, onChange }) {
     </div>
   );
 }
-
 export function FollowUpCell({ value, onChange }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
@@ -289,8 +298,12 @@ export function ScoreBar({ score, onAdjust }) {
 
 export function AddLeadDropdown({ onSelectType }) {
   const [open, setOpen] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const ref = useRef(null);
-  useClickOutside(ref, () => setOpen(false));
+  useClickOutside(ref, () => {
+    setOpen(false);
+    setShowMore(false);
+  });
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -303,17 +316,20 @@ export function AddLeadDropdown({ onSelectType }) {
           {LEAD_TYPES.slice(0, 3).map((leadType) => {
             const IconComp = leadType.icon;
             return (
-              <button key={leadType.key} className="add-lead-option" onClick={() => { setOpen(false); onSelectType(leadType); }}>
+              <button key={leadType.key} className="add-lead-option" onClick={() => { setOpen(false); setShowMore(false); onSelectType(leadType); }}>
                 <span className="add-lead-opt-icon"><IconComp size={13} strokeWidth={1.8} /></span>{leadType.label}
               </button>
             );
           })}
           <div className="add-lead-divider" />
-          <div className="add-lead-section-label">More Types</div>
-          {LEAD_TYPES.slice(3).map((leadType) => {
+          <button type="button" className={`add-lead-more-toggle ${showMore ? "add-lead-more-toggle--open" : ""}`} onClick={() => setShowMore((current) => !current)}>
+            <span>More Types</span>
+            <IChevD s={11} />
+          </button>
+          {showMore && LEAD_TYPES.slice(3).map((leadType) => {
             const IconComp = leadType.icon;
             return (
-              <button key={leadType.key} className="add-lead-option" onClick={() => { setOpen(false); onSelectType(leadType); }}>
+              <button key={leadType.key} className="add-lead-option" onClick={() => { setOpen(false); setShowMore(false); onSelectType(leadType); }}>
                 <span className="add-lead-opt-icon"><IconComp size={13} strokeWidth={1.8} /></span>{leadType.label}
               </button>
             );
@@ -439,8 +455,8 @@ export function ImportModal({ onClose, onImport }) {
               <input ref={fileRef} type="file" accept=".csv" style={{ display: "none" }} onChange={(event) => handleFile(event.target.files[0])} />
               <div className="drop-icon"><IUpload s={32} c="#a5b4fc" /></div>
               <div className="drop-title">Drop your CSV here</div>
-              <div className="drop-sub">or click to browse — supports standard CRM exports</div>
-              <div className="drop-hint">name, email, phone, company, status, source, score, owner…</div>
+              <div className="drop-sub">or click to browse ï¿½ supports standard CRM exports</div>
+              <div className="drop-hint">name, email, phone, company, status, source, score, ownerï¿½</div>
             </div>
           )}
           {step === "map" && parsed && (
@@ -449,9 +465,9 @@ export function ImportModal({ onClose, onImport }) {
               {parsed.headers.map((header) => (
                 <div key={header} className="map-row">
                   <span className="map-col">{header}</span>
-                  <span className="map-sample">{parsed.rows[0]?.[header] || "—"}</span>
+                  <span className="map-sample">{parsed.rows[0]?.[header] || "ï¿½"}</span>
                   <select className="map-select" value={mapping[header] || ""} onChange={(event) => setMapping((current) => ({ ...current, [header]: event.target.value }))}>
-                    <option value="">— skip —</option>
+                    <option value="">ï¿½ skip ï¿½</option>
                     {LEAD_FIELDS.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}
                   </select>
                 </div>
@@ -460,11 +476,11 @@ export function ImportModal({ onClose, onImport }) {
           )}
           {step === "preview" && (
             <div className="preview-wrap">
-              <div className="preview-info"><span className="preview-count">{parsed.rows.length} leads</span> ready to import{parsed.rows.length > 5 && <span className="preview-more"> — showing first 5</span>}</div>
+              <div className="preview-info"><span className="preview-count">{parsed.rows.length} leads</span> ready to import{parsed.rows.length > 5 && <span className="preview-more"> ï¿½ showing first 5</span>}</div>
               <div className="preview-scroll">
                 <table className="preview-table">
                   <thead><tr>{Object.values(mapping).filter(Boolean).map((field) => <th key={field}>{LEAD_FIELDS.find((item) => item.key === field)?.label || field}</th>)}</tr></thead>
-                  <tbody>{parsed.rows.slice(0, 5).map((row, index) => <tr key={index}>{parsed.headers.filter((header) => mapping[header]).map((header) => <td key={header}>{row[header] || "—"}</td>)}</tr>)}</tbody>
+                  <tbody>{parsed.rows.slice(0, 5).map((row, index) => <tr key={index}>{parsed.headers.filter((header) => mapping[header]).map((header) => <td key={header}>{row[header] || "ï¿½"}</td>)}</tr>)}</tbody>
                 </table>
               </div>
             </div>
@@ -521,37 +537,56 @@ export function LeadsPerformanceChart({ onClose, leads }) {
   const [animated, setAnimated] = useState(false);
   const [tooltip, setTooltip] = useState(null);
   const [activeRange, setActiveRange] = useState("30");
+  const [customRange, setCustomRange] = useState({ from: offsetDay(29), to: todayStr() });
 
   useEffect(() => {
     const timeoutId = setTimeout(() => setAnimated(true), 60);
     return () => clearTimeout(timeoutId);
   }, []);
 
+  const rangeInfo = useMemo(() => {
+    if (activeRange === "custom") {
+      const from = customRange.from ? new Date(`${customRange.from}T00:00:00`) : null;
+      const to = customRange.to ? new Date(`${customRange.to}T00:00:00`) : null;
+      if (!from || !to || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
+        return { days: 0, startDate: null, label: "Choose a valid range" };
+      }
+      const days = Math.max(1, Math.floor((to - from) / 86400000) + 1);
+      return { days, startDate: from, label: `${customRange.from} to ${customRange.to}` };
+    }
+
+    const days = { 7: 7, 30: 30, 90: 90 }[activeRange];
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - (days - 1));
+    return { days, startDate, label: `${days} day window` };
+  }, [activeRange, customRange]);
+
   const data = useMemo(() => {
-    const ranges = { 7: 7, 30: 30, 90: 90 };
-    const days = ranges[activeRange];
-    return Array.from({ length: days }, (_, index) => {
-      const date = new Date(Date.now() - (days - 1 - index) * 86400000);
+    if (!rangeInfo.startDate || rangeInfo.days <= 0) return [];
+    return Array.from({ length: rangeInfo.days }, (_, index) => {
+      const date = new Date(rangeInfo.startDate);
+      date.setDate(rangeInfo.startDate.getDate() + index);
       const label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
       const base = 10 + Math.sin(index * 0.4) * 8 + Math.random() * 18;
       const value = Math.round(Math.max(3, base));
       return { label, value, date };
     });
-  }, [activeRange]);
+  }, [rangeInfo]);
 
-  const max = Math.max(...data.map((item) => item.value));
+  const safeData = data.length > 0 ? data : [{ label: "N/A", value: 0, date: new Date() }];
+  const max = Math.max(...safeData.map((item) => item.value), 1);
   const total = data.reduce((sum, item) => sum + item.value, 0);
-  const avg = Math.round(total / data.length);
-  const peak = data.reduce((best, current) => (best.value > current.value ? best : current));
+  const avg = data.length > 0 ? Math.round(total / data.length) : 0;
+  const peak = data.length > 0 ? data.reduce((best, current) => (best.value > current.value ? best : current)) : { value: 0, label: "N/A" };
   const W = 720;
   const H = 220;
   const PAD = { t: 20, r: 20, b: 40, l: 48 };
   const chartW = W - PAD.l - PAD.r;
   const chartH = H - PAD.t - PAD.b;
 
-  const points = data.map((item, index) => ({
-    x: PAD.l + (index / (data.length - 1)) * chartW,
-    y: PAD.t + chartH - (item.value / (max * 1.15)) * chartH,
+  const points = safeData.map((item, index) => ({
+    x: PAD.l + (safeData.length === 1 ? 0.5 : index / (safeData.length - 1)) * chartW,
+    y: PAD.t + chartH - (item.value / (max * 1.15 || 1)) * chartH,
     ...item,
   }));
 
@@ -564,59 +599,74 @@ export function LeadsPerformanceChart({ onClose, leads }) {
 
   const areaD = `${pathD} L ${points[points.length - 1].x} ${PAD.t + chartH} L ${points[0].x} ${PAD.t + chartH} Z`;
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((fraction) => ({ y: PAD.t + chartH - fraction * chartH, val: Math.round(fraction * max * 1.15) }));
-  const xStep = Math.ceil(data.length / 6);
+  const xStep = Math.max(1, Math.ceil(points.length / 6));
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 700, backdropFilter: "blur(3px)", animation: "fadeInBg 0.2s ease" }} />
-      <div style={{ position: "fixed", inset: 0, zIndex: 701, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-        <div onClick={(event) => event.stopPropagation()} style={{ pointerEvents: "all", background: "white", borderRadius: "16px", boxShadow: "0 24px 80px rgba(0,0,0,0.22)", width: "min(800px, 94vw)", overflow: "hidden", transform: animated ? "scale(1) translateY(0)" : "scale(0.92) translateY(32px)", opacity: animated ? 1 : 0, transition: "transform 0.38s cubic-bezier(0.34,1.4,0.64,1), opacity 0.28s ease" }}>
-          <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid #f0f0f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ width: 34, height: 34, borderRadius: 9, background: "#eef2ff", display: "flex", alignItems: "center", justifyContent: "center" }}><BarChart2 size={17} color="#4f46e5" strokeWidth={2} /></div>
-              <div><div style={{ fontSize: 18, fontWeight: 700, color: "#111827", letterSpacing: "-0.2px" }}>Leads Performance</div><div style={{ fontSize: 13.5, color: "#9ca3af", marginTop: 1 }}>New leads over time</div></div>
+      <div className="chart-overlay" onClick={onClose} />
+      <div className="chart-stage">
+        <div className={`chart-modal ${animated ? "chart-modal--open" : ""}`} onClick={(event) => event.stopPropagation()}>
+          <div className="chart-modal__header">
+            <div className="chart-modal__header-main">
+              <div className="chart-modal__icon"><BarChart2 size={17} color="#4f46e5" strokeWidth={2} /></div>
+              <div>
+                <div className="chart-modal__title">Leads Performance</div>
+                <div className="chart-modal__subtitle">New leads over time</div>
+              </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
-                {[["7", "7 days"], ["30", "30 days"], ["90", "90 days"]].map(([value, label]) => (
-                  <button key={value} onClick={() => setActiveRange(value)} style={{ padding: "5px 12px", border: "none", fontSize: 14, fontWeight: activeRange === value ? 700 : 500, background: activeRange === value ? "#eef2ff" : "white", color: activeRange === value ? "#4f46e5" : "#6b7280", cursor: "pointer", borderRight: value !== "90" ? "1px solid #e5e7eb" : "none", transition: "all 0.15s" }}>{label}</button>
+            <div className="chart-modal__header-actions">
+              <div className="chart-range-tabs">
+                {[ ["7", "7 days"], ["30", "30 days"], ["90", "90 days"], ["custom", "Custom"] ].map(([value, label]) => (
+                  <button key={value} className={`chart-range-tab ${activeRange === value ? "chart-range-tab--active" : ""}`} onClick={() => setActiveRange(value)}>{label}</button>
                 ))}
               </div>
-              <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 6, borderRadius: 6, color: "#9ca3af" }}><X size={16} strokeWidth={2} /></button>
+              <button className="chart-modal__close" onClick={onClose}><X size={16} strokeWidth={2} /></button>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #f0f0f0" }}>
+          {activeRange === "custom" && (
+            <div className="chart-custom-range">
+              <div className="chart-custom-range__field">
+                <label>From</label>
+                <input type="date" value={customRange.from} onChange={(event) => setCustomRange((current) => ({ ...current, from: event.target.value }))} />
+              </div>
+              <div className="chart-custom-range__field">
+                <label>To</label>
+                <input type="date" value={customRange.to} onChange={(event) => setCustomRange((current) => ({ ...current, to: event.target.value }))} />
+              </div>
+              <div className="chart-custom-range__summary">{rangeInfo.label}</div>
+            </div>
+          )}
+
+          <div className="chart-summary-grid">
             {[
               { label: "Total New Leads", val: total, color: "#4f46e5" },
               { label: "Daily Average", val: avg, color: "#10b981" },
               { label: "Peak Day", val: peak.value, sub: peak.label, color: "#f59e0b" },
             ].map((stat, index) => (
-              <div key={index} style={{ flex: 1, padding: "8px 12px", textAlign: "center", borderRight: index < 2 ? "1px solid #f0f0f0" : "none" }}>
-                <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9ca3af", marginBottom: 4 }}>{stat.label} {stat.sub && <span style={{ marginLeft: 6, color: "#6b7280", textTransform: "none" }}>({stat.sub})</span>}</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: stat.color, letterSpacing: "-0.5px", lineHeight: 1 }}>{stat.val}</div>
+              <div key={index} className="chart-summary-card">
+                <div className="chart-summary-label">{stat.label} {stat.sub && <span className="chart-summary-sub">({stat.sub})</span>}</div>
+                <div className="chart-summary-value" style={{ color: stat.color }}>{stat.val}</div>
               </div>
             ))}
           </div>
 
-          <div style={{ padding: "15px 15px", position: "relative" }} onMouseLeave={() => setTooltip(null)}>
-            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible", display: "block" }}>
+          <div className="chart-canvas-wrap" onMouseLeave={() => setTooltip(null)}>
+            <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="chart-svg">
               <defs>
-                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4f46e5" stopOpacity="0.18" /><stop offset="100%" stopColor="#4f46e5" stopOpacity="0.01" /></linearGradient>
+                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4f46e5" stopOpacity="0.22" /><stop offset="100%" stopColor="#4f46e5" stopOpacity="0.02" /></linearGradient>
                 <clipPath id="chartClip"><rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} /></clipPath>
-                <filter id="lineShadow" x="-5%" y="-20%" width="110%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#4f46e5" floodOpacity="0.18" /></filter>
+                <filter id="lineShadow" x="-5%" y="-20%" width="110%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#4f46e5" floodOpacity="0.18" /></filter>
               </defs>
-              {yTicks.map((tick, index) => <g key={index}><line x1={PAD.l} x2={W - PAD.r} y1={tick.y} y2={tick.y} stroke="#f3f4f6" strokeWidth="1" /><text x={PAD.l - 8} y={tick.y + 4} textAnchor="end" fill="#9ca3af" fontFamily="Inter,sans-serif">{tick.val}</text></g>)}
-              {points.filter((_, index) => index % xStep === 0 || index === points.length - 1).map((point, index) => <text key={index} x={point.x} y={H - 8} textAnchor="middle" fill="#9ca3af" fontFamily="Inter,sans-serif">{point.label}</text>)}
-              <g clipPath="url(#chartClip)">
-                <path d={areaD} fill="url(#areaGrad)" style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease 0.2s" }} />
-                <path d={pathD} fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" filter="url(#lineShadow)" style={{ strokeDasharray: 2000, strokeDashoffset: animated ? 0 : 2000, transition: "stroke-dashoffset 1.1s cubic-bezier(0.4,0,0.2,1) 0.1s" }} />
-              </g>
-              {points.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="14" fill="transparent" style={{ cursor: "crosshair" }} onMouseEnter={() => setTooltip({ ...point, idx: index })} />)}
-              {tooltip && <g><line x1={tooltip.x} x2={tooltip.x} y1={PAD.t} y2={PAD.t + chartH} stroke="#4f46e5" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.4" /><circle cx={tooltip.x} cy={tooltip.y} r="5" fill="#4f46e5" stroke="white" strokeWidth="2.5" /></g>}
+              {yTicks.map((tick, index) => <g key={index}><line x1={PAD.l} x2={W - PAD.r} y1={tick.y} y2={tick.y} stroke="#e8edf6" strokeWidth="1" /><text x={PAD.l - 8} y={tick.y + 4} textAnchor="end" fill="#94a3b8" fontFamily="Inter,sans-serif">{tick.val}</text></g>)}
+              {points.filter((_, index) => index % xStep === 0 || index === points.length - 1).map((point, index) => <text key={index} x={point.x} y={H - 8} textAnchor="middle" fill="#94a3b8" fontFamily="Inter,sans-serif">{point.label}</text>)}
+              {data.length > 0 && <g clipPath="url(#chartClip)"><path d={areaD} fill="url(#areaGrad)" style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease 0.2s" }} /><path d={pathD} fill="none" stroke="#4f46e5" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" filter="url(#lineShadow)" style={{ strokeDasharray: 2000, strokeDashoffset: animated ? 0 : 2000, transition: "stroke-dashoffset 1.1s cubic-bezier(0.4,0,0.2,1) 0.1s" }} /></g>}
+              {points.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="14" fill="transparent" style={{ cursor: data.length > 0 ? "crosshair" : "default" }} onMouseEnter={() => data.length > 0 && setTooltip({ ...point, idx: index })} />)}
+              {tooltip && data.length > 0 && <g><line x1={tooltip.x} x2={tooltip.x} y1={PAD.t} y2={PAD.t + chartH} stroke="#4f46e5" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.4" /><circle cx={tooltip.x} cy={tooltip.y} r="5" fill="#4f46e5" stroke="white" strokeWidth="2.5" /></g>}
             </svg>
 
-            {tooltip && <div style={{ position: "absolute", left: `calc(${(tooltip.x / W) * 100}% - 70px)`, top: `${((tooltip.y - PAD.t) / H) * 100}%`, transform: "translateY(-115%)", background: "white", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 13px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", pointerEvents: "none", minWidth: 130, zIndex: 10 }}><div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>{tooltip.label}</div><div style={{ fontSize: 18, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{tooltip.value}</div><div style={{ fontSize: 11, color: "#10b981", marginTop: 3, display: "flex", alignItems: "center", gap: 3 }}><TrendingUp size={10} strokeWidth={2.5} /> New Leads</div></div>}
+            {tooltip && data.length > 0 && <div className="chart-tooltip" style={{ left: `calc(${(tooltip.x / W) * 100}% - 70px)`, top: `${((tooltip.y - PAD.t) / H) * 100}%` }}><div className="chart-tooltip__label">{tooltip.label}</div><div className="chart-tooltip__value">{tooltip.value}</div><div className="chart-tooltip__meta"><TrendingUp size={10} strokeWidth={2.5} /> New Leads</div></div>}
+            {data.length === 0 && <div className="chart-empty-state">Choose a valid custom date range to render the chart.</div>}
           </div>
         </div>
       </div>
@@ -624,7 +674,6 @@ export function LeadsPerformanceChart({ onClose, leads }) {
     </>
   );
 }
-
 export function EditModal({ lead, onClose }) {
   return (
     <div className="overlay" onClick={onClose}>
@@ -657,20 +706,35 @@ export function KanbanBoard({ leads, groupBy, onUpdateLead, onOpenDetails, onAdj
   }, [groupBy, leads]);
 
   return (
-    <div style={{ display: "flex", gap: "16px", overflowX: "auto", overflowY: "hidden", paddingBottom: "8px" }}>
+    <div className="kanban-board">
       {Object.keys(grouped).map((columnKey) => {
         const meta = groupBy === "status" ? STATUS_META[columnKey] || { color: "#374151", bg: "#f3f4f6" } : { color: "#374151", bg: "#f3f4f6" };
         const colLeads = grouped[columnKey] || [];
         const isOver = dragOverCol === columnKey;
 
         return (
-          <div key={columnKey} onDragOver={(event) => { event.preventDefault(); setDragOverCol(columnKey); }} onDragLeave={() => setDragOverCol(null)} onDrop={(event) => { event.preventDefault(); if (draggedId) onUpdateLead(draggedId, groupBy, columnKey); setDraggedId(null); setDragOverCol(null); }} style={{ background: isOver ? "#f0f3ff" : "#f9fafb", border: `2px dashed ${isOver ? "#4f46e5" : "#e5e7eb"}`, borderRadius: "12px", padding: "12px", minHeight: "400px", transition: "all 0.15s", minWidth: "300px", maxWidth: "300px", flex: "0 0 300px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-              <span style={{ fontWeight: 700, fontSize: "13px", color: meta.color }}>{groupBy === "status" ? formatStatus(columnKey) : columnKey}</span>
-              <span style={{ marginLeft: "auto", background: meta.bg, color: meta.color, fontSize: "11px", fontWeight: 700, padding: "1px 7px", borderRadius: "12px" }}>{colLeads.length}</span>
+          <div
+            key={columnKey}
+            className={`kanban-column ${isOver ? "kanban-column--over" : ""}`}
+            style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}
+            onDragOver={(event) => { event.preventDefault(); setDragOverCol(columnKey); }}
+            onDragLeave={() => setDragOverCol(null)}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (draggedId) onUpdateLead(draggedId, groupBy, columnKey);
+              setDraggedId(null);
+              setDragOverCol(null);
+            }}
+          >
+            <div className="kanban-column__header">
+              <div>
+                <div className="kanban-column__label">{groupBy === "status" ? formatStatus(columnKey) : columnKey}</div>
+                <div className="kanban-column__sub">Drag and drop leads into this lane</div>
+              </div>
+              <span className="kanban-column__count">{colLeads.length}</span>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div className="kanban-column__list">
               {colLeads.map((lead) => {
                 const initials = getInitials(lead.name);
                 const tier = getScoreTier(lead.score);
@@ -678,21 +742,29 @@ export function KanbanBoard({ leads, groupBy, onUpdateLead, onOpenDetails, onAdj
                 const scoreBackgrounds = { high: "#d1fae5", mid: "#fef3c7", low: "#fee2e2" };
 
                 return (
-                  <div key={lead.id} draggable onDragStart={(event) => { setDraggedId(lead.id); event.dataTransfer.effectAllowed = "move"; }} onClick={() => onOpenDetails(lead.id)} style={{ background: "white", borderRadius: "10px", padding: "12px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb", cursor: "grab", opacity: draggedId === lead.id ? 0.4 : 1, transition: "box-shadow 0.15s, transform 0.15s" }} onMouseEnter={(event) => { event.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)"; event.currentTarget.style.transform = "translateY(-2px)"; }} onMouseLeave={(event) => { event.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.08)"; event.currentTarget.style.transform = "none"; }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: lead.avatarBg, color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 700 }}>{initials}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.name}</div>
-                        <div style={{ fontSize: "11.5px", color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.company}</div>
+                  <div
+                    key={lead.id}
+                    className={`kanban-card ${draggedId === lead.id ? "kanban-card--dragging" : ""}`}
+                    draggable
+                    onDragStart={(event) => { setDraggedId(lead.id); event.dataTransfer.effectAllowed = "move"; }}
+                    onClick={() => onOpenDetails(lead.id)}
+                  >
+                    <div className="kanban-card__top">
+                      <div className="kanban-card__identity">
+                        <div className="kanban-card__avatar" style={{ background: lead.avatarBg }}>{initials}</div>
+                        <div className="kanban-card__identity-text">
+                          <div className="kanban-card__name">{lead.name}</div>
+                          <div className="kanban-card__company">{lead.company}</div>
+                        </div>
                       </div>
-                      <div style={{ padding: "2px 7px", borderRadius: "12px", background: scoreBackgrounds[tier], color: scoreColors[tier], fontSize: "11px", fontWeight: 700 }}>{lead.score}</div>
+                      <div className="kanban-card__score" style={{ background: scoreBackgrounds[tier], color: scoreColors[tier] }}>{lead.score}</div>
                     </div>
 
-                    <div style={{ fontSize: "11.5px", color: "#9ca3af", display: "flex", alignItems: "center", gap: "4px" }}><User size={10} /><span>{lead.assignee}</span></div>
+                    <div className="kanban-card__meta"><User size={10} /><span>{lead.assignee}</span></div>
                     {lead.followUpDate && (() => {
                       const info = getFollowUpLabel(lead.followUpDate);
                       const color = info.type === "overdue" ? "#dc2626" : info.type === "today" ? "#d97706" : info.type === "tomorrow" ? "#0284c7" : "#6b7280";
-                      return <div style={{ marginTop: "6px", fontSize: "11px", color, fontWeight: info.type !== "normal" ? 700 : 400, display: "flex", alignItems: "center", gap: "3px" }}><Calendar size={10} />{info.label}</div>;
+                      return <div className="kanban-card__followup" style={{ color }}><Calendar size={10} />{info.label}</div>;
                     })()}
                   </div>
                 );
@@ -704,3 +776,12 @@ export function KanbanBoard({ leads, groupBy, onUpdateLead, onOpenDetails, onAdj
     </div>
   );
 }
+
+
+
+
+
+
+
+
+

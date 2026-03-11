@@ -36,6 +36,14 @@ import { fmtDate, getInitials, makeInitialActivity, normalizeLeads, todayStr } f
 
 const VISIBLE_COLUMNS_STORAGE_KEY = "crm_visible_columns";
 
+const SEARCH_FIELD_OPTIONS = [
+  { value: "all", label: "All Details" },
+  { value: "name", label: "Name" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "address", label: "Address" },
+];
+
 function SortIcon({ sortBy, sortDir, col }) {
   return (
     <span className="sort-ico">
@@ -122,6 +130,11 @@ export default function Leads() {
 
   const activeCols = useMemo(() => ALL_COLUMNS.filter((column) => column.always || visibleCols.includes(column.key)), [visibleCols]);
 
+  const activeSearchFieldLabel = useMemo(
+    () => SEARCH_FIELD_OPTIONS.find((option) => option.value === searchField)?.label || "All Details",
+    [searchField],
+  );
+
   const updateLead = useCallback(async (id, field, value) => {
     setLeads((current) => current.map((lead) => (lead.id === id ? { ...lead, [field]: value } : lead)));
     setDetailsLead((current) => (current && current.id === id ? { ...current, [field]: value } : current));
@@ -164,12 +177,11 @@ export default function Leads() {
       const query = search.trim().toLowerCase();
       if (query) {
         const targets = {
-          all: [lead.name, lead.company, lead.email, lead.phone, lead.address || "", lead.assignee].join(" ").toLowerCase(),
+          all: [lead.name, lead.email, lead.phone, lead.address || ""].join(" ").toLowerCase(),
           name: lead.name.toLowerCase(),
           email: lead.email.toLowerCase(),
           phone: lead.phone.toLowerCase(),
           address: (lead.address || "").toLowerCase(),
-          score: String(lead.score),
         };
         if (!targets[searchField]?.includes(query)) return false;
       }
@@ -208,7 +220,7 @@ export default function Leads() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const paginated = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
-  useEffect(() => setPage(1), [search, filters, rowsPerPage]);
+  useEffect(() => setPage(1), [search, searchField, filters, rowsPerPage]);
 
   const allOnPageSel = paginated.length > 0 && paginated.every((lead) => selected.has(lead.id));
   const toggleAll = () => {
@@ -234,7 +246,7 @@ export default function Leads() {
   });
 
   const handleApplyFilters = (nextFilters) => setFilters(nextFilters);
-  const handleClearFilters = () => setFilters({ status: "All", source: "All", assignee: "All", createdDateFrom: "", createdDateTo: "", followUpDateFrom: "", followUpDateTo: "", lastContactedDays: "", respondedTo: "All", city: "", state: "", country: "", zip: "" });
+  const handleClearFilters = () => setFilters({ status: "All", source: "All", assignee: "All", createdDateFrom: "", createdDateTo: "", followUpDateFrom: "", followUpDateTo: "", lastContactedDays: "", respondedTo: "All", city: "", state: "", country: "", zip: "", followUp: "All" });
   const hasActiveFilters = search || activeFilterCount > 0;
   const handleAddLeadType = (leadType) => (leadType.key === "import" ? setShowImport(true) : setCreateLeadType(leadType));
 
@@ -251,7 +263,7 @@ export default function Leads() {
   return (
     <div className="page">
       <div className="stat-grid">
-        {STAT_CARDS.map(({ label, key, icon, alert, c }, index) => <StatCard key={label} label={label} value={stats[key] ?? 0} change="" icon={icon} alert={alert} c={c} delay={`${index * 0.07}s`} />)}
+        {STAT_CARDS.map(({ label, key, detailKey, detailLabel, helper, icon, alert, c }, index) => <StatCard key={label} label={label} value={stats[key] ?? 0} detailValue={stats[detailKey] ?? 0} detailLabel={detailLabel} helper={helper} icon={icon} alert={alert} c={c} delay={`${index * 0.07}s`} />)}
       </div>
 
       <div className="toolbar">
@@ -266,20 +278,45 @@ export default function Leads() {
             ))}
           </div>
           <div className="toolbar-divider" />
-          <div className="unified-search"><div className="search-wrap"><span className="search-ico"><ISearch s={14} c="#9ca3af" /></span><input type="text" className="search-inp unified-inp" placeholder="Search leads…" value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>
+          <div className="unified-search">
+            <select className="search-field-select" value={searchField} onChange={(event) => setSearchField(event.target.value)} aria-label="Search leads by">
+              {SEARCH_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <div className="unified-divider" />
+            <div className="search-wrap"><span className="search-ico"><ISearch s={14} c="#9ca3af" /></span><input type="text" className="search-inp unified-inp" placeholder={`Search by ${activeSearchFieldLabel.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+          </div>
           <div className="toolbar-divider" />
           <button className={`icon-btn-outline ${showChart ? "icon-btn-outline--on" : ""}`} onClick={() => setShowChart(!showChart)} title="View Performance Chart"><BarChart3 size={14} /></button>
         </div>
       </div>
 
-      {hasActiveFilters && <div className="chips-bar">{search && <span className="chip">Search: &ldquo;{search}&rdquo;<button className="chip-x" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip"><span className="chip-dot" style={{ background: STATUS_META[filters.status]?.dot }} />Status: {filters.status}<button className="chip-x" onClick={() => setFilters({ ...filters, status: "All" })}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip">Source: {filters.source}<button className="chip-x" onClick={() => setFilters({ ...filters, source: "All" })}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip">Owner: {filters.assignee}<button className="chip-x" onClick={() => setFilters({ ...filters, assignee: "All" })}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
+      {hasActiveFilters && <div className="chips-bar">{search && <span className="chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip"><span className="chip-dot" style={{ background: STATUS_META[filters.status]?.dot }} />Status: {filters.status}<button className="chip-x" onClick={() => setFilters({ ...filters, status: "All" })}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip">Source: {filters.source}<button className="chip-x" onClick={() => setFilters({ ...filters, source: "All" })}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip">Owner: {filters.assignee}<button className="chip-x" onClick={() => setFilters({ ...filters, assignee: "All" })}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
 
-      {selected.size > 0 && <div className="bulk-bar"><span className="bulk-cnt">{selected.size} selected</span><button className="bulk-btn">Assign Owner</button><button className="bulk-btn">Change Status</button><button className="bulk-btn bulk-btn--danger">Delete</button><button className="bulk-close" onClick={() => setSelected(new Set())}><IX s={12} c="#6b7280" /></button></div>}
+      {selected.size > 0 && <div className="bulk-bar"><span className="bulk-cnt">{selected.size} selected</span><button className="bulk-btn">Assign Owner</button><button className="bulk-btn">Change Status</button><button className="bulk-btn" onClick={handleExportSelected}>Export</button><button className="bulk-btn bulk-btn--danger">Delete</button><button className="bulk-close" onClick={() => setSelected(new Set())}><IX s={12} c="#6b7280" /></button></div>}
 
-      {viewMode === "kanban" && <><div className="kanban-toolbar"><label>Group by:</label><select value={kanbanGroupBy} onChange={(event) => setKanbanGroupBy(event.target.value)}><option value="status">Status</option><option value="followUpDate">Follow-Up</option><option value="source">Source</option><option value="assignee">Assignee</option></select></div><KanbanBoard leads={filtered} groupBy={kanbanGroupBy} onUpdateLead={updateLead} onOpenDetails={fetchLeadDetail} onAdjustScore={adjustScore} /></>}
+      {viewMode === "kanban" && <>
+        <div className="kanban-toolbar">
+          <div className="kanban-toolbar__title-wrap">
+            <span className="kanban-toolbar__eyebrow">Kanban view</span>
+            <div className="kanban-toolbar__title-row">
+              <label className="kanban-toolbar__label" htmlFor="kanban-group-by">Group by</label>
+              <span className="kanban-toolbar__hint">Organize lanes by the workflow that matters most right now.</span>
+            </div>
+          </div>
+          <div className="kanban-toolbar__control">
+            <select id="kanban-group-by" value={kanbanGroupBy} onChange={(event) => setKanbanGroupBy(event.target.value)}>
+              <option value="status">Status</option>
+              <option value="followUpDate">Follow-Up</option>
+              <option value="source">Source</option>
+              <option value="assignee">Assignee</option>
+            </select>
+          </div>
+        </div>
+        <KanbanBoard leads={filtered} groupBy={kanbanGroupBy} onUpdateLead={updateLead} onOpenDetails={fetchLeadDetail} onAdjustScore={adjustScore} />
+      </>}
 
       {viewMode === "list" && (
-        <div className="table-card">
+        <div className="table-card-shell"><div className="table-card">
           <div className="table-scroll">
             <table className={`table ${wrapText ? "table--wrap" : ""}`}>
               <thead>
@@ -337,7 +374,8 @@ export default function Leads() {
               </tbody>
             </table>
           </div>
-          <div className="pagination"><span className="pg-info">{filtered.length === 0 ? "No records" : `${(page - 1) * rowsPerPage + 1}–${Math.min(page * rowsPerPage, filtered.length)} of ${filtered.length} records`}</span><div className="pg-btns"><button className="pg-btn" disabled={page === 1} onClick={() => setPage((current) => current - 1)}><IChevL s={12} />Prev</button>{Array.from({ length: totalPages }, (_, index) => index + 1).filter((value) => Math.abs(value - page) <= 2 || value === 1 || value === totalPages).reduce((acc, value, index, arr) => { if (index > 0 && value - arr[index - 1] > 1) acc.push(<span key={`e${value}`} className="pg-ellipsis">…</span>); acc.push(<button key={value} className={`pg-btn pg-num ${page === value ? "pg-num--on" : ""}`} onClick={() => setPage(value)}>{value}</button>); return acc; }, [])}<button className="pg-btn" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>Next<IChevR s={12} /></button></div></div>
+          <div className="pagination"><span className="pg-info">{filtered.length === 0 ? "No records" : `${(page - 1) * rowsPerPage + 1}-${Math.min(page * rowsPerPage, filtered.length)} of ${filtered.length} records`}</span><div className="pg-btns"><button className="pg-btn" disabled={page === 1} onClick={() => setPage((current) => current - 1)}><IChevL s={12} />Prev</button>{Array.from({ length: totalPages }, (_, index) => index + 1).filter((value) => Math.abs(value - page) <= 2 || value === 1 || value === totalPages).reduce((acc, value, index, arr) => { if (index > 0 && value - arr[index - 1] > 1) acc.push(<span key={`e${value}`} className="pg-ellipsis">...</span>); acc.push(<button key={value} className={`pg-btn pg-num ${page === value ? "pg-num--on" : ""}`} onClick={() => setPage(value)}>{value}</button>); return acc; }, [])}<button className="pg-btn" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>Next<IChevR s={12} /></button></div></div>
+        </div>
         </div>
       )}
 
@@ -351,3 +389,9 @@ export default function Leads() {
     </div>
   );
 }
+
+
+
+
+
+
