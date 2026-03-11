@@ -44,21 +44,6 @@ const SEARCH_FIELD_OPTIONS = [
   { value: "address", label: "Address" },
 ];
 
-const COLUMN_WIDTHS = {
-  name: 220,
-  company: 180,
-  phone: 150,
-  email: 220,
-  status: 150,
-  followUp: 160,
-  assignee: 170,
-  source: 140,
-  score: 100,
-  deposits: 110,
-  comments: 180,
-  createdDate: 150,
-};
-
 function SortIcon({ sortBy, sortDir, col }) {
   return (
     <span className="sort-ico">
@@ -149,11 +134,6 @@ export default function Leads() {
     () => SEARCH_FIELD_OPTIONS.find((option) => option.value === searchField)?.label || "All Details",
     [searchField],
   );
-
-  const estimatedTableWidth = useMemo(() => {
-    const leadColumnsWidth = activeCols.reduce((sum, column) => sum + (COLUMN_WIDTHS[column.key] || 140), 0);
-    return leadColumnsWidth + 56 + 110;
-  }, [activeCols]);
 
   const updateLead = useCallback(async (id, field, value) => {
     setLeads((current) => current.map((lead) => (lead.id === id ? { ...lead, [field]: value } : lead)));
@@ -336,7 +316,7 @@ export default function Leads() {
       </>}
 
       {viewMode === "list" && (
-        <div className="table-card-shell"><div className="table-card" style={{ width: `min(100%, ${estimatedTableWidth}px)` }}>
+        <div className="table-card-shell"><div className="table-card">
           <div className="table-scroll">
             <table className={`table ${wrapText ? "table--wrap" : ""}`}>
               <thead>
@@ -409,6 +389,8 @@ export default function Leads() {
     </div>
   );
 }
+
+
 
 
 

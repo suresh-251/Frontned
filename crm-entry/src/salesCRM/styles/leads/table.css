@@ -136,28 +136,30 @@
 }
 
 .table-card {
+  display: inline-block;
+  width: fit-content;
+  max-width: min(96vw, 100%);
   background: var(--cs);
   border: 1px solid var(--cborder);
   border-radius: var(--rl);
   box-shadow: var(--sh-sm);
   margin: 0 auto;
-  max-width: 96vw;
   overflow: hidden;
 }
 
 .table-scroll {
-  display: block;           
+  display: block;
   overflow-x: auto;
   overflow-y: hidden;
-  width: 100%;
-  min-width: 0;            
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
   -webkit-overflow-scrolling: touch;
 }
 
-
 .table {
-  width: 100%;
-  width: max-content;  
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -883,3 +885,5 @@ tbody tr:nth-child(even) {
 .status-opt--on {
   background: #eef2ff;
 }
+
+

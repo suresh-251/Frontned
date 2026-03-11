@@ -385,7 +385,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 18px;
+  padding: 5px 18px;
   margin-bottom: 16px;
   border: 1px solid var(--cborder);
   border-radius: 16px;
