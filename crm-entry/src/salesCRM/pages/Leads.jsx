@@ -8,7 +8,7 @@ import {
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import leadsAPI from "../api/leads.api";
-import LeadDetailsModal from "../components/LeadDetailsModal.jsx"
+import LeadDetailsModal from "../components/LeadDetailsModal.jsx";
 
 /* ─────────────────────────────────────────────
    CONSTANTS & CONFIGURATION
@@ -1287,10 +1287,33 @@ function EditModal({ lead, onClose }) {
 /* ─────────────────────────────────────────────
    TASK 6: KANBAN BOARD
 ───────────────────────────────────────────── */
-function KanbanBoard({ leads, onUpdateLead, onOpenDetails, onAdjustScore }) {
+
+function KanbanBoard({ leads, groupBy, onUpdateLead, onOpenDetails, onAdjustScore }) {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
-  const grouped = useMemo(() => STATUS_LIST.reduce((acc, s) => { acc[s] = leads.filter(l => l.status === s); return acc; }, {}), [leads]);
+
+  const grouped = useMemo(() => {
+    const map = {};
+
+    leads.forEach((lead) => {
+      let key = lead[groupBy];
+
+      if (groupBy === "followUpDate") {
+        if (!key) key = "No Follow Up";
+        else {
+          const info = getFollowUpLabel(key);
+          key = info?.label || "Unknown";
+        }
+      }
+
+      if (!key) key = "Unknown";
+
+      if (!map[key]) map[key] = [];
+      map[key].push(lead);
+    });
+
+    return map;
+  }, [leads, groupBy]);
 
   return (
     <div
@@ -1299,54 +1322,237 @@ function KanbanBoard({ leads, onUpdateLead, onOpenDetails, onAdjustScore }) {
         gap: "16px",
         overflowX: "auto",
         overflowY: "hidden",
-        paddingBottom: "8px",
-        scrollSnapType: "x proximity"
+        paddingBottom: "8px"
       }}
     >
-      {STATUS_LIST.map(status => {
-        const meta = STATUS_META[status];
-        const colLeads = grouped[status] || [];
-        const isOver = dragOverCol === status;
+      {Object.keys(grouped).map((columnKey) => {
+
+        const meta =
+          groupBy === "status"
+            ? STATUS_META[columnKey] || { color: "#374151", bg: "#f3f4f6" }
+            : { color: "#374151", bg: "#f3f4f6" };
+
+        const colLeads = grouped[columnKey] || [];
+        const isOver = dragOverCol === columnKey;
+
         return (
-          <div key={status} onDragOver={e => { e.preventDefault(); setDragOverCol(status); }} onDragLeave={() => setDragOverCol(null)} onDrop={e => { e.preventDefault(); if (draggedId) onUpdateLead(draggedId, "status", status); setDraggedId(null); setDragOverCol(null); }}
+          <div
+            key={columnKey}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOverCol(columnKey);
+            }}
+            onDragLeave={() => setDragOverCol(null)}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (draggedId) {
+                onUpdateLead(draggedId, groupBy, columnKey);
+              }
+              setDraggedId(null);
+              setDragOverCol(null);
+            }}
             style={{
               background: isOver ? "#f0f3ff" : "#f9fafb",
               border: `2px dashed ${isOver ? "#4f46e5" : "#e5e7eb"}`,
               borderRadius: "12px",
               padding: "12px",
               minHeight: "400px",
-              transition: "all 0.15s"
-            }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-              <span style={{ fontWeight: 700, fontSize: "13px", color: meta.color }}>{formatStatus(status)}</span>
-              <span style={{ marginLeft: "auto", background: meta.bg, color: meta.color, fontSize: "11px", fontWeight: 700, padding: "1px 7px", borderRadius: "12px" }}>{colLeads.length}</span>
+              transition: "all 0.15s",
+
+              minWidth: "300px",
+              maxWidth: "300px",
+              flex: "0 0 300px"
+            }}
+          >
+            {/* Column Header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                marginBottom: "12px"
+              }}
+            >
+              <span
+                style={{
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  color: meta.color
+                }}
+              >
+                {groupBy === "status" ? formatStatus(columnKey) : columnKey}
+              </span>
+
+              <span
+                style={{
+                  marginLeft: "auto",
+                  background: meta.bg,
+                  color: meta.color,
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "1px 7px",
+                  borderRadius: "12px"
+                }}
+              >
+                {colLeads.length}
+              </span>
             </div>
+
+            {/* Cards */}
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {colLeads.map(lead => {
-                const initials = lead.name.split(" ").map(n => n[0]).join("").slice(0, 2);
-                const tier = lead.score >= 80 ? "high" : lead.score >= 60 ? "mid" : "low";
+              {colLeads.map((lead) => {
+                const initials = lead.name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .slice(0, 2);
+
+                const tier =
+                  lead.score >= 80 ? "high" : lead.score >= 60 ? "mid" : "low";
+
                 const sc = { high: "#059669", mid: "#d97706", low: "#dc2626" };
                 const sb = { high: "#d1fae5", mid: "#fef3c7", low: "#fee2e2" };
+
                 return (
-                  <div key={lead.id} draggable onDragStart={e => { setDraggedId(lead.id); e.dataTransfer.effectAllowed = "move"; }} onClick={() => onOpenDetails(lead)}
-                    style={{ background: "white", borderRadius: "10px", padding: "12px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb", cursor: "grab", transition: "box-shadow 0.15s, transform 0.15s", opacity: draggedId === lead.id ? 0.4 : 1 }}
-                    onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.08)"; e.currentTarget.style.transform = "none"; }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: lead.avatarBg, color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 700, flexShrink: 0 }}>{initials}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.name}</div>
-                        <div style={{ fontSize: "11.5px", color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.company}</div>
+                  <div
+                    key={lead.id}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedId(lead.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onClick={() => onOpenDetails(lead.id)}
+                    style={{
+                      background: "white",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+                      border: "1px solid #e5e7eb",
+                      cursor: "grab",
+                      opacity: draggedId === lead.id ? 0.4 : 1,
+                      transition: "box-shadow 0.15s, transform 0.15s"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow =
+                        "0 4px 12px rgba(0,0,0,0.12)";
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow =
+                        "0 1px 4px rgba(0,0,0,0.08)";
+                      e.currentTarget.style.transform = "none";
+                    }}
+                  >
+                    {/* Top row */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        marginBottom: "8px"
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: "50%",
+                          background: lead.avatarBg,
+                          color: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "10px",
+                          fontWeight: 700
+                        }}
+                      >
+                        {initials}
                       </div>
-                      <div style={{ padding: "2px 7px", borderRadius: "12px", background: sb[tier], color: sc[tier], fontSize: "11px", fontWeight: 700, flexShrink: 0 }}>{lead.score}</div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            color: "#111827",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis"
+                          }}
+                        >
+                          {lead.name}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "11.5px",
+                            color: "#6b7280",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis"
+                          }}
+                        >
+                          {lead.company}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: "2px 7px",
+                          borderRadius: "12px",
+                          background: sb[tier],
+                          color: sc[tier],
+                          fontSize: "11px",
+                          fontWeight: 700
+                        }}
+                      >
+                        {lead.score}
+                      </div>
                     </div>
-                    <div style={{ fontSize: "11.5px", color: "#9ca3af", display: "flex", alignItems: "center", gap: "4px" }}>
-                      <User size={10} /><span>{lead.assignee}</span>
+
+                    {/* Owner */}
+                    <div
+                      style={{
+                        fontSize: "11.5px",
+                        color: "#9ca3af",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px"
+                      }}
+                    >
+                      <User size={10} />
+                      <span>{lead.assignee}</span>
                     </div>
+
+                    {/* Follow up */}
                     {lead.followUpDate && (() => {
                       const info = getFollowUpLabel(lead.followUpDate);
-                      const c = info.type === "overdue" ? "#dc2626" : info.type === "today" ? "#d97706" : info.type === "tomorrow" ? "#0284c7" : "#6b7280";
-                      return <div style={{ marginTop: "6px", fontSize: "11px", color: c, fontWeight: info.type !== "normal" ? 700 : 400, display: "flex", alignItems: "center", gap: "3px" }}><Calendar size={10} />{info.label}</div>;
+
+                      const color =
+                        info.type === "overdue"
+                          ? "#dc2626"
+                          : info.type === "today"
+                            ? "#d97706"
+                            : info.type === "tomorrow"
+                              ? "#0284c7"
+                              : "#6b7280";
+
+                      return (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            fontSize: "11px",
+                            color: color,
+                            fontWeight: info.type !== "normal" ? 700 : 400,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "3px"
+                          }}
+                        >
+                          <Calendar size={10} />
+                          {info.label}
+                        </div>
+                      );
                     })()}
                   </div>
                 );
@@ -1395,6 +1601,7 @@ export default function Leads() {
   const [showImport, setShowImport] = useState(false);
   const [createLeadType, setCreateLeadType] = useState(null);
   const [viewMode, setViewMode] = useState("list");
+  const [kanbanGroupBy, setKanbanGroupBy] = useState("status");
   const [showChart, setShowChart] = useState(false);
 
   // Normalize API response to component format
@@ -1693,44 +1900,22 @@ export default function Leads() {
       {/* ── KANBAN VIEW ── */}
       {viewMode === "kanban" && (
         <>
-          <div className="kanban-filter-bar">
-
+          <div className="kanban-toolbar">
+            <label>Group by:</label>
             <select
-              value={filters.assignee}
-              onChange={(e) => setFilters({ ...filters, assignee: e.target.value })}
+              value={kanbanGroupBy}
+              onChange={(e) => setKanbanGroupBy(e.target.value)}
             >
-              <option value="All">All Owners</option>
-              <option>Monica Jones</option>
-              <option>James Carter</option>
-              <option>Amanda Blake</option>
-              <option>Samantha Clark</option>
+              <option value="status">Status</option>
+              <option value="followUpDate">Follow-Up</option>
+              <option value="source">Source</option>
+              <option value="assignee">Assignee</option>
             </select>
-
-            <select
-              value={filters.source}
-              onChange={(e) => setFilters({ ...filters, source: e.target.value })}
-            >
-              <option value="All">All Sources</option>
-              <option value="Inbound">Inbound</option>
-              <option value="Referral">Referral</option>
-              <option value="Website">Website</option>
-              <option value="Campaign">Campaign</option>
-            </select>
-
-            <select
-              value={filters.followUp}
-              onChange={(e) => setFilters({ ...filters, followUp: e.target.value })}
-            >
-              <option value="All">All Followups</option>
-              <option value="today">Today</option>
-              <option value="overdue">Overdue</option>
-              <option value="upcoming">Upcoming</option>
-            </select>
-
           </div>
 
           <KanbanBoard
             leads={filtered}
+            groupBy={kanbanGroupBy}
             onUpdateLead={updateLead}
             onOpenDetails={fetchLeadDetail}
             onAdjustScore={adjustScore}
@@ -1828,7 +2013,12 @@ export default function Leads() {
 
       {/* ── OVERLAYS ── */}
       {showColPanel && <ManageColumnsPanel visibleCols={visibleCols} setVisibleCols={setVisibleCols} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} wrapText={wrapText} setWrapText={setWrapText} onClose={() => setShowColPanel(false)} />}
-      {detailsLead && <LeadDetailsModal lead={detailsLead} onClose={() => setDetailsLead(null)} activityLog={activityLog} onUpdateLead={updateLead} onAdjustScore={adjustScore} />}
+      {detailsLead && (
+        <LeadDetailsModal
+          lead={detailsLead}
+          onClose={() => setDetailsLead(null)}
+        />
+      )}
       {editLead && <EditModal lead={editLead} onClose={() => setEditLead(null)} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={newLeads => setLeads(p => [...p, ...newLeads])} />}
       {showFilter && <FilterModal onClose={() => setShowFilter(false)} filters={filters} setFilters={setFilters} activeFilterCount={activeFilterCount} onApply={handleApplyFilters} onClear={handleClearFilters} />}
