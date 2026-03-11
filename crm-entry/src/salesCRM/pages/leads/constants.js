@@ -28,9 +28,13 @@ export const AVATAR_COLORS = [
 
 export const INITIAL_STATS = {
   totalNewLeads: 0,
+  totalNewLeadsDueToday: 0,
   callsToMake: 0,
+  callsToMakeDueToday: 0,
   emailsToSend: 0,
+  emailsToSendDueToday: 0,
   meetingsToSchedule: 0,
+  meetingsToScheduleDueToday: 0,
 };
 
 export const DEFAULT_FILTERS = {
@@ -67,10 +71,46 @@ export const CLEARED_FILTERS = {
 };
 
 export const STAT_CARDS = [
-  { label: "Total New Leads", key: "totalNewLeads", icon: Users, alert: Bell, c: { card: "#f6fbf7", icon: "#e6f6ea", ink: "#2e7d32" } },
-  { label: "Calls to Make", key: "callsToMake", icon: Phone, alert: Bell, c: { card: "#f6f9fe", icon: "#e3efff", ink: "#1565c0" } },
-  { label: "Emails to Send", key: "emailsToSend", icon: Mail, alert: AlertTriangle, c: { card: "#fffdf7", icon: "#fff6dc", ink: "#e65100" } },
-  { label: "Meetings to Schedule", key: "meetingsToSchedule", icon: Calendar, alert: CheckCircle, c: { card: "#fff6fa", icon: "#ffe4ef", ink: "#880e4f" } },
+  {
+    label: "Total New Leads",
+    key: "totalNewLeads",
+    detailKey: "totalNewLeadsDueToday",
+    detailLabel: "due today",
+    helper: "Fresh opportunities waiting for action",
+    icon: Users,
+    alert: Bell,
+    c: { card: "#f6fbf7", icon: "#e6f6ea", ink: "#2e7d32" },
+  },
+  {
+    label: "Calls to Make",
+    key: "callsToMake",
+    detailKey: "callsToMakeDueToday",
+    detailLabel: "due today",
+    helper: "Outbound follow-ups needing attention",
+    icon: Phone,
+    alert: Bell,
+    c: { card: "#f6f9fe", icon: "#e3efff", ink: "#1565c0" },
+  },
+  {
+    label: "Emails to Send",
+    key: "emailsToSend",
+    detailKey: "emailsToSendDueToday",
+    detailLabel: "due today",
+    helper: "Pending email outreach in queue",
+    icon: Mail,
+    alert: AlertTriangle,
+    c: { card: "#fffdf7", icon: "#fff6dc", ink: "#e65100" },
+  },
+  {
+    label: "Meetings to Schedule",
+    key: "meetingsToSchedule",
+    detailKey: "meetingsToScheduleDueToday",
+    detailLabel: "due today",
+    helper: "Appointments ready to be booked",
+    icon: Calendar,
+    alert: CheckCircle,
+    c: { card: "#fff6fa", icon: "#ffe4ef", ink: "#880e4f" },
+  },
 ];
 
 export const STATUS_LIST = [
@@ -169,3 +209,4 @@ export const LEAD_FIELDS = [
   { key: "createdDate", label: "Created Date" },
   { key: "followUpDate", label: "Follow-Up Date" },
 ];
+

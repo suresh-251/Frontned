@@ -93,6 +93,22 @@
   margin: 0 6px;
 }
 
+.search-field-select {
+  border: none;
+  background: transparent;
+  color: var(--ct2);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 8px 0 10px;
+  height: 34px;
+  outline: none;
+  min-width: 110px;
+}
+
+.search-field-select:hover {
+  color: var(--ci);
+}
+
 /* Segmented control inside unified */
 .seg.unified-seg {
   display: flex;

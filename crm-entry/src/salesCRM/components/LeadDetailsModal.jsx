@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   X, Phone, Mail, Calendar, MessageSquare, Plus,
-  Clock, CheckSquare, FileText, Activity,
+  Clock, FileText, Activity,
   MapPin, Briefcase, TrendingUp, AlertTriangle, RefreshCw, UserCheck, Tag,
 } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
@@ -60,7 +60,7 @@ const ACT_TYPE_MAP = {
   created: { Ic: Plus, color: "#6b7280", bg: "#f3f4f6" },
   "score-change": { Ic: TrendingUp, color: "#ec4899", bg: "#fdf2f8" },
   note: { Ic: FileText, color: "#0891b2", bg: "#ecfeff" },
-  task: { Ic: CheckSquare, color: "#4f46e5", bg: "#eef2ff" },
+  whatsapp: { Ic: FaWhatsapp, color: "#16a34a", bg: "#dcfce7" },
 };
 
 const ACTIVITY_TABS = [
@@ -68,7 +68,7 @@ const ACTIVITY_TABS = [
   { k: "Notes", icon: FileText },
   { k: "Emails", icon: Mail },
   { k: "Calls", icon: Phone },
-  { k: "Tasks", icon: CheckSquare },
+  { k: "WhatsApp", icon: FaWhatsapp },
   { k: "Meetings", icon: Calendar },
 ];
 
@@ -77,7 +77,7 @@ const TAB_COMPOSE_CFG = {
   Notes: { placeholder: "Write a note...", type: "note" },
   Emails: { placeholder: "Compose an email...", type: "email" },
   Calls: { placeholder: "Log call notes...", type: "call" },
-  Tasks: { placeholder: "Describe the task...", type: "task" },
+  WhatsApp: { placeholder: "Compose a WhatsApp message...", type: "whatsapp" },
   Meetings: { placeholder: "Add meeting notes...", type: "meeting" },
 };
 
@@ -125,6 +125,16 @@ function getCommunicationPayload(activeTab, notes, lead) {
       meetingDate: new Date().toISOString(),
       location: "Online",
     };
+
+  if (activeTab === "WhatsApp") {
+    return {
+      leadId: lead.id,
+      type: "WhatsApp",
+      subject: "WhatsApp Message",
+      body: notes,
+      toPhone: lead.phone,
+    };
+  }
   }
 
   return {
@@ -139,6 +149,7 @@ function filterActivitiesByTab(activities, activeTab) {
   if (activeTab === "Notes") return activities.filter((activity) => activity.type === "note");
   if (activeTab === "Emails") return activities.filter((activity) => activity.type === "email");
   if (activeTab === "Calls") return activities.filter((activity) => activity.type === "call");
+  if (activeTab === "WhatsApp") return activities.filter((activity) => activity.type === "whatsapp");
   if (activeTab === "Meetings") return activities.filter((activity) => activity.type === "meeting");
   return activities;
 }
@@ -465,3 +476,4 @@ export function LeadDetailsModal({ lead, onClose, activityLog, onUpdateLead, onA
 }
 
 export default LeadDetailsModal;
+
