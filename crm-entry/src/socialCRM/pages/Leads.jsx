@@ -225,6 +225,11 @@ export default function Leads() {
   const [showTimeRange, setShowTimeRange] = useState(false);
 
   const [remarkMap, setRemarkMap] = useState({});
+  // Tracks the currently selected user per lead in the assign dropdown
+  // { [leadId]: { userId, userName } | null }  — null means "Unassigned"
+  const [pendingAssignMap, setPendingAssignMap] = useState({});
+  // Tracks which lead IDs are currently being saved (spinner state)
+  const [assigningLeadIds, setAssigningLeadIds] = useState(new Set());
   const [selectedLead, setSelectedLead] = useState(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   
@@ -472,6 +477,64 @@ useEffect(() => {
     setSelectedDeptIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
+  };
+
+  /* =========================
+     ASSIGN USER TO LEAD
+     Strong logic: tracks pending selection per lead so that the remark
+     blur never uses stale assignedToUserId from the previous render.
+     ========================= */
+  const handleAssignUser = async (lead, selectedUserId) => {
+    const leadId = lead.id;
+
+    // Determine target user from selection
+    const user = selectedUserId ? users.find(u => u.userId === Number(selectedUserId)) : null;
+    const userId   = user ? user.userId   : null;
+    const userName = user ? (user.name || user.userName || user.username || "") : null;
+
+    // Store selection so remark blur uses the correct (fresh) userId
+    setPendingAssignMap(prev => ({ ...prev, [leadId]: user ? { userId, userName } : null }));
+
+    // Show spinner for this lead
+    setAssigningLeadIds(prev => new Set(prev).add(leadId));
+    try {
+      await assignLead(leadId, userId, userName, remarkMap[leadId] ?? lead.remark ?? "");
+      Toast?.success?.(`Assigned to ${userName || "Unassigned"}`);
+    } catch {
+      Toast?.error?.("Assignment failed — please try again");
+      // Roll back optimistic selection on error
+      setPendingAssignMap(prev => {
+        const next = { ...prev };
+        delete next[leadId];
+        return next;
+      });
+    } finally {
+      setAssigningLeadIds(prev => { const n = new Set(prev); n.delete(leadId); return n; });
+    }
+  };
+
+  /**
+   * Save remark independently — uses the latest pending assign (if any)
+   * so the user assign isn't accidentally reset to a stale value.
+   */
+  const handleSaveRemark = async (lead) => {
+    const leadId = lead.id;
+    const remark = remarkMap[leadId];
+    if (remark === undefined || remark === (lead.remark ?? "")) return; // no change
+
+    // Resolve the correct current user from pendingAssignMap or fall back to lead state
+    const pending = pendingAssignMap[leadId];
+    const userId   = pending !== undefined ? pending?.userId   : lead.assignedToUserId;
+    const userName = pending !== undefined ? pending?.userName : lead.assignedToUserName;
+
+    setAssigningLeadIds(prev => new Set(prev).add(leadId));
+    try {
+      await assignLead(leadId, userId ?? null, userName ?? null, remark ?? "");
+    } catch {
+      Toast?.error?.("Failed to save remark");
+    } finally {
+      setAssigningLeadIds(prev => { const n = new Set(prev); n.delete(leadId); return n; });
+    }
   };
 
   /* =========================
@@ -862,30 +925,35 @@ useEffect(() => {
                         </td>
                         
                         <td className="px-4 py-3">
-                          <select
-                            value={l.assignedToUserId ?? ""}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (!val) { assignLead(l.id, null, null, remarkMap[l.id]); return; }
-                              const user = users.find(u => u.userId === Number(val));
-                              assignLead(l.id, user?.userId, user?.name, remarkMap[l.id]);
-                            }}
-                            className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white hover:bg-gray-50 transition-colors cursor-pointer w-[130px]"
-                          >
-                            <option value="">Unassigned</option>
-                            {users.map(u => (
-                              <option key={u.userId} value={u.userId}>{u.name}</option>
-                            ))}
-                          </select>
+                          <div className="relative flex items-center">
+                            <select
+                              value={
+                                pendingAssignMap[l.id] !== undefined
+                                  ? (pendingAssignMap[l.id]?.userId ?? "")
+                                  : (l.assignedToUserId ?? "")
+                              }
+                              onChange={(e) => handleAssignUser(l, e.target.value)}
+                              disabled={assigningLeadIds.has(l.id)}
+                              className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white hover:bg-gray-50 transition-colors cursor-pointer w-[130px] disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              <option value="">Unassigned</option>
+                              {users.map(u => (
+                                <option key={u.userId} value={u.userId}>{u.name || u.userName || u.username}</option>
+                              ))}
+                            </select>
+                            {assigningLeadIds.has(l.id) && (
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                            )}
+                          </div>
                         </td>
-                        
+
                         <td className="px-4 py-3">
                           <input
                             type="text"
                             placeholder="Add remark..."
                             value={remarkMap[l.id] ?? l.remark ?? ""}
                             onChange={e => setRemarkMap(prev => ({ ...prev, [l.id]: e.target.value }))}
-                            onBlur={() => assignLead(l.id, l.assignedToUserId, l.assignedToUserName, remarkMap[l.id])}
+                            onBlur={() => handleSaveRemark(l)}
                             className="w-[140px] px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white transition-colors"
                           />
                         </td>

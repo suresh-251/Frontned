@@ -8,9 +8,21 @@ const leadsAPI = {
     return response.data;
   },
 
+  // Get summary statistics for dashboard
+  getDashboard: async () => {
+    const response = await apiClient.get("/Leads/dashboard");
+    return response.data;
+  },
+
   // Get single lead by ID
   getById: async (id) => {
     const response = await apiClient.get(`/Leads/${id}`);
+    return response.data;
+  },
+
+  // Get timeline for a lead
+  getTimeline: async (id) => {
+    const response = await apiClient.get(`/Leads/${id}/timeline`);
     return response.data;
   },
 
@@ -20,9 +32,15 @@ const leadsAPI = {
     return response.data;
   },
 
-  // Update lead — used for both edit and status changes
+  // Update lead — used for general field edits
   update: async (id, data) => {
     const response = await apiClient.patch(`/Leads/${id}`, data);
+    return response.data;
+  },
+
+  // Patch status via dedicated endpoint
+  updateStatus: async (leadId, status) => {
+    const response = await apiClient.patch(`/Leads/status`, { leadId, status });
     return response.data;
   },
 
@@ -59,5 +77,6 @@ const leadsAPI = {
     return response.data;
   },
 };
+
 
 export default leadsAPI;
