@@ -34,15 +34,10 @@
   box-sizing: border-box;
   -webkit-font-smoothing: antialiased;
 
-  height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: none;
+  min-height: calc(100vh - 96px);
+  overflow: visible;
 }
 
-.page::-webkit-scrollbar {
-  display: none;              /* Chrome/Safari � hides scrollbar */
-}
 .page *,
 .page *::before,
 .page *::after {
@@ -256,4 +251,12 @@
   opacity: 0.14;
   transform: scale(1.08);
 }
+
+
+.page {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+
 
