@@ -1,0 +1,227 @@
+/* -------------------------------------------------------
+   Leads.css  �  CRM Leads dashboard
+   All rules scoped to .page to avoid conflicts
+------------------------------------------------------- */
+
+.page {
+  --ci: #4f46e5;
+  --ci-d: #4338ca;
+  --ci-lt: #eef2ff;
+  --ci-ring: rgba(79, 70, 229, 0.18);
+  --cb: #f5f6fa;
+  --cs: #ffffff;
+  --cborder: #e5e7eb;
+  --ct: #111827;
+  --ct2: #374151;
+  --cm: #6b7280;
+  --cq: #9ca3af;
+  --cr-hover: #f9fafb;
+  --cr-sel: #f0f3ff;
+  --r: 8px;
+  --rl: 12px;
+  --sh-sm: 0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --sh-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --sh-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
+  --font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--ct);
+  background: var(--cb);
+  min-height: 60vh;
+  padding: 25px 25px;
+  max-width: 100%;
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.page::-webkit-scrollbar {
+  display: none;              /* Chrome/Safari � hides scrollbar */
+}
+.page *,
+.page *::before,
+.page *::after {
+  box-sizing: border-box;
+  font-size: 14.5px;
+}
+
+.page button {
+  font-family: var(--font);
+  cursor: pointer;
+  font-size: 14.5px;
+}
+
+.page input {
+  font-family: var(--font);
+}
+
+.page a {
+  text-decoration: none;
+  color: inherit;
+  font-size: 14.5px;
+}
+
+.page h1,
+.page p {
+  margin: 0;
+}
+
+/* ----------------------------------------
+   PAGE HEADER
+---------------------------------------- */
+.page-hdr {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.page-hdr-l {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ct);
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  font-size: 12.5px;
+  color: var(--cm);
+  margin-top: 1px;
+}
+
+.page-hdr-r {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ----------------------------------------
+   STAT CARDS
+---------------------------------------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 16px;
+  margin: 0 auto;
+  margin-bottom: 22px;
+}
+
+.stat-grid>*:nth-child(1) {
+  grid-column: 3;
+}
+
+.stat-card {
+  background: var(--cs);
+  border-radius: var(--rl);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--cborder);
+  box-shadow: var(--sh-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  animation: fadein 0.4s ease-out backwards;
+  animation-delay: var(--sc-delay, 0s);
+  position: relative;
+}
+
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--sh-md);
+}
+
+.stat-header {
+    background: linear-gradient(
+    to bottom,
+    var(--sc-card),
+    color-mix(in srgb, var(--sc-card) 80%, white)
+  );
+  padding: 4px 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+ border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+
+.stat-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--sc-icon, #e5e7eb);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.stat-label {
+  flex: 1;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ct2);
+  line-height: 1.3;
+}
+
+.stat-alert {
+  opacity: 0.55;
+  display: flex;
+}
+
+.stat-body {
+  padding: 4px 13px 12px;
+  background: white;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ct);
+  line-height: 1;
+  margin-bottom: 6px;
+  font-family: var(--font);
+  letter-spacing: -0.5px;
+}
+
+.stat-change {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sc-ink, #374151);
+}
+
+
+/* Right corner glow */
+.stat-card::after {
+  content: "";
+  position: absolute;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  bottom: -30px;
+  right: -20px;
+  background: color-mix(in srgb, var(--sc-ink) 65%, white);
+  opacity: 0.09;
+  filter: blur(24px);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.stat-card:hover::after {
+  opacity: 0.16;
+  transform: scale(1.15);
+}

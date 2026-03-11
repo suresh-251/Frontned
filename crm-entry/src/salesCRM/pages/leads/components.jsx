@@ -375,3 +375,332 @@ export function CreateLeadModal({ leadType, onClose, onSave }) {
     </div>
   );
 }
+
+export function ImportModal({ onClose, onImport }) {
+  const [step, setStep] = useState("upload");
+  const [parsed, setParsed] = useState({ headers: [], rows: [] });
+  const [mapping, setMapping] = useState({});
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef();
+
+  const handleFile = (file) => {
+    if (!file || !file.name.endsWith(".csv")) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = parseCSV(event.target.result);
+      setParsed(result);
+      const autoMap = {};
+      result.headers.forEach((header) => {
+        const guessedField = guessField(header);
+        if (guessedField) autoMap[header] = guessedField;
+      });
+      setMapping(autoMap);
+      setStep("map");
+    };
+    reader.readAsText(file);
+  };
+
+  const doImport = () => {
+    const newLeads = parsed.rows.map((row, index) => {
+      const lead = { id: Date.now() + index, avatarBg: AVATAR_COLORS[index % AVATAR_COLORS.length] };
+      parsed.headers.forEach((header) => {
+        const field = mapping[header];
+        if (field) lead[field] = field === "score" ? parseInt(row[header], 10) || 0 : row[header];
+      });
+      if (!lead.name) lead.name = "Unknown Lead";
+      if (!lead.status || !STATUS_LIST.includes(lead.status)) lead.status = "New";
+      if (!lead.source) lead.source = "Inbound";
+      if (!lead.createdDate) lead.createdDate = todayStr();
+      return lead;
+    });
+    onImport(newLeads);
+    onClose();
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="import-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-hdr">
+          <div className="import-hdr-icon"><IUpload s={16} c="#4f46e5" /></div>
+          <div><div className="modal-title">Import Leads via CSV</div><div className="modal-sub">{step === "upload" ? "Upload a CSV file to get started" : step === "map" ? "Map your CSV columns to lead fields" : "Preview & confirm import"}</div></div>
+          <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
+        </div>
+        <div className="import-steps">
+          {["upload", "map", "preview"].map((currentStep, index) => (
+            <div key={currentStep} className={`import-step ${step === currentStep ? "import-step--on" : ""} ${["upload", "map", "preview"].indexOf(step) > index ? "import-step--done" : ""}`}>
+              <span className="import-step-num">{["upload", "map", "preview"].indexOf(step) > index ? "?" : index + 1}</span>
+              <span className="import-step-lbl">{currentStep === "upload" ? "Upload" : currentStep === "map" ? "Map Fields" : "Preview"}</span>
+            </div>
+          ))}
+        </div>
+        <div className="modal-body">
+          {step === "upload" && (
+            <div className={`drop-zone ${dragOver ? "drop-zone--over" : ""}`} onDragOver={(event) => { event.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={(event) => { event.preventDefault(); setDragOver(false); handleFile(event.dataTransfer.files[0]); }} onClick={() => fileRef.current.click()}>
+              <input ref={fileRef} type="file" accept=".csv" style={{ display: "none" }} onChange={(event) => handleFile(event.target.files[0])} />
+              <div className="drop-icon"><IUpload s={32} c="#a5b4fc" /></div>
+              <div className="drop-title">Drop your CSV here</div>
+              <div className="drop-sub">or click to browse — supports standard CRM exports</div>
+              <div className="drop-hint">name, email, phone, company, status, source, score, owner…</div>
+            </div>
+          )}
+          {step === "map" && parsed && (
+            <div className="map-grid">
+              <div className="map-header"><span>CSV Column</span><span>Sample Data</span><span>Maps to Field</span></div>
+              {parsed.headers.map((header) => (
+                <div key={header} className="map-row">
+                  <span className="map-col">{header}</span>
+                  <span className="map-sample">{parsed.rows[0]?.[header] || "—"}</span>
+                  <select className="map-select" value={mapping[header] || ""} onChange={(event) => setMapping((current) => ({ ...current, [header]: event.target.value }))}>
+                    <option value="">— skip —</option>
+                    {LEAD_FIELDS.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          )}
+          {step === "preview" && (
+            <div className="preview-wrap">
+              <div className="preview-info"><span className="preview-count">{parsed.rows.length} leads</span> ready to import{parsed.rows.length > 5 && <span className="preview-more"> — showing first 5</span>}</div>
+              <div className="preview-scroll">
+                <table className="preview-table">
+                  <thead><tr>{Object.values(mapping).filter(Boolean).map((field) => <th key={field}>{LEAD_FIELDS.find((item) => item.key === field)?.label || field}</th>)}</tr></thead>
+                  <tbody>{parsed.rows.slice(0, 5).map((row, index) => <tr key={index}>{parsed.headers.filter((header) => mapping[header]).map((header) => <td key={header}>{row[header] || "—"}</td>)}</tr>)}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          {step !== "upload" && <button className="btn-ghost" onClick={() => setStep(step === "preview" ? "map" : "upload")}>? Back</button>}
+          <button className="btn-ghost" onClick={onClose} style={{ marginLeft: step === "upload" ? "auto" : "0" }}>Cancel</button>
+          {step === "map" && <button className="btn-primary" onClick={() => setStep("preview")} disabled={!Object.values(mapping).some(Boolean)}>Preview ?</button>}
+          {step === "preview" && <button className="btn-primary" onClick={doImport}><IUpload s={12} />&ensp;Import {parsed.rows.length} Leads</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ManageColumnsPanel({ visibleCols, setVisibleCols, rowsPerPage, setRowsPerPage, wrapText, setWrapText, onClose }) {
+  const ref = useRef(null);
+  useClickOutside(ref, onClose);
+  const toggle = (key) => setVisibleCols((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="mcp" ref={ref} onClick={(event) => event.stopPropagation()}>
+        <div className="mcp-hdr"><div className="mcp-hdr-left"><ISettings s={15} /><span>Manage Columns</span></div><button className="icon-btn" onClick={onClose}><IX s={14} /></button></div>
+        <div className="mcp-section">
+          <div className="mcp-sec-lbl">Show / Hide Columns</div>
+          {ALL_COLUMNS.map((column) => (
+            <label key={column.key} className={`mcp-row ${column.always ? "mcp-row--locked" : ""}`}>
+              <span className="toggle"><input type="checkbox" checked={column.always || visibleCols.includes(column.key)} disabled={column.always} onChange={() => !column.always && toggle(column.key)} /><span className="toggle-track"><span className="toggle-thumb" /></span></span>
+              <span className="mcp-col-name">{column.label}</span>
+              {column.always && <span className="required-tag">Required</span>}
+            </label>
+          ))}
+        </div>
+        <div className="mcp-divider" />
+        <div className="mcp-section">
+          <div className="mcp-sec-lbl"><IRows s={13} /> Records Per Page</div>
+          <div className="rpp-row">{[10, 25, 30, 50, 100].map((count) => <button key={count} className={`rpp-btn ${rowsPerPage === count ? "rpp-btn--on" : ""}`} onClick={() => setRowsPerPage(count)}>{count}</button>)}</div>
+        </div>
+        <div className="mcp-divider" />
+        <div className="mcp-section">
+          <label className="mcp-row" style={{ cursor: "pointer" }}>
+            <span className="toggle"><input type="checkbox" checked={wrapText} onChange={(event) => setWrapText(event.target.checked)} /><span className="toggle-track"><span className="toggle-thumb" /></span></span>
+            <span className="mcp-col-name">Wrap text in cells</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function LeadsPerformanceChart({ onClose, leads }) {
+  const [animated, setAnimated] = useState(false);
+  const [tooltip, setTooltip] = useState(null);
+  const [activeRange, setActiveRange] = useState("30");
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => setAnimated(true), 60);
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  const data = useMemo(() => {
+    const ranges = { 7: 7, 30: 30, 90: 90 };
+    const days = ranges[activeRange];
+    return Array.from({ length: days }, (_, index) => {
+      const date = new Date(Date.now() - (days - 1 - index) * 86400000);
+      const label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const base = 10 + Math.sin(index * 0.4) * 8 + Math.random() * 18;
+      const value = Math.round(Math.max(3, base));
+      return { label, value, date };
+    });
+  }, [activeRange]);
+
+  const max = Math.max(...data.map((item) => item.value));
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const avg = Math.round(total / data.length);
+  const peak = data.reduce((best, current) => (best.value > current.value ? best : current));
+  const W = 720;
+  const H = 220;
+  const PAD = { t: 20, r: 20, b: 40, l: 48 };
+  const chartW = W - PAD.l - PAD.r;
+  const chartH = H - PAD.t - PAD.b;
+
+  const points = data.map((item, index) => ({
+    x: PAD.l + (index / (data.length - 1)) * chartW,
+    y: PAD.t + chartH - (item.value / (max * 1.15)) * chartH,
+    ...item,
+  }));
+
+  const pathD = points.reduce((acc, point, index) => {
+    if (index === 0) return `M ${point.x} ${point.y}`;
+    const previousPoint = points[index - 1];
+    const controlX = (previousPoint.x + point.x) / 2;
+    return `${acc} C ${controlX} ${previousPoint.y} ${controlX} ${point.y} ${point.x} ${point.y}`;
+  }, "");
+
+  const areaD = `${pathD} L ${points[points.length - 1].x} ${PAD.t + chartH} L ${points[0].x} ${PAD.t + chartH} Z`;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((fraction) => ({ y: PAD.t + chartH - fraction * chartH, val: Math.round(fraction * max * 1.15) }));
+  const xStep = Math.ceil(data.length / 6);
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 700, backdropFilter: "blur(3px)", animation: "fadeInBg 0.2s ease" }} />
+      <div style={{ position: "fixed", inset: 0, zIndex: 701, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div onClick={(event) => event.stopPropagation()} style={{ pointerEvents: "all", background: "white", borderRadius: "16px", boxShadow: "0 24px 80px rgba(0,0,0,0.22)", width: "min(800px, 94vw)", overflow: "hidden", transform: animated ? "scale(1) translateY(0)" : "scale(0.92) translateY(32px)", opacity: animated ? 1 : 0, transition: "transform 0.38s cubic-bezier(0.34,1.4,0.64,1), opacity 0.28s ease" }}>
+          <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid #f0f0f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: "#eef2ff", display: "flex", alignItems: "center", justifyContent: "center" }}><BarChart2 size={17} color="#4f46e5" strokeWidth={2} /></div>
+              <div><div style={{ fontSize: 18, fontWeight: 700, color: "#111827", letterSpacing: "-0.2px" }}>Leads Performance</div><div style={{ fontSize: 13.5, color: "#9ca3af", marginTop: 1 }}>New leads over time</div></div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
+                {[["7", "7 days"], ["30", "30 days"], ["90", "90 days"]].map(([value, label]) => (
+                  <button key={value} onClick={() => setActiveRange(value)} style={{ padding: "5px 12px", border: "none", fontSize: 14, fontWeight: activeRange === value ? 700 : 500, background: activeRange === value ? "#eef2ff" : "white", color: activeRange === value ? "#4f46e5" : "#6b7280", cursor: "pointer", borderRight: value !== "90" ? "1px solid #e5e7eb" : "none", transition: "all 0.15s" }}>{label}</button>
+                ))}
+              </div>
+              <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 6, borderRadius: 6, color: "#9ca3af" }}><X size={16} strokeWidth={2} /></button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #f0f0f0" }}>
+            {[
+              { label: "Total New Leads", val: total, color: "#4f46e5" },
+              { label: "Daily Average", val: avg, color: "#10b981" },
+              { label: "Peak Day", val: peak.value, sub: peak.label, color: "#f59e0b" },
+            ].map((stat, index) => (
+              <div key={index} style={{ flex: 1, padding: "8px 12px", textAlign: "center", borderRight: index < 2 ? "1px solid #f0f0f0" : "none" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9ca3af", marginBottom: 4 }}>{stat.label} {stat.sub && <span style={{ marginLeft: 6, color: "#6b7280", textTransform: "none" }}>({stat.sub})</span>}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: stat.color, letterSpacing: "-0.5px", lineHeight: 1 }}>{stat.val}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ padding: "15px 15px", position: "relative" }} onMouseLeave={() => setTooltip(null)}>
+            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible", display: "block" }}>
+              <defs>
+                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4f46e5" stopOpacity="0.18" /><stop offset="100%" stopColor="#4f46e5" stopOpacity="0.01" /></linearGradient>
+                <clipPath id="chartClip"><rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} /></clipPath>
+                <filter id="lineShadow" x="-5%" y="-20%" width="110%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#4f46e5" floodOpacity="0.18" /></filter>
+              </defs>
+              {yTicks.map((tick, index) => <g key={index}><line x1={PAD.l} x2={W - PAD.r} y1={tick.y} y2={tick.y} stroke="#f3f4f6" strokeWidth="1" /><text x={PAD.l - 8} y={tick.y + 4} textAnchor="end" fill="#9ca3af" fontFamily="Inter,sans-serif">{tick.val}</text></g>)}
+              {points.filter((_, index) => index % xStep === 0 || index === points.length - 1).map((point, index) => <text key={index} x={point.x} y={H - 8} textAnchor="middle" fill="#9ca3af" fontFamily="Inter,sans-serif">{point.label}</text>)}
+              <g clipPath="url(#chartClip)">
+                <path d={areaD} fill="url(#areaGrad)" style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease 0.2s" }} />
+                <path d={pathD} fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" filter="url(#lineShadow)" style={{ strokeDasharray: 2000, strokeDashoffset: animated ? 0 : 2000, transition: "stroke-dashoffset 1.1s cubic-bezier(0.4,0,0.2,1) 0.1s" }} />
+              </g>
+              {points.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="14" fill="transparent" style={{ cursor: "crosshair" }} onMouseEnter={() => setTooltip({ ...point, idx: index })} />)}
+              {tooltip && <g><line x1={tooltip.x} x2={tooltip.x} y1={PAD.t} y2={PAD.t + chartH} stroke="#4f46e5" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.4" /><circle cx={tooltip.x} cy={tooltip.y} r="5" fill="#4f46e5" stroke="white" strokeWidth="2.5" /></g>}
+            </svg>
+
+            {tooltip && <div style={{ position: "absolute", left: `calc(${(tooltip.x / W) * 100}% - 70px)`, top: `${((tooltip.y - PAD.t) / H) * 100}%`, transform: "translateY(-115%)", background: "white", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 13px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", pointerEvents: "none", minWidth: 130, zIndex: 10 }}><div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>{tooltip.label}</div><div style={{ fontSize: 18, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{tooltip.value}</div><div style={{ fontSize: 11, color: "#10b981", marginTop: 3, display: "flex", alignItems: "center", gap: 3 }}><TrendingUp size={10} strokeWidth={2.5} /> New Leads</div></div>}
+          </div>
+        </div>
+      </div>
+      <style>{`@keyframes fadeInBg { from { opacity: 0; } to { opacity: 1; } }`}</style>
+    </>
+  );
+}
+
+export function EditModal({ lead, onClose }) {
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-hdr"><div><div className="modal-title">Edit Lead</div><div className="modal-sub">{lead.name}</div></div><button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button></div>
+        <div className="modal-body modal-placeholder"><IEdit s={40} c="#d1d5db" /><p>Edit Form</p><span>Fields for name, email, phone, status and source will appear here.</span></div>
+        <div className="modal-footer"><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={onClose}>Save Changes</button></div>
+      </div>
+    </div>
+  );
+}
+
+export function KanbanBoard({ leads, groupBy, onUpdateLead, onOpenDetails, onAdjustScore }) {
+  const [draggedId, setDraggedId] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+
+  const grouped = useMemo(() => {
+    const map = {};
+    leads.forEach((lead) => {
+      let key = lead[groupBy];
+      if (groupBy === "followUpDate") {
+        if (!key) key = "No Follow Up";
+        else key = getFollowUpLabel(key)?.label || "Unknown";
+      }
+      if (!key) key = "Unknown";
+      if (!map[key]) map[key] = [];
+      map[key].push(lead);
+    });
+    return map;
+  }, [groupBy, leads]);
+
+  return (
+    <div style={{ display: "flex", gap: "16px", overflowX: "auto", overflowY: "hidden", paddingBottom: "8px" }}>
+      {Object.keys(grouped).map((columnKey) => {
+        const meta = groupBy === "status" ? STATUS_META[columnKey] || { color: "#374151", bg: "#f3f4f6" } : { color: "#374151", bg: "#f3f4f6" };
+        const colLeads = grouped[columnKey] || [];
+        const isOver = dragOverCol === columnKey;
+
+        return (
+          <div key={columnKey} onDragOver={(event) => { event.preventDefault(); setDragOverCol(columnKey); }} onDragLeave={() => setDragOverCol(null)} onDrop={(event) => { event.preventDefault(); if (draggedId) onUpdateLead(draggedId, groupBy, columnKey); setDraggedId(null); setDragOverCol(null); }} style={{ background: isOver ? "#f0f3ff" : "#f9fafb", border: `2px dashed ${isOver ? "#4f46e5" : "#e5e7eb"}`, borderRadius: "12px", padding: "12px", minHeight: "400px", transition: "all 0.15s", minWidth: "300px", maxWidth: "300px", flex: "0 0 300px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+              <span style={{ fontWeight: 700, fontSize: "13px", color: meta.color }}>{groupBy === "status" ? formatStatus(columnKey) : columnKey}</span>
+              <span style={{ marginLeft: "auto", background: meta.bg, color: meta.color, fontSize: "11px", fontWeight: 700, padding: "1px 7px", borderRadius: "12px" }}>{colLeads.length}</span>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {colLeads.map((lead) => {
+                const initials = getInitials(lead.name);
+                const tier = getScoreTier(lead.score);
+                const scoreColors = { high: "#059669", mid: "#d97706", low: "#dc2626" };
+                const scoreBackgrounds = { high: "#d1fae5", mid: "#fef3c7", low: "#fee2e2" };
+
+                return (
+                  <div key={lead.id} draggable onDragStart={(event) => { setDraggedId(lead.id); event.dataTransfer.effectAllowed = "move"; }} onClick={() => onOpenDetails(lead.id)} style={{ background: "white", borderRadius: "10px", padding: "12px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb", cursor: "grab", opacity: draggedId === lead.id ? 0.4 : 1, transition: "box-shadow 0.15s, transform 0.15s" }} onMouseEnter={(event) => { event.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)"; event.currentTarget.style.transform = "translateY(-2px)"; }} onMouseLeave={(event) => { event.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.08)"; event.currentTarget.style.transform = "none"; }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: lead.avatarBg, color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 700 }}>{initials}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.name}</div>
+                        <div style={{ fontSize: "11.5px", color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.company}</div>
+                      </div>
+                      <div style={{ padding: "2px 7px", borderRadius: "12px", background: scoreBackgrounds[tier], color: scoreColors[tier], fontSize: "11px", fontWeight: 700 }}>{lead.score}</div>
+                    </div>
+
+                    <div style={{ fontSize: "11.5px", color: "#9ca3af", display: "flex", alignItems: "center", gap: "4px" }}><User size={10} /><span>{lead.assignee}</span></div>
+                    {lead.followUpDate && (() => {
+                      const info = getFollowUpLabel(lead.followUpDate);
+                      const color = info.type === "overdue" ? "#dc2626" : info.type === "today" ? "#d97706" : info.type === "tomorrow" ? "#0284c7" : "#6b7280";
+                      return <div style={{ marginTop: "6px", fontSize: "11px", color, fontWeight: info.type !== "normal" ? 700 : 400, display: "flex", alignItems: "center", gap: "3px" }}><Calendar size={10} />{info.label}</div>;
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
