@@ -14,6 +14,10 @@ import {
   updateAssignedLeadStatus,
   saveAssignedLeadRemark,
   assignDeptLead,
+  getLeadUsersBrandFree,
+  assignLeadUsersBrandFree,
+  removeLeadUserBrandFree,
+  getLeadHistory,
 } from "../api/facebook.leads.api";
 
 export default function useAssignedLeads() {
@@ -84,5 +88,34 @@ export default function useAssignedLeads() {
     );
   };
 
-  return { leads, loading, reload, assignLead, changeStatus, saveRemark };
+  // ─── Multi-user assignment (brand-free) ────────────────────────────────────
+
+  const getLeadUsers = async (leadId) => getLeadUsersBrandFree(leadId);
+
+  const assignLeadUsers = async (leadId, userIds) => {
+    // userIds is an array of numbers; build user objects with just userId
+    const users = userIds.map(id => ({ userId: id, userName: "" }));
+    await assignLeadUsersBrandFree(leadId, users);
+    await loadLeads(filtersRef.current, true);
+  };
+
+  const removeLeadUser = async (leadId, userId) => {
+    await removeLeadUserBrandFree(leadId, userId);
+    await loadLeads(filtersRef.current, true);
+  };
+
+  const getHistory = async (leadId) => getLeadHistory(leadId);
+
+  return {
+    leads,
+    loading,
+    reload,
+    assignLead,
+    changeStatus,
+    saveRemark,
+    getLeadUsers,
+    assignLeadUsers,
+    removeLeadUser,
+    getHistory,
+  };
 }

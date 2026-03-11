@@ -122,7 +122,6 @@ export default function useFacebookLeads() {
  
   const filtersRef = useRef(filters);
   const leadsRef = useRef([]);
-  const isMountedRef = useRef(false);
  
   useEffect(() => {
     filtersRef.current = filters;
@@ -161,14 +160,12 @@ export default function useFacebookLeads() {
   }, []);
  
   /* =========================
-     INITIAL LOAD (ONCE)
+     INITIAL LOAD
      ========================= */
   useEffect(() => {
-    if (!isMountedRef.current) {
-      isMountedRef.current = true;
-      loadLeads({}, false);
-    }
-  }, [loadLeads]);
+    loadLeads({}, false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
  
   /* =========================
      RELOAD (USED BY SIGNALR)

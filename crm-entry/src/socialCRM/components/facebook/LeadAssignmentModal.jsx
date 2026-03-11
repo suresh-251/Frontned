@@ -193,12 +193,18 @@ function DepartmentsTab({ lead, departments, onAssign, onRemove }) {
             {assigned.map((d) => {
               const id = String(d.departmentId || d.id);
               return (
-                <Badge
-                  key={id}
-                  label={d.departmentName || d.name || id}
-                  color="indigo"
-                  onRemove={() => handleRemove(id)}
-                />
+                <div key={id} className="flex flex-col items-start">
+                  <Badge
+                    label={d.departmentName || d.name || id}
+                    color="indigo"
+                    onRemove={() => handleRemove(id)}
+                  />
+                  {d.assignedAt && (
+                    <span className="text-[9px] text-gray-400 mt-0.5 pl-1">
+                      Since {new Date(d.assignedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -327,12 +333,18 @@ function UsersTab({ lead, allUsers, onAssign, onRemove }) {
             {assigned.map((u) => {
               const id = String(u.userId || u.id);
               return (
-                <Badge
-                  key={id}
-                  label={u.name || u.userName || id}
-                  color="purple"
-                  onRemove={() => handleRemove(id)}
-                />
+                <div key={id} className="flex flex-col items-start">
+                  <Badge
+                    label={u.name || u.userName || id}
+                    color="purple"
+                    onRemove={() => handleRemove(id)}
+                  />
+                  {u.assignedAt && (
+                    <span className="text-[9px] text-gray-400 mt-0.5 pl-1">
+                      Since {new Date(u.assignedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
               );
             })}
           </div>

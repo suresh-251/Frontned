@@ -21,16 +21,44 @@ export const getLeads = async ({
   assignedToUserId,
   departmentId,
 } = {}) => {
-  const res = await api.get("/facebook/leads", {
-    params: {
-      pageId: pageId || undefined,
-      formId: formId || undefined,
-      status: status || undefined,
-      assignedToUserId: assignedToUserId || undefined,
-      departmentId: departmentId || undefined,
-    },
-  });
-  return res.data || [];
+  // Auto-paginate — keep fetching until we have all leads
+  const PAGE_SIZE = 200;
+  let page = 1;
+  let allItems = [];
+
+  while (true) {
+    const res = await api.get("/facebook/leads", {
+      params: {
+        pageId: pageId || undefined,
+        formId: formId || undefined,
+        status: status || undefined,
+        assignedToUserId: assignedToUserId || undefined,
+        departmentId: departmentId || undefined,
+        page,
+        pageSize: PAGE_SIZE,
+      },
+    });
+
+    const data = res.data;
+    let items = [];
+    let total = 0;
+
+    if (Array.isArray(data)) {
+      items = data;
+      total = data.length;
+    } else if (data?.items && Array.isArray(data.items)) {
+      items = data.items;
+      total = data.total ?? items.length;
+    }
+
+    allItems = allItems.concat(items);
+
+    // Stop when we have everything or the page came back short
+    if (allItems.length >= total || items.length < PAGE_SIZE) break;
+    page++;
+  }
+
+  return allItems;
 };
 
 export const updateLeadStatus = async (leadId, status) => {
@@ -172,4 +200,35 @@ export const saveAssignedLeadRemark = async (leadId, remark) => {
  */
 export const assignDeptLead = async (leadId, { userId, userName, remark = "" }) => {
   await api.put(`/leads/${leadId}/assign`, { userId, userName, remark });
+};
+
+/**
+ * Get full remark/assignment history for a lead (brand-free).
+ * @param {number} leadId
+ */
+export const getLeadHistory = async (leadId) => {
+  const res = await api.get(`/leads/${leadId}/history`);
+  return res.data || [];
+};
+
+// ─── Brand-free Multi-User Assignment ────────────────────────────────────────
+
+/** Returns all users assigned to a specific lead (brand-free) */
+export const getLeadUsersBrandFree = async (leadId) => {
+  const res = await api.get(`/leads/${leadId}/users`);
+  return res.data || [];
+};
+
+/**
+ * Assigns one or more users to a lead (brand-free).
+ * @param {string|number} leadId
+ * @param {Array<{userId: number, userName: string}>} users
+ */
+export const assignLeadUsersBrandFree = async (leadId, users) => {
+  await api.post(`/leads/${leadId}/users`, { users });
+};
+
+/** Removes a user assignment from a specific lead (brand-free) */
+export const removeLeadUserBrandFree = async (leadId, userId) => {
+  await api.delete(`/leads/${leadId}/users/${userId}`);
 };

@@ -12,6 +12,7 @@ import TestPage from "../pages/TestPage";
 import BrandGate from "../pages/BrandGate";
 import BrandSetupPage from "../pages/BrandSetupPage";
 import BrandManager from "../pages/BrandManager";
+import Inbox from "../pages/Inbox";
 import { BrandProvider } from "../context/BrandContext";
 
 export default function AppRouter() {
@@ -35,6 +36,7 @@ export default function AppRouter() {
             <Route path="post/history" element={<PostHistory />} />
             <Route path="leads/forms" element={<LeadForms />} />
             <Route path="leads" element={<Leads />} />
+            <Route path="inbox" element={<Inbox />} />
             <Route path="facebook/pages/subscriptions" element={<PageSubscriptions />} />
           </Route>
         </Route>
