@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 const NAV_LINKS = [
-  { name: "New Leads", path: "/crm/sales/leads" },
+  { name: "Leads", path: "/crm/sales/leads" },
 ];
 
 export default function Topbar() {
