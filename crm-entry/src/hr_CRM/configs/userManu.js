@@ -51,7 +51,8 @@ import {
   CheckSquare, 
   FolderKanban, 
   Building2, 
-  UserPlus,      // Added missing icon
+  UserPlus, 
+  Users,     // Added missing icon
   Banknote,      // Added for Payroll
   TrendingUp,    // Added for Growth Tracker
   GraduationCap  // Added for Learning
@@ -59,10 +60,13 @@ import {
 
 export const USER_MENU = [
   { type: 'link', label: "Dashboard", path: "/crm/hr/dashboard", icon: LayoutDashboard },
+
+  { type: 'link', label: "Leads", path: "/crm/hr/leads", icon: Users },
   
   { type: 'link', label: "Attendance", path: "/crm/hr/attendance", icon: Fingerprint },
 
   { type: 'link', label: "Payroll", path: "/crm/hr/payroll", icon: Banknote },
+
 
   { 
     type: 'dropdown', label: "Shift", icon: Clock, stateKey: 'isShiftOpen',
