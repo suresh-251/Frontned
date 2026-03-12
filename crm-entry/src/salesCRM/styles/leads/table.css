@@ -144,13 +144,13 @@
   border-radius: var(--rl);
   box-shadow: var(--sh-sm);
   margin: 0 auto;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .table-scroll {
   display: block;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
   width: auto;
   max-width: 100%;
   min-width: 0;
@@ -887,3 +887,28 @@ tbody tr:nth-child(even) {
 }
 
 
+
+
+.table-card-shell {
+  position: relative;
+  z-index: 20;
+}
+
+.table-card {
+  position: relative;
+  z-index: 21;
+}
+
+.td-status,
+.td-followup,
+.status-cell,
+.followup-cell {
+  position: relative;
+  z-index: 30;
+  overflow: visible;
+}
+
+.row:hover .td-status,
+.row:hover .td-followup {
+  z-index: 35;
+}

@@ -145,7 +145,35 @@ export const STATUS_META = {
 
 export const RESPONSE_TYPES = ["All", "Email", "Call", "Message"];
 
+export const LEAD_SOURCE_OPTIONS = [
+  "AffiliateMarketingLeads",
+  "ClientReferral",
+  "ColdCall",
+  "ContactUsForm",
+  "CustomizedInput",
+  "DubaiColdLeads",
+  "DubaiNetworkingEvent",
+  "EmailCampaign",
+  "EmployeeReferrals",
+  "FreshLead",
+  "FxEducationJ1",
+  "FxEducationJ2",
+  "FxEducationJT01",
+  "HotMarket",
+  "IBReferrals",
+  "LeadGenerationAgencies",
+  "NetworkingEventsLeads",
+  "PromotionalLeads",
+  "SocialMedia",
+  "SocialMediaAdvertising",
+  "TelegramWhatsappLiveChat",
+  "WebsiteSeoBlog",
+  "WebsiteLiveChat",
+  "WTMasterClassWebinar",
+];
+
 export const ALL_COLUMNS = [
+  { key: "id", label: "Lead ID", always: true },
   { key: "name", label: "Lead Name", always: true },
   { key: "company", label: "Company", always: false },
   { key: "phone", label: "Phone", always: false },
@@ -161,26 +189,17 @@ export const ALL_COLUMNS = [
 ];
 
 export const LEAD_TYPES = [
-  { key: "manual", label: "Manual Lead", icon: User, source: "Inbound" },
-  { key: "social", label: "Social Lead", icon: Share2, source: "Referral" },
+  { key: "manual", label: "Manual Lead", icon: User, source: "CustomizedInput" },
+  { key: "social", label: "Social Lead", icon: Share2, source: "SocialMedia" },
   { key: "import", label: "Import Leads", icon: Upload, source: null },
-  { key: "website", label: "Website Lead", icon: Globe, source: "Website" },
-  { key: "campaign", label: "Campaign Lead", icon: Megaphone, source: "Campaign" },
-  { key: "referral", label: "Referral Lead", icon: Handshake, source: "Referral" },
-  { key: "event", label: "Event Lead", icon: Calendar, source: "Event" },
-  { key: "partner", label: "Partner Lead", icon: Star, source: "Partner" },
+  { key: "website", label: "Website Lead", icon: Globe, source: "ContactUsForm" },
+  { key: "campaign", label: "Campaign Lead", icon: Megaphone, source: "EmailCampaign" },
+  { key: "referral", label: "Referral Lead", icon: Handshake, source: "ClientReferral" },
+  { key: "event", label: "Event Lead", icon: Calendar, source: "NetworkingEventsLeads" },
+  { key: "partner", label: "Partner Lead", icon: Star, source: "IBReferrals" },
 ];
 
-export const SOURCE_META = {
-  Inbound: {},
-  Outbound: {},
-  Referral: {},
-  Warm: {},
-  Website: {},
-  Campaign: {},
-  Event: {},
-  Partner: {},
-};
+export const SOURCE_META = Object.fromEntries(LEAD_SOURCE_OPTIONS.map((source) => [source, {}]));
 
 export const CSV_FIELD_MAP = {
   name: ["name", "lead name", "full name", "contact"],
@@ -209,4 +228,3 @@ export const LEAD_FIELDS = [
   { key: "createdDate", label: "Created Date" },
   { key: "followUpDate", label: "Follow-Up Date" },
 ];
-

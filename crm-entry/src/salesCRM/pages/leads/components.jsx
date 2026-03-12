@@ -28,6 +28,7 @@ import {
   AVATAR_COLORS,
   CLEARED_FILTERS,
   LEAD_FIELDS,
+  LEAD_SOURCE_OPTIONS,
   LEAD_TYPES,
   RESPONSE_TYPES,
   SOURCE_META,
@@ -35,11 +36,13 @@ import {
   STATUS_META,
 } from "./constants";
 import {
+  formatLeadSource,
   formatStatus,
   getFollowUpLabel,
   getInitials,
   getScoreTier,
   guessField,
+  leadToUpdatePayload,
   offsetDay,
   parseCSV,
   todayStr,
@@ -107,9 +110,8 @@ export const StatCard = memo(({ label, value, detailValue = 0, detailLabel = "du
   </div>
 ));
 
-export function FilterModal({ onClose, filters, activeFilterCount, onApply }) {
+export function FilterModal({ onClose, filters, activeFilterCount, onApply, assignees = [] }) {
   const [localFilters, setLocalFilters] = useState(filters);
-  const assignees = useMemo(() => ["All", "Monica Jones", "James Carter", "Amanda Blake", "Samantha Clark", "Anthony Cruz"], []);
   const updateFilter = (key, value) => setLocalFilters((prev) => ({ ...prev, [key]: value }));
   const handleApply = () => {
     onApply(localFilters);
@@ -144,16 +146,13 @@ export function FilterModal({ onClose, filters, activeFilterCount, onApply }) {
               <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Source</label>
               <select value={localFilters.source} onChange={(event) => updateFilter("source", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", cursor: "pointer" }}>
                 <option value="All">All Sources</option>
-                <option value="Inbound">Inbound</option>
-                <option value="Outbound">Outbound</option>
-                <option value="Referral">Referral</option>
-                <option value="Warm">Warm</option>
+                {LEAD_SOURCE_OPTIONS.map((source) => <option key={source} value={source}>{formatLeadSource(source)}</option>)}
               </select>
             </div>
             <div style={{ marginBottom: "12px" }}>
               <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Assigned To</label>
               <select value={localFilters.assignee} onChange={(event) => updateFilter("assignee", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", cursor: "pointer" }}>
-                {assignees.map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
+                {["All", ...assignees].map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
               </select>
             </div>
           </div>
@@ -243,6 +242,32 @@ export function StatusCell({ value, onChange }) {
     </div>
   );
 }
+export function SourceCell({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useClickOutside(ref, () => setOpen(false));
+
+  return (
+    <div className="status-cell" ref={ref}>
+      <button className="status-pill" style={{ color: "#475569" }} onClick={() => setOpen((current) => !current)}>
+        <span className="status-dot" style={{ background: "#64748b" }} />
+        <span className="status-pill-label">{formatLeadSource(value)}</span>
+        <span className="status-pill-caret"><IChevD s={9} c="#64748b" /></span>
+      </button>
+      {open && (
+        <div className="status-menu" style={{ maxHeight: 280, overflowY: "auto", minWidth: 240 }}>
+          {LEAD_SOURCE_OPTIONS.map((source) => (
+            <button key={source} className={`status-opt ${value === source ? "status-opt--on" : ""}`} onClick={() => { onChange(source); setOpen(false); }}>
+              <span className="status-opt-dot" style={{ background: "#64748b" }} />
+              <span style={{ color: "#334155" }}>{formatLeadSource(source)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FollowUpCell({ value, onChange }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
@@ -341,7 +366,7 @@ export function AddLeadDropdown({ onSelectType }) {
 }
 
 export function CreateLeadModal({ leadType, onClose, onSave }) {
-  const [form, setForm] = useState({ name: "", company: "", email: "", phone: "", address: "", status: "New", source: leadType?.source || "Inbound", assignee: "Monica Jones", score: 50, followUpDate: "", createdDate: todayStr() });
+  const [form, setForm] = useState({ name: "", company: "", email: "", phone: "", address: "", status: "New", source: leadType?.source || "CustomizedInput", assignee: "Monica Jones", score: 50, followUpDate: "", createdDate: todayStr() });
   const handle = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
   const save = () => {
@@ -372,166 +397,300 @@ export function CreateLeadModal({ leadType, onClose, onSave }) {
           </div>
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Source</label>
-            <select value={form.source} onChange={(event) => handle("source", event.target.value)} style={{ ...inputStyle, background: "white" }}>{Object.keys(SOURCE_META).map((source) => <option key={source}>{source}</option>)}</select>
-          </div>
-          <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Follow-Up Date</label>
-            <input type="date" value={form.followUpDate} onChange={(event) => handle("followUpDate", event.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Initial Score ({form.score})</label>
-            <input type="range" min={0} max={100} value={form.score} onChange={(event) => handle("score", parseInt(event.target.value, 10))} style={{ width: "100%", accentColor: "#4f46e5" }} />
+            <select value={form.source} onChange={(event) => handle("source", event.target.value)} style={{ ...inputStyle, background: "white" }}>{LEAD_SOURCE_OPTIONS.map((source) => <option key={source} value={source}>{formatLeadSource(source)}</option>)}</select>
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={save} disabled={!form.name.trim()}><IPlus s={12} />&ensp;Create Lead</button>
+          <button className="btn-primary" onClick={save}>Create Lead</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+export function EditModal({ lead, onClose, onSave, onDelete, salesUsers = [], saving = false, deleting = false }) {
+  const [form, setForm] = useState(() => leadToUpdatePayload(lead));
+
+  useEffect(() => {
+    setForm(leadToUpdatePayload(lead));
+  }, [lead]);
+
+  const handle = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const inputStyle = { width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", outline: "none" };
+  const fields = [
+    { label: "First Name", key: "firstName" },
+    { label: "Last Name", key: "lastName" },
+    { label: "Title", key: "title" },
+    { label: "Email", key: "email", type: "email" },
+    { label: "Secondary Email", key: "secondaryEmail", type: "email" },
+    { label: "Phone", key: "phone" },
+    { label: "Mobile", key: "mobile" },
+    { label: "Company", key: "company" },
+    { label: "Position", key: "position" },
+    { label: "Industry", key: "industry" },
+    { label: "Tags", key: "tags" },
+    { label: "Rating", key: "rating" },
+    { label: "Address", key: "address", span: 2 },
+    { label: "City", key: "city" },
+    { label: "State", key: "state" },
+    { label: "Country", key: "country" },
+    { label: "Zip Code", key: "zipCode" },
+    { label: "Comments", key: "comments", span: 2 },
+    { label: "Description", key: "description", span: 2 },
+  ];
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{ width: 760, maxHeight: "88vh", display: "flex", flexDirection: "column" }} onClick={(event) => event.stopPropagation()}>
+        <div className="modal-hdr"><div><div className="modal-title">Edit Lead</div><div className="modal-sub">{lead.name}</div></div><button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button></div>
+        <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", overflowY: "auto" }}>
+          {fields.map((field) => (
+            <div key={field.key} style={{ gridColumn: field.span === 2 ? "1 / -1" : "auto" }}>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>{field.label}</label>
+              {field.key === "comments" || field.key === "description" ? (
+                <textarea rows={field.key === "description" ? 4 : 3} value={form[field.key] || ""} onChange={(event) => handle(field.key, event.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
+              ) : (
+                <input type={field.type || "text"} value={form[field.key] || ""} onChange={(event) => handle(field.key, event.target.value)} style={inputStyle} />
+              )}
+            </div>
+          ))}
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Assigned Sales User</label>
+            <select value={form.assignedToUserId || 0} onChange={(event) => handle("assignedToUserId", parseInt(event.target.value, 10) || 0)} style={{ ...inputStyle, background: "white" }}>
+              <option value={0}>Unassigned</option>
+              {salesUsers.map((user) => <option key={user.id || user.userId} value={user.id || user.userId}>{user.name || user.username || user.email}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Next Follow-Up</label>
+            <input type="datetime-local" value={form.nextFollowUpAt ? form.nextFollowUpAt.slice(0, 16) : ""} onChange={(event) => handle("nextFollowUpAt", event.target.value ? event.target.value + ":00.000Z" : null)} style={inputStyle} />
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "#374151", marginTop: 24 }}>
+            <input type="checkbox" checked={!!form.whatsappEnabled} onChange={(event) => handle("whatsappEnabled", event.target.checked)} />
+            WhatsApp Enabled
+          </label>
+        </div>
+        <div className="modal-footer" style={{ justifyContent: "space-between" }}>
+          <button className="btn-ghost" onClick={() => onDelete(lead.id)} disabled={deleting || saving} style={{ color: "#dc2626", borderColor: "#fecaca" }}>{deleting ? "Deleting..." : "Delete Lead"}</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn-ghost" onClick={onClose} disabled={saving || deleting}>Cancel</button>
+            <button className="btn-primary" onClick={() => onSave(lead.id, form)} disabled={saving || deleting}>{saving ? "Saving..." : "Save Changes"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDetails, onAdjustScore }) {
+  const [draggedId, setDraggedId] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+
+  const grouped = useMemo(() => {
+    const map = {};
+    leads.forEach((lead) => {
+      let key = lead[groupBy];
+      if (groupBy === "followUpDate") {
+        if (!key) key = "No Follow Up";
+        else key = getFollowUpLabel(key)?.label || "Unknown";
+      }
+      if (!key) key = "Unknown";
+      if (!map[key]) map[key] = [];
+      map[key].push(lead);
+    });
+    return map;
+  }, [groupBy, leads]);
+
+  return (
+    <>
+      <div className="kanban-toolbar">
+        <div className="kanban-toolbar__title-wrap">
+          <div className="kanban-toolbar__eyebrow">KANBAN VIEW</div>
+          <div className="kanban-toolbar__title-row">
+            <div className="kanban-toolbar__label">Group by</div>
+            <div className="kanban-toolbar__hint">Organize lanes by the workflow that matters most right now.</div>
+          </div>
+        </div>
+        <div className="kanban-toolbar__control">
+          <select value={groupBy} onChange={(event) => setGroupBy(event.target.value)}>
+            <option value="status">Status</option>
+            <option value="followUpDate">Follow-Up</option>
+            <option value="assignee">Owner</option>
+            <option value="source">Source</option>
+          </select>
+        </div>
+      </div>
+      <div className="kanban-board">
+      {Object.keys(grouped).map((columnKey) => {
+        const meta = groupBy === "status" ? STATUS_META[columnKey] || { color: "#374151", bg: "#f3f4f6" } : { color: "#374151", bg: "#f3f4f6" };
+        const colLeads = grouped[columnKey] || [];
+        const isOver = dragOverCol === columnKey;
+
+        return (
+          <div
+            key={columnKey}
+            className={`kanban-column ${isOver ? "kanban-column--over" : ""}`}
+            style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}
+            onDragOver={(event) => { event.preventDefault(); setDragOverCol(columnKey); }}
+            onDragLeave={() => setDragOverCol(null)}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (draggedId) {
+                let nextValue = columnKey;
+                if (groupBy === "followUpDate") {
+                  if (columnKey === "Today") nextValue = todayStr();
+                  else if (columnKey === "Tomorrow") nextValue = offsetDay(1);
+                  else if (columnKey === "No Follow Up") nextValue = "";
+                }
+                onUpdateLead(draggedId, groupBy, nextValue);
+              }
+              setDraggedId(null);
+              setDragOverCol(null);
+            }}
+          >
+            <div className="kanban-column__header">
+              <div>
+                <div className="kanban-column__label">{groupBy === "status" ? formatStatus(columnKey) : groupBy === "source" ? formatLeadSource(columnKey) : columnKey}</div>
+                <div className="kanban-column__sub">Drag and drop leads into this lane</div>
+              </div>
+              <span className="kanban-column__count">{colLeads.length}</span>
+            </div>
+
+            <div className="kanban-column__list">
+              {colLeads.map((lead) => {
+                const initials = getInitials(lead.name);
+                const tier = getScoreTier(lead.score);
+                const scoreColors = { high: "#059669", mid: "#d97706", low: "#dc2626" };
+                const scoreBackgrounds = { high: "#d1fae5", mid: "#fef3c7", low: "#fee2e2" };
+
+                return (
+                  <div
+                    key={lead.id}
+                    className={`kanban-card ${draggedId === lead.id ? "kanban-card--dragging" : ""}`}
+                    draggable
+                    onDragStart={(event) => { setDraggedId(lead.id); event.dataTransfer.effectAllowed = "move"; }}
+                    onClick={() => onOpenDetails(lead.id)}
+                  >
+                    <div className="kanban-card__top">
+                      <div className="kanban-card__identity">
+                        <div className="kanban-card__avatar" style={{ background: lead.avatarBg }}>{initials}</div>
+                        <div className="kanban-card__identity-text">
+                          <div className="kanban-card__name">{lead.name}</div>
+                          <div className="kanban-card__company">{lead.company}</div>
+                        </div>
+                      </div>
+                      <div className="kanban-card__score" style={{ background: scoreBackgrounds[tier], color: scoreColors[tier] }}>{lead.score}</div>
+                    </div>
+
+                    <div className="kanban-card__meta"><User size={10} /><span>{lead.assignee}</span></div>
+                    {lead.followUpDate && (() => {
+                      const info = getFollowUpLabel(lead.followUpDate);
+                      const color = info.type === "overdue" ? "#dc2626" : info.type === "today" ? "#d97706" : info.type === "tomorrow" ? "#0284c7" : "#6b7280";
+                      return <div className="kanban-card__followup" style={{ color }}><Calendar size={10} />{info.label}</div>;
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+    </>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+export function ManageColumnsPanel({ visibleCols, setVisibleCols, rowsPerPage, setRowsPerPage, wrapText, setWrapText, onClose }) {
+  const toggleColumn = (key, always) => {
+    if (always) return;
+    setVisibleCols((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{ width: 420 }} onClick={(event) => event.stopPropagation()}>
+        <div className="modal-hdr"><div><div className="modal-title">Manage Columns</div><div className="modal-sub">Choose what appears in the leads table</div></div><button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button></div>
+        <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gap: 14 }}>
+          <div style={{ display: "grid", gap: 10 }}>
+            {ALL_COLUMNS.map((column) => <label key={column.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#374151" }}><input type="checkbox" checked={column.always || visibleCols.includes(column.key)} disabled={column.always} onChange={() => toggleColumn(column.key, column.always)} />{column.label}</label>)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Rows Per Page</label>
+              <select value={rowsPerPage} onChange={(event) => setRowsPerPage(Number(event.target.value))} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, background: "white" }}>
+                {[10, 20, 30, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#374151", marginTop: 24 }}>
+              <input type="checkbox" checked={wrapText} onChange={(event) => setWrapText(event.target.checked)} />Wrap table text
+            </label>
+          </div>
+        </div>
+        <div className="modal-footer"><button className="btn-primary" onClick={onClose}>Done</button></div>
       </div>
     </div>
   );
 }
 
 export function ImportModal({ onClose, onImport }) {
-  const [step, setStep] = useState("upload");
-  const [parsed, setParsed] = useState({ headers: [], rows: [] });
-  const [mapping, setMapping] = useState({});
-  const [dragOver, setDragOver] = useState(false);
-  const fileRef = useRef();
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState("");
 
-  const handleFile = (file) => {
-    if (!file || !file.name.endsWith(".csv")) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = parseCSV(event.target.result);
-      setParsed(result);
-      const autoMap = {};
-      result.headers.forEach((header) => {
-        const guessedField = guessField(header);
-        if (guessedField) autoMap[header] = guessedField;
+  const handleFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setError("");
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      const headers = rows[0] || [];
+      const dataRows = rows.slice(1).filter((row) => row.some(Boolean));
+      const imported = dataRows.map((row, index) => {
+        const mapped = { id: Date.now() + index, avatarBg: AVATAR_COLORS[index % AVATAR_COLORS.length], createdDate: todayStr(), score: 0, status: "New", source: "CustomizedInput" };
+        headers.forEach((header, columnIndex) => {
+          const field = guessField(header, LEAD_FIELDS);
+          if (field) mapped[field] = row[columnIndex] || "";
+        });
+        return mapped;
       });
-      setMapping(autoMap);
-      setStep("map");
-    };
-    reader.readAsText(file);
-  };
-
-  const doImport = () => {
-    const newLeads = parsed.rows.map((row, index) => {
-      const lead = { id: Date.now() + index, avatarBg: AVATAR_COLORS[index % AVATAR_COLORS.length] };
-      parsed.headers.forEach((header) => {
-        const field = mapping[header];
-        if (field) lead[field] = field === "score" ? parseInt(row[header], 10) || 0 : row[header];
-      });
-      if (!lead.name) lead.name = "Unknown Lead";
-      if (!lead.status || !STATUS_LIST.includes(lead.status)) lead.status = "New";
-      if (!lead.source) lead.source = "Inbound";
-      if (!lead.createdDate) lead.createdDate = todayStr();
-      return lead;
-    });
-    onImport(newLeads);
-    onClose();
+      onImport(imported);
+      onClose();
+    } catch (importError) {
+      setError(importError.message || "Failed to import file");
+    }
   };
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="import-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="modal-hdr">
-          <div className="import-hdr-icon"><IUpload s={16} c="#4f46e5" /></div>
-          <div><div className="modal-title">Import Leads via CSV</div><div className="modal-sub">{step === "upload" ? "Upload a CSV file to get started" : step === "map" ? "Map your CSV columns to lead fields" : "Preview & confirm import"}</div></div>
-          <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
-        </div>
-        <div className="import-steps">
-          {["upload", "map", "preview"].map((currentStep, index) => (
-            <div key={currentStep} className={`import-step ${step === currentStep ? "import-step--on" : ""} ${["upload", "map", "preview"].indexOf(step) > index ? "import-step--done" : ""}`}>
-              <span className="import-step-num">{["upload", "map", "preview"].indexOf(step) > index ? "?" : index + 1}</span>
-              <span className="import-step-lbl">{currentStep === "upload" ? "Upload" : currentStep === "map" ? "Map Fields" : "Preview"}</span>
-            </div>
-          ))}
-        </div>
-        <div className="modal-body">
-          {step === "upload" && (
-            <div className={`drop-zone ${dragOver ? "drop-zone--over" : ""}`} onDragOver={(event) => { event.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={(event) => { event.preventDefault(); setDragOver(false); handleFile(event.dataTransfer.files[0]); }} onClick={() => fileRef.current.click()}>
-              <input ref={fileRef} type="file" accept=".csv" style={{ display: "none" }} onChange={(event) => handleFile(event.target.files[0])} />
-              <div className="drop-icon"><IUpload s={32} c="#a5b4fc" /></div>
-              <div className="drop-title">Drop your CSV here</div>
-              <div className="drop-sub">or click to browse, supports standard CRM exports</div>
-              <div className="drop-hint">name, email, phone, company, status, source, score, owner</div>
-            </div>
-          )}
-          {step === "map" && parsed && (
-            <div className="map-grid">
-              <div className="map-header"><span>CSV Column</span><span>Sample Data</span><span>Maps to Field</span></div>
-              {parsed.headers.map((header) => (
-                <div key={header} className="map-row">
-                  <span className="map-col">{header}</span>
-                  <span className="map-sample">{parsed.rows[0]?.[header] || "-"}</span>
-                  <select className="map-select" value={mapping[header] || ""} onChange={(event) => setMapping((current) => ({ ...current, [header]: event.target.value }))}>
-                    <option value="">- skip -</option>
-                    {LEAD_FIELDS.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}
-                  </select>
-                </div>
-              ))}
-            </div>
-          )}
-          {step === "preview" && (
-            <div className="preview-wrap">
-              <div className="preview-info"><span className="preview-count">{parsed.rows.length} leads</span> ready to import{parsed.rows.length > 5 && <span className="preview-more"> - showing first 5</span>}</div>
-              <div className="preview-scroll">
-                <table className="preview-table">
-                  <thead><tr>{Object.values(mapping).filter(Boolean).map((field) => <th key={field}>{LEAD_FIELDS.find((item) => item.key === field)?.label || field}</th>)}</tr></thead>
-                  <tbody>{parsed.rows.slice(0, 5).map((row, index) => <tr key={index}>{parsed.headers.filter((header) => mapping[header]).map((header) => <td key={header}>{row[header] || "-"}</td>)}</tr>)}</tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="modal-footer">
-          {step !== "upload" && <button className="btn-ghost" onClick={() => setStep(step === "preview" ? "map" : "upload")}>Back</button>}
-          <button className="btn-ghost" onClick={onClose} style={{ marginLeft: step === "upload" ? "auto" : "0" }}>Cancel</button>
-          {step === "map" && <button className="btn-primary" onClick={() => setStep("preview")} disabled={!Object.values(mapping).some(Boolean)}>Preview</button>}
-          {step === "preview" && <button className="btn-primary" onClick={doImport}><IUpload s={12} />&ensp;Import {parsed.rows.length} Leads</button>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function ManageColumnsPanel({ visibleCols, setVisibleCols, rowsPerPage, setRowsPerPage, wrapText, setWrapText, onClose }) {
-  const ref = useRef(null);
-  useClickOutside(ref, onClose);
-  const toggle = (key) => setVisibleCols((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
-
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="mcp" ref={ref} onClick={(event) => event.stopPropagation()}>
-        <div className="mcp-hdr"><div className="mcp-hdr-left"><ISettings s={15} /><span>Manage Columns</span></div><button className="icon-btn" onClick={onClose}><IX s={14} /></button></div>
-        <div className="mcp-section">
-          <div className="mcp-sec-lbl">Show / Hide Columns</div>
-          {ALL_COLUMNS.map((column) => (
-            <label key={column.key} className={`mcp-row ${column.always ? "mcp-row--locked" : ""}`}>
-              <span className="toggle"><input type="checkbox" checked={column.always || visibleCols.includes(column.key)} disabled={column.always} onChange={() => !column.always && toggle(column.key)} /><span className="toggle-track"><span className="toggle-thumb" /></span></span>
-              <span className="mcp-col-name">{column.label}</span>
-              {column.always && <span className="required-tag">Required</span>}
-            </label>
-          ))}
-        </div>
-        <div className="mcp-divider" />
-        <div className="mcp-section">
-          <div className="mcp-sec-lbl"><IRows s={13} /> Records Per Page</div>
-          <div className="rpp-row">{[10, 25, 30, 50, 100].map((count) => <button key={count} className={`rpp-btn ${rowsPerPage === count ? "rpp-btn--on" : ""}`} onClick={() => setRowsPerPage(count)}>{count}</button>)}</div>
-        </div>
-        <div className="mcp-divider" />
-        <div className="mcp-section">
-          <label className="mcp-row" style={{ cursor: "pointer" }}>
-            <span className="toggle"><input type="checkbox" checked={wrapText} onChange={(event) => setWrapText(event.target.checked)} /><span className="toggle-track"><span className="toggle-thumb" /></span></span>
-            <span className="mcp-col-name">Wrap text in cells</span>
+      <div className="modal" style={{ width: 520 }} onClick={(event) => event.stopPropagation()}>
+        <div className="modal-hdr"><div><div className="modal-title">Import Leads</div><div className="modal-sub">Upload a CSV file to add leads in bulk</div></div><button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button></div>
+        <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gap: 14 }}>
+          <label style={{ display: "grid", gap: 10, padding: 18, border: "1.5px dashed #cbd5e1", borderRadius: 12, background: "#f8fafc", cursor: "pointer", textAlign: "center" }}>
+            <IUpload s={16} c="#4f46e5" />
+            <span>{fileName || "Choose CSV file"}</span>
+            <span className="drop-hint">name, email, phone, company, status, source, score, owner</span>
+            <input type="file" accept=".csv" onChange={handleFile} style={{ display: "none" }} />
           </label>
+          {error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
         </div>
+        <div className="modal-footer"><button className="btn-ghost" onClick={onClose}>Cancel</button></div>
       </div>
     </div>
   );
 }
+
+
 
 export function LeadsPerformanceChart({ onClose, leads }) {
   const [animated, setAnimated] = useState(false);
@@ -674,115 +833,4 @@ export function LeadsPerformanceChart({ onClose, leads }) {
     </>
   );
 }
-export function EditModal({ lead, onClose }) {
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(event) => event.stopPropagation()}>
-        <div className="modal-hdr"><div><div className="modal-title">Edit Lead</div><div className="modal-sub">{lead.name}</div></div><button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button></div>
-        <div className="modal-body modal-placeholder"><IEdit s={40} c="#d1d5db" /><p>Edit Form</p><span>Fields for name, email, phone, status and source will appear here.</span></div>
-        <div className="modal-footer"><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={onClose}>Save Changes</button></div>
-      </div>
-    </div>
-  );
-}
-
-export function KanbanBoard({ leads, groupBy, onUpdateLead, onOpenDetails, onAdjustScore }) {
-  const [draggedId, setDraggedId] = useState(null);
-  const [dragOverCol, setDragOverCol] = useState(null);
-
-  const grouped = useMemo(() => {
-    const map = {};
-    leads.forEach((lead) => {
-      let key = lead[groupBy];
-      if (groupBy === "followUpDate") {
-        if (!key) key = "No Follow Up";
-        else key = getFollowUpLabel(key)?.label || "Unknown";
-      }
-      if (!key) key = "Unknown";
-      if (!map[key]) map[key] = [];
-      map[key].push(lead);
-    });
-    return map;
-  }, [groupBy, leads]);
-
-  return (
-    <div className="kanban-board">
-      {Object.keys(grouped).map((columnKey) => {
-        const meta = groupBy === "status" ? STATUS_META[columnKey] || { color: "#374151", bg: "#f3f4f6" } : { color: "#374151", bg: "#f3f4f6" };
-        const colLeads = grouped[columnKey] || [];
-        const isOver = dragOverCol === columnKey;
-
-        return (
-          <div
-            key={columnKey}
-            className={`kanban-column ${isOver ? "kanban-column--over" : ""}`}
-            style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}
-            onDragOver={(event) => { event.preventDefault(); setDragOverCol(columnKey); }}
-            onDragLeave={() => setDragOverCol(null)}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (draggedId) onUpdateLead(draggedId, groupBy, columnKey);
-              setDraggedId(null);
-              setDragOverCol(null);
-            }}
-          >
-            <div className="kanban-column__header">
-              <div>
-                <div className="kanban-column__label">{groupBy === "status" ? formatStatus(columnKey) : columnKey}</div>
-                <div className="kanban-column__sub">Drag and drop leads into this lane</div>
-              </div>
-              <span className="kanban-column__count">{colLeads.length}</span>
-            </div>
-
-            <div className="kanban-column__list">
-              {colLeads.map((lead) => {
-                const initials = getInitials(lead.name);
-                const tier = getScoreTier(lead.score);
-                const scoreColors = { high: "#059669", mid: "#d97706", low: "#dc2626" };
-                const scoreBackgrounds = { high: "#d1fae5", mid: "#fef3c7", low: "#fee2e2" };
-
-                return (
-                  <div
-                    key={lead.id}
-                    className={`kanban-card ${draggedId === lead.id ? "kanban-card--dragging" : ""}`}
-                    draggable
-                    onDragStart={(event) => { setDraggedId(lead.id); event.dataTransfer.effectAllowed = "move"; }}
-                    onClick={() => onOpenDetails(lead.id)}
-                  >
-                    <div className="kanban-card__top">
-                      <div className="kanban-card__identity">
-                        <div className="kanban-card__avatar" style={{ background: lead.avatarBg }}>{initials}</div>
-                        <div className="kanban-card__identity-text">
-                          <div className="kanban-card__name">{lead.name}</div>
-                          <div className="kanban-card__company">{lead.company}</div>
-                        </div>
-                      </div>
-                      <div className="kanban-card__score" style={{ background: scoreBackgrounds[tier], color: scoreColors[tier] }}>{lead.score}</div>
-                    </div>
-
-                    <div className="kanban-card__meta"><User size={10} /><span>{lead.assignee}</span></div>
-                    {lead.followUpDate && (() => {
-                      const info = getFollowUpLabel(lead.followUpDate);
-                      const color = info.type === "overdue" ? "#dc2626" : info.type === "today" ? "#d97706" : info.type === "tomorrow" ? "#0284c7" : "#6b7280";
-                      return <div className="kanban-card__followup" style={{ color }}><Calendar size={10} />{info.label}</div>;
-                    })()}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-
-
-
-
-
-
-
-
 

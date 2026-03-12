@@ -1,172 +1,219 @@
-import { useState, useEffect, useCallback } from "react";
-import { X, Phone, Mail, Calendar, MessageSquare, Plus, Clock, FileText, Activity, MapPin, Briefcase, TrendingUp, AlertTriangle, RefreshCw, UserCheck, Tag, Filter, CheckCircle } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { X, Phone, Mail, Calendar, Plus, FileText, Activity, MapPin, Briefcase, TrendingUp, RefreshCw, UserCheck, Tag, CheckCircle, Paperclip, Download, Trash2, UploadCloud } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import leadsAPI from "../api/leads.api";
+import { formatLeadSource, formatStatus } from "../pages/leads/utils";
 
 const EMPTY_VALUE = "-";
-const fmtDate = (d) => {
-  if (!d) return EMPTY_VALUE;
-  const parsed = new Date(d);
-  return isNaN(parsed) ? EMPTY_VALUE : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-};
-const fmtDateTime = (iso) => {
-  if (!iso) return EMPTY_VALUE;
-  const d = new Date(iso);
-  if (isNaN(d)) return EMPTY_VALUE;
-  return d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
-};
-const STATUS_META = {
-  FreshLead: { color: "#1e40af", bg: "#dbeafe" }, Contacted: { color: "#065f46", bg: "#d1fae5" }, FollowUp: { color: "#92400e", bg: "#fef3c7" }, Interested: { color: "#5b21b6", bg: "#ede9fe" }, Qualified: { color: "#1d4ed8", bg: "#bfdbfe" }, Negotiation: { color: "#c2410c", bg: "#ffedd5" }, Converted: { color: "#166534", bg: "#bbf7d0" }, Lost: { color: "#991b1b", bg: "#fee2e2" }, NotInterested: { color: "#374151", bg: "#f3f4f6" }, UnableToContact: { color: "#78350f", bg: "#fef9c3" }, JunkLead: { color: "#6b7280", bg: "#e5e7eb" }, "Need Review": { color: "#6d28d9", bg: "#ede9fe" }, New: { color: "#1e40af", bg: "#dbeafe" },
-};
-const TIMELINE_CFG = {
-  "Lead Assigned": { icon: UserCheck, color: "#4f46e5", bg: "#eef2ff", border: "#c7d2fe" }, "Lead Created": { icon: Plus, color: "#059669", bg: "#ecfdf5", border: "#a7f3d0" }, "Status Changed": { icon: Activity, color: "#d97706", bg: "#fffbeb", border: "#fde68a" }, "Note Added": { icon: FileText, color: "#0891b2", bg: "#ecfeff", border: "#a5f3fc" }, "Call Made": { icon: Phone, color: "#10b981", bg: "#ecfdf5", border: "#a7f3d0" }, "Email Sent": { icon: Mail, color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" }, Meeting: { icon: Calendar, color: "#8b5cf6", bg: "#f5f3ff", border: "#ddd6fe" }, default: { icon: Clock, color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb" },
-};
-const ACT_TYPE_MAP = {
-  email: { Ic: Mail, color: "#3b82f6", bg: "#eff6ff" }, call: { Ic: Phone, color: "#10b981", bg: "#ecfdf5" }, message: { Ic: MessageSquare, color: "#8b5cf6", bg: "#f5f3ff" }, meeting: { Ic: Calendar, color: "#f59e0b", bg: "#fffbeb" }, created: { Ic: Plus, color: "#6b7280", bg: "#f3f4f6" }, "score-change": { Ic: TrendingUp, color: "#ec4899", bg: "#fdf2f8" }, note: { Ic: FileText, color: "#0891b2", bg: "#ecfeff" }, whatsapp: { Ic: FaWhatsapp, color: "#16a34a", bg: "#dcfce7" }, task: { Ic: CheckCircle, color: "#7c3aed", bg: "#f5f3ff" },
-};
-const ACTIVITY_TABS = [{ k: "Activity", icon: Activity }, { k: "Notes", icon: FileText }, { k: "Emails", icon: Mail }, { k: "Calls", icon: Phone }, { k: "WhatsApp", icon: FaWhatsapp }, { k: "Meetings", icon: Calendar }];
-const ACTIVITY_BOARD_SECTIONS = [{ key: "open", label: "Open Activities" }, { key: "closed", label: "Closed Activities" }];
-const ACTIVITY_BOARD_BUCKETS = [
-  { key: "note", label: "Notes", empty: "No notes yet", accent: "#0891b2", bg: "#ecfeff", icon: FileText },
-  { key: "call", label: "Calls", empty: "No calls logged", accent: "#10b981", bg: "#ecfdf5", icon: Phone },
-  { key: "meeting", label: "Meetings", empty: "No meetings added", accent: "#f59e0b", bg: "#fffbeb", icon: Calendar },
-  { key: "task", label: "Tasks", empty: "No tasks created", accent: "#7c3aed", bg: "#f5f3ff", icon: CheckCircle },
+const TABS = [
+  { k: "Activity", icon: Activity },
+  { k: "Notes", icon: FileText },
+  { k: "Emails", icon: Mail },
+  { k: "Calls", icon: Phone },
+  { k: "WhatsApp", icon: FaWhatsapp },
+  { k: "Meetings", icon: Calendar },
+  { k: "Attachments", icon: Paperclip },
 ];
-const TAB_COMPOSE_CFG = { Activity: { placeholder: "Log a note, call, email...", type: "note" }, Notes: { placeholder: "Write a note...", type: "note" }, Emails: { placeholder: "Compose an email...", type: "email" }, Calls: { placeholder: "Log call notes...", type: "call" }, WhatsApp: { placeholder: "Compose a WhatsApp message...", type: "whatsapp" }, Meetings: { placeholder: "Add meeting notes...", type: "meeting" } };
-const getStatusMeta = (status) => STATUS_META[status] || STATUS_META.FreshLead;
+const TYPE_MAP = { Notes: "note", Emails: "email", Calls: "call", WhatsApp: "whatsapp", Meetings: "meeting" };
+const ICON_MAP = { email: Mail, call: Phone, meeting: Calendar, note: FileText, whatsapp: FaWhatsapp, created: Plus, "score-change": TrendingUp, task: CheckCircle };
+const STATUS_META = { FreshLead: { color: "#1e40af", bg: "#dbeafe" }, New: { color: "#1e40af", bg: "#dbeafe" } };
+const BUCKET_ORDER = ["task", "meeting", "call", "note"];
+const BUCKET_LABELS = { task: "Tasks", meeting: "Meetings", call: "Calls", note: "Notes" };
+const BUCKET_ICONS = { task: CheckCircle, meeting: Calendar, call: Phone, note: FileText };
+
+const fmtDate = (d) => !d ? EMPTY_VALUE : new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const fmtDateTime = (d) => !d ? EMPTY_VALUE : new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const getInitials = (name) => name?.split(" ").map((part) => part[0]).join("").slice(0, 2) || "?";
-const formatStatus = (status) => status?.replace(/([A-Z])/g, " $1").trim();
-const mapCommunications = (data) => data.map((item, index) => ({ id: item.id || `${item.type || "activity"}-${index}-${item.date || item.meetingDate || item.createdAt || "na"}`, type: String(item.type || "note").toLowerCase(), notes: item.description || item.message || item.subject || "", description: item.description || item.message || item.subject || "", date: item.date || item.meetingDate || item.createdAt || item.completedAt || item.closedAt, time: item.date ? new Date(item.date).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : EMPTY_VALUE, status: item.status || item.activityStatus || "", completedAt: item.completedAt, closedAt: item.closedAt, closedDate: item.closedDate }));
-function getCommunicationPayload(activeTab, notes, lead) {
-  if (activeTab === "Emails") return { leadId: lead.id, type: "Email", subject: "Email", body: notes, toEmail: lead.email };
-  if (activeTab === "Calls") return { leadId: lead.id, type: "Call", subject: "Call", callType: "Outgoing", callResult: "Completed" };
-  if (activeTab === "Meetings") return { leadId: lead.id, type: "Meeting", subject: "Meeting", meetingDate: new Date().toISOString(), location: "Online" };
-  if (activeTab === "WhatsApp") return { leadId: lead.id, type: "WhatsApp", subject: "WhatsApp Message", body: notes, toPhone: lead.phone };
-  return { leadId: lead.id, type: "Note", message: notes };
-}
-function filterActivitiesByTab(activities, activeTab) {
-  if (activeTab === "Activity") return activities;
-  if (activeTab === "Notes") return activities.filter((activity) => activity.type === "note");
-  if (activeTab === "Emails") return activities.filter((activity) => activity.type === "email");
-  if (activeTab === "Calls") return activities.filter((activity) => activity.type === "call");
-  if (activeTab === "WhatsApp") return activities.filter((activity) => activity.type === "whatsapp");
-  if (activeTab === "Meetings") return activities.filter((activity) => activity.type === "meeting");
-  return activities;
-}
-const normalizeActivityStatus = (activity) => {
-  const rawStatus = String(activity.status || activity.activityStatus || "").trim().toLowerCase();
-  const rawType = String(activity.type || "").trim().toLowerCase();
-  const rawNotes = String(activity.notes || activity.description || "").trim().toLowerCase();
-  if (["closed", "completed", "done", "resolved"].includes(rawStatus)) return "closed";
-  if (rawStatus) return "open";
-  if (activity.completedAt || activity.closedAt || activity.closedDate) return "closed";
-  if (rawType === "task" && /completed|closed|done/.test(rawNotes)) return "closed";
-  return "open";
+const getStatusMeta = (status) => STATUS_META[status] || STATUS_META.FreshLead;
+const classify = (activity) => {
+  const status = String(activity.status || "").toLowerCase();
+  if (["closed", "completed", "done"].includes(status) || activity.completedAt || activity.closedAt) return "closed";
+  if (!activity.date) return "open";
+  return new Date(activity.date).getTime() < Date.now() ? "closed" : "open";
 };
-const getActivityBoardBucket = (activity) => {
-  const type = String(activity.type || "").toLowerCase();
-  if (type === "note") return "note";
-  if (type === "call") return "call";
-  if (type === "meeting") return "meeting";
-  if (type === "task") return "task";
-  return null;
+const getActivityBucket = (activity) => {
+  const type = String(activity.type || "note").toLowerCase();
+  if (["meeting"].includes(type)) return "meeting";
+  if (["call", "whatsapp", "email"].includes(type)) return "call";
+  if (["task", "todo"].includes(type)) return "task";
+  return "note";
 };
-const buildActivityBoard = (activities) => {
-  const board = { open: { note: [], call: [], meeting: [], task: [] }, closed: { note: [], call: [], meeting: [], task: [] } };
-  activities.forEach((activity) => {
-    const section = normalizeActivityStatus(activity);
-    const bucket = getActivityBoardBucket(activity);
-    if (bucket) board[section][bucket].push(activity);
-  });
-  return board;
-};
-const buildLeadFields = (lead) => [
-  { icon: Mail, label: "Email", value: lead.email, href: `mailto:${lead.email}` },
-  { icon: Phone, label: "Phone", value: lead.phone, href: `tel:${lead.phone}` },
-  { icon: Briefcase, label: "Company", value: lead.company },
-  { icon: Tag, label: "Source", value: lead.source },
-  { icon: UserCheck, label: "Owner", value: lead.assignee },
-  { icon: Calendar, label: "Follow-Up", value: lead.followUpDate ? fmtDate(`${lead.followUpDate}T00:00:00`) : "Not set" },
-  { icon: Clock, label: "Created", value: fmtDate(lead.createdDate) },
-  { icon: MapPin, label: "Address", value: lead.address || [lead.city, lead.state, lead.zip, lead.country].filter(Boolean).join(", ") || EMPTY_VALUE },
-];
-const groupEntriesByDate = (items, getDate) => {
-  const groups = new Map();
-  items.forEach((item) => {
-    const rawDate = getDate(item);
-    const key = rawDate ? new Date(rawDate).toDateString() : "Unknown";
-    if (!groups.has(key)) groups.set(key, { key, rawDate, items: [] });
-    groups.get(key).items.push(item);
-  });
-  return Array.from(groups.values());
-};
-const TimelineDateBadge = ({ label }) => <div style={{ margin: "4px 0 14px 88px" }}><span style={{ display: "inline-flex", alignItems: "center", minHeight: 34, padding: "0 16px", borderRadius: 10, border: "1px solid #d9deeb", background: "#f8faff", boxShadow: "0 1px 0 rgba(255,255,255,0.9) inset", fontSize: 13, fontWeight: 700, color: "#475569" }}>{label}</span></div>;
-const ActivityTabButton = ({ active, icon: Icon, label, onClick }) => <button onClick={onClick} style={{ padding: "10px 16px", border: "none", borderBottom: active ? "2px solid #4f46e5" : "none", background: "none", color: active ? "#4f46e5" : "#6b7280", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Icon size={14} />{label}</button>;
-function HistoryTimelineItem({ activity, index, isLast }) {
-  const { Ic, color, bg } = ACT_TYPE_MAP[activity.type] ?? ACT_TYPE_MAP.created;
-  return <div style={{ display: "grid", gridTemplateColumns: "96px 40px minmax(0, 1fr)", gap: 12, alignItems: "flex-start", marginBottom: isLast ? 0 : 18, position: "relative", animation: "fadeSlideIn 0.28s ease both", animationDelay: `${index * 0.04}s` }}><div style={{ paddingTop: 8, fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", whiteSpace: "nowrap" }}>{activity.time}</div><div style={{ position: "relative", display: "flex", justifyContent: "center", minHeight: 78 }}>{!isLast && <span style={{ position: "absolute", top: 38, bottom: -20, width: 2, borderRadius: 999, background: "linear-gradient(180deg, #d9deeb 0%, #edf2f7 100%)" }} />}<div style={{ width: 38, height: 38, borderRadius: "50%", background: bg, border: "2px solid #d9deeb", boxShadow: "0 8px 20px rgba(15,23,42,0.06)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}><Ic size={15} color={color} /></div></div><div style={{ padding: "10px 14px 12px", borderRadius: 14, border: "1px solid #e6eaf2", background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)", boxShadow: "0 10px 24px rgba(15,23,42,0.05)" }}><div style={{ fontSize: 14, fontWeight: 700, color: "#1f2937", lineHeight: 1.35 }}>{activity.notes}</div><div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span style={{ display: "inline-flex", alignItems: "center", minHeight: 24, padding: "0 10px", borderRadius: 999, background: bg, color, fontSize: 11, fontWeight: 700, textTransform: "capitalize" }}>{activity.type}</span><span style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 600 }}>{fmtDate(activity.date)}</span></div></div></div>;
+const mapCommunications = (items) => (Array.isArray(items) ? items : []).map((item, index) => ({
+  id: item.id || `${item.type || "activity"}-${index}`,
+  type: String(item.type || "note").toLowerCase(),
+  notes: item.description || item.message || item.subject || "",
+  date: item.date || item.meetingDate || item.createdAt || item.completedAt || item.closedAt || null,
+  status: item.status || item.activityStatus || "",
+  completedAt: item.completedAt,
+  closedAt: item.closedAt,
+}));
+const getPayload = (tab, notes, lead) => tab === "Emails"
+  ? { leadId: lead.id, type: "Email", subject: "Email", body: notes, toEmail: lead.email }
+  : tab === "Calls"
+    ? { leadId: lead.id, type: "Call", subject: "Call", description: notes, callType: "Outgoing", callResult: "Completed" }
+    : tab === "Meetings"
+      ? { leadId: lead.id, type: "Meeting", subject: "Meeting", description: notes, meetingDate: new Date().toISOString(), location: "Online" }
+      : tab === "WhatsApp"
+        ? { leadId: lead.id, type: "WhatsApp", subject: "WhatsApp", body: notes, toPhone: lead.phone }
+        : { leadId: lead.id, type: "Note", message: notes };
+const buildBuckets = (items) => BUCKET_ORDER.map((bucket) => ({
+  key: bucket,
+  label: BUCKET_LABELS[bucket],
+  icon: BUCKET_ICONS[bucket],
+  items: items.filter((item) => getActivityBucket(item) === bucket),
+}));
+
+function AttachmentPanel({ leadId }) {
+  const [attachments, setAttachments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await leadsAPI.getAttachments(leadId);
+      setAttachments(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [leadId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      await leadsAPI.uploadAttachment(leadId, file);
+      await load();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  const onDelete = async (id) => {
+    setDeletingId(id);
+    try {
+      await leadsAPI.deleteAttachment(id);
+      setAttachments((current) => current.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return <div style={{ padding: 16, display: "grid", gap: 12 }}><label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 12, border: "1px dashed #cbd5e1", background: "#f8fafc", cursor: "pointer", width: "fit-content" }}><UploadCloud size={16} color="#4f46e5" /><span>{uploading ? "Uploading..." : "Add Attachment"}</span><input type="file" onChange={onUpload} style={{ display: "none" }} /></label>{loading ? <div>Loading attachments...</div> : attachments.length === 0 ? <div style={{ color: "#94a3b8" }}>No attachments uploaded yet.</div> : attachments.map((attachment, index) => { const href = attachment.url || attachment.fileUrl || attachment.downloadUrl; const name = attachment.fileName || attachment.name || `Attachment ${index + 1}`; return <div key={attachment.id || index} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderRadius: 14, border: "1px solid #e5e7eb" }}><div><div style={{ fontWeight: 700 }}>{name}</div><div style={{ fontSize: 12, color: "#64748b" }}>ID: {attachment.id ?? EMPTY_VALUE}</div></div><div style={{ display: "flex", gap: 8 }}>{href && <a href={href} target="_blank" rel="noreferrer" style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid #dbe2ea", display: "flex", alignItems: "center", justifyContent: "center" }}><Download size={14} /></a>}<button onClick={() => onDelete(attachment.id)} disabled={deletingId === attachment.id} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid #fecaca", color: "#dc2626", background: "#fff5f5" }}><Trash2 size={14} /></button></div></div>; })}</div>;
 }
-function SideTimelineItem({ event, index, isLast }) {
-  const cfg = TIMELINE_CFG[event.type] || TIMELINE_CFG.default;
-  const eventTime = event.date ? new Date(event.date).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : EMPTY_VALUE;
-  const Ic = cfg.icon;
-  return <div style={{ display: "grid", gridTemplateColumns: "78px 34px minmax(0, 1fr)", gap: 12, alignItems: "flex-start", marginBottom: isLast ? 0 : 18, position: "relative", animation: "fadeSlideIn 0.28s ease both", animationDelay: `${index * 0.05}s` }}><div style={{ paddingTop: 7, fontSize: 11.5, fontWeight: 700, color: "#64748b", textAlign: "right", whiteSpace: "nowrap" }}>{eventTime}</div><div style={{ position: "relative", display: "flex", justifyContent: "center", minHeight: 82 }}>{!isLast && <span style={{ position: "absolute", top: 32, bottom: -22, width: 2, borderRadius: 999, background: "linear-gradient(180deg, #d7ddea 0%, #eef2f7 100%)" }} />}<div style={{ width: 30, height: 30, borderRadius: "50%", background: cfg.bg, border: `2px solid ${cfg.border}`, boxShadow: "0 6px 16px rgba(15,23,42,0.06)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}><Ic size={13} color={cfg.color} strokeWidth={2} /></div></div><div style={{ padding: "10px 12px", borderRadius: 14, border: `1px solid ${cfg.border}`, background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)", boxShadow: "0 10px 24px rgba(15,23,42,0.045)" }}><div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}><span style={{ display: "inline-flex", alignItems: "center", minHeight: 24, padding: "0 10px", borderRadius: 999, background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 800 }}>{event.type}</span></div>{event.description && <div style={{ fontSize: 12.5, color: "#334155", fontWeight: 600, lineHeight: 1.45 }}>{event.description}</div>}</div></div>;
+
+function ActivityCard({ item, tone }) {
+  const Icon = ICON_MAP[item.type] || FileText;
+
+  return <div style={{ padding: 12, borderRadius: 12, background: "#fff", border: `1px solid ${tone.border}`, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}><div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><div style={{ width: 28, height: 28, borderRadius: 9, background: tone.iconBg, color: tone.iconColor, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} /></div><div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{item.notes || "Untitled"}</div></div><div style={{ fontSize: 12, color: "#64748b" }}>{fmtDateTime(item.date)}</div><div style={{ marginTop: 6, fontSize: 11.5, color: tone.iconColor, fontWeight: 700, textTransform: "capitalize" }}>{item.status || classify(item)}</div></div>;
 }
-const QuickActionLink = ({ href, title, children, target, rel }) => <a href={href} title={title} target={target} rel={rel} style={{ width: 34, height: 34, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #dbe2ea", background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)", boxShadow: "0 4px 10px rgba(15,23,42,0.05)", color: "#475569", transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease" }}>{children}</a>;
-const DetailField = ({ icon: Icon, label, value, href }) => <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #f3f4f6" }}><div style={{ width: 24, height: 24, borderRadius: 7, background: "#f3f4f6", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={12} color="#6b7280" strokeWidth={2} /></div><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, marginBottom: 1 }}>{label}</div>{href && value ? <a href={href} style={{ fontSize: 12.5, color: "#4f46e5", fontWeight: 500, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</a> : <div style={{ fontSize: 12, color: "#111827", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value || EMPTY_VALUE}</div>}</div></div>;
-function ActivityBoardCard({ title, accent, bg, icon: Icon, items, emptyMessage }) {
-  return <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, background: "#ffffff", overflow: "hidden", minHeight: 180, boxShadow: "0 10px 24px rgba(15,23,42,0.04)" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: "1px solid #eef2f7", background: "linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%)" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 28, height: 28, borderRadius: 10, background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} color={accent} strokeWidth={2} /></div><span style={{ fontSize: 13, fontWeight: 800, color: "#1f2937" }}>{title}</span></div><span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>{items.length}</span></div><div style={{ padding: 12, display: "grid", gap: 10 }}>{items.length === 0 && <div style={{ padding: "22px 12px", borderRadius: 12, border: "1px dashed #dbe2ea", textAlign: "center", color: "#94a3b8", fontSize: 12.5 }}>{emptyMessage}</div>}{items.map((activity) => <div key={activity.id} style={{ padding: "12px 12px 10px", borderRadius: 12, background: "#f8fafc", border: "1px solid #edf2f7" }}><div style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", lineHeight: 1.4 }}>{activity.notes || activity.description || "Untitled activity"}</div><div style={{ marginTop: 6, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11.5, color: "#64748b", fontWeight: 600 }}><span>{fmtDate(activity.date)}</span><span>{activity.time || fmtDateTime(activity.date)}</span><span style={{ textTransform: "capitalize" }}>{activity.status || normalizeActivityStatus(activity)}</span></div></div>)}</div></div>;
+
+function ActivityBucketColumn({ sectionTitle, title, icon: Icon, items, tone, isLast }) {
+  return <div style={{ minWidth: 280, flex: "0 0 280px", paddingRight: 16, borderRight: isLast ? "none" : `1px solid ${tone.divider}` }}><div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontWeight: 800, color: "#1f2937" }}><Icon size={15} color={tone.iconColor} /><span>{sectionTitle} {title}</span><span style={{ minWidth: 22, height: 22, borderRadius: 999, background: tone.countBg, color: tone.iconColor, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{items.length}</span></div><div style={{ maxHeight: 230, overflowY: "auto", paddingRight: 4, display: "grid", gap: 10 }}>{items.length === 0 ? <div style={{ padding: 18, borderRadius: 12, border: `1px dashed ${tone.border}`, background: tone.emptyBg, color: "#94a3b8", fontSize: 12, textAlign: "center" }}>No records found</div> : items.map((item) => <ActivityCard key={item.id} item={item} tone={tone} />)}</div></div>;
 }
-const ActivityBoardSection = ({ title, buckets }) => <section style={{ border: "1px solid #e7ebf2", borderRadius: 18, background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)", boxShadow: "0 18px 34px rgba(15,23,42,0.05)", overflow: "hidden" }}><div style={{ padding: "14px 16px", borderBottom: "1px solid #eef2f7", fontSize: 15, fontWeight: 800, color: "#1f2937" }}>{title}</div><div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>{ACTIVITY_BOARD_BUCKETS.map(({ key, label, empty, accent, bg, icon }) => <ActivityBoardCard key={key} title={label} accent={accent} bg={bg} icon={icon} items={buckets[key] || []} emptyMessage={empty} />)}</div></section>;
+
+function ActivitySection({ title, items, tone }) {
+  const sectionLabel = title.replace(" Activities", "");
+  const buckets = buildBuckets(items);
+
+  return <div style={{ border: `1px solid ${tone.border}`, borderRadius: 18, overflow: "hidden", background: "#fff" }}><div style={{ padding: "14px 16px", borderBottom: `1px solid ${tone.border}`, background: tone.headerBg, fontWeight: 800, color: tone.headerColor }}>{title}</div><div style={{ padding: 16, overflowX: "auto" }}><div style={{ display: "flex", gap: 0, minWidth: "max-content" }}>{buckets.map((bucket, index) => <ActivityBucketColumn key={bucket.key} sectionTitle={sectionLabel} title={bucket.label} icon={bucket.icon} items={bucket.items} tone={tone} isLast={index === buckets.length - 1} />)}</div></div></div>;
+}
+
 function MiddlePanel({ lead }) {
   const [activeTab, setActiveTab] = useState("Activity");
   const [notes, setNotes] = useState("");
-  const [focused, setFocused] = useState(false);
   const [activities, setActivities] = useState([]);
-  const loadCommunications = useCallback(async () => {
-    if (!lead?.id) return;
+
+  const load = useCallback(async () => {
     try {
       const data = await leadsAPI.getCommunications(lead.id);
       setActivities(mapCommunications(data));
-    } catch (err) {
-      console.error("Failed to load communications", err);
+    } catch (error) {
+      console.error(error);
     }
-  }, [lead]);
-  useEffect(() => { loadCommunications(); }, [loadCommunications]);
-  const filtered = filterActivitiesByTab(activities, activeTab);
-  const groupedActivities = groupEntriesByDate(filtered, (activity) => activity.date);
-  const composePlaceholder = TAB_COMPOSE_CFG[activeTab]?.placeholder || "Write a note...";
-  const activityBoard = buildActivityBoard(activities);
-  const handleSave = async () => {
-    if (!notes.trim()) return;
+  }, [lead.id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filtered = useMemo(() => activeTab === "Activity" ? activities : activities.filter((item) => item.type === TYPE_MAP[activeTab]), [activities, activeTab]);
+  const grouped = useMemo(() => filtered.reduce((acc, item) => {
+    const key = item.date ? new Date(item.date).toDateString() : "Unknown";
+    acc[key] ||= [];
+    acc[key].push(item);
+    return acc;
+  }, {}), [filtered]);
+  const openItems = useMemo(() => activities.filter((item) => classify(item) === "open"), [activities]);
+  const closedItems = useMemo(() => activities.filter((item) => classify(item) === "closed"), [activities]);
+
+  const save = async () => {
+    if (!notes.trim() || activeTab === "Attachments") return;
     try {
-      await leadsAPI.addCommunication(getCommunicationPayload(activeTab, notes, lead));
+      await leadsAPI.addCommunication(getPayload(activeTab, notes, lead));
       setNotes("");
-      setFocused(false);
-      loadCommunications();
-    } catch (err) {
-      console.error("Failed to add communication", err);
+      load();
+    } catch (error) {
+      console.error(error);
     }
   };
-  return <div style={{ display: "flex", flexDirection: "column", height: "100%" }}><div style={{ display: "flex", borderBottom: "1px solid #e5e7eb", overflowX: "auto" }}>{ACTIVITY_TABS.map(({ k, icon }) => <ActivityTabButton key={k} active={activeTab === k} icon={icon} label={k} onClick={() => setActiveTab(k)} />)}</div><div style={{ padding: 16 }}><textarea value={notes} placeholder={composePlaceholder} onChange={(e) => setNotes(e.target.value)} onFocus={() => setFocused(true)} rows={focused ? 4 : 2} style={{ width: "100%", padding: 12, border: "1.5px solid #e5e7eb", borderRadius: 8, resize: "none" }} />{focused && <div style={{ marginTop: 8, display: "flex", gap: 8 }}><button onClick={() => { setFocused(false); setNotes(""); }} style={{ padding: "6px 14px", border: "1px solid #e5e7eb", borderRadius: 6 }}>Cancel</button><button onClick={handleSave} style={{ padding: "6px 14px", border: "none", background: "#4f46e5", color: "white", borderRadius: 6 }}>Save</button></div>}</div><div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>{activeTab === "Activity" ? <div style={{ display: "grid", gap: 16 }}>{ACTIVITY_BOARD_SECTIONS.map((section) => <ActivityBoardSection key={section.key} title={section.label} buckets={activityBoard[section.key]} />)}</div> : <>{filtered.length === 0 && <div style={{ color: "#9ca3af", fontSize: 13 }}>No activity yet</div>}{groupedActivities.map((group) => <div key={group.key} style={{ marginBottom: 22 }}><TimelineDateBadge label={fmtDate(group.rawDate)} />{group.items.map((activity, index) => <HistoryTimelineItem key={activity.id} activity={activity} index={index} isLast={index === group.items.length - 1} />)}</div>)}</>}</div></div>;
+
+  return <div style={{ display: "flex", flexDirection: "column", height: "100%" }}><div style={{ display: "flex", borderBottom: "1px solid #e5e7eb", overflowX: "auto" }}>{TABS.map(({ k, icon: Icon }) => <button key={k} onClick={() => setActiveTab(k)} style={{ padding: "10px 16px", border: "none", borderBottom: activeTab === k ? "2px solid #4f46e5" : "none", background: "none", color: activeTab === k ? "#4f46e5" : "#6b7280", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Icon size={14} />{k}</button>)}</div>{activeTab !== "Attachments" && <div style={{ padding: 16 }}><textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder={`Add ${activeTab.toLowerCase()} details...`} style={{ width: "100%", padding: 12, border: "1.5px solid #e5e7eb", borderRadius: 8, resize: "none" }} /><div style={{ marginTop: 8, display: "flex", gap: 8 }}><button onClick={() => setNotes("")} style={{ padding: "6px 14px", border: "1px solid #e5e7eb", borderRadius: 6 }}>Cancel</button><button onClick={save} style={{ padding: "6px 14px", border: "none", background: "#4f46e5", color: "white", borderRadius: 6 }}>Save</button></div></div>}<div style={{ flex: 1, overflowY: "auto", padding: activeTab === "Attachments" ? 0 : "0 16px 16px" }}>{activeTab === "Attachments" ? <AttachmentPanel leadId={lead.id} /> : activeTab === "Activity" ? <div style={{ display: "grid", gap: 16 }}><ActivitySection title="Open Activities" items={openItems} tone={{ border: "#dbeafe", divider: "#e2e8f0", headerBg: "#eff6ff", headerColor: "#1d4ed8", iconColor: "#1d4ed8", iconBg: "#dbeafe", countBg: "#dbeafe", emptyBg: "#f8fbff" }} /><ActivitySection title="Closed Activities" items={closedItems} tone={{ border: "#fde7c7", divider: "#f3e3c1", headerBg: "#fffbeb", headerColor: "#b45309", iconColor: "#b45309", iconBg: "#fef3c7", countBg: "#fef3c7", emptyBg: "#fffdfa" }} /></div> : Object.entries(grouped).map(([day, items]) => <div key={day} style={{ marginBottom: 20 }}><div style={{ marginBottom: 10, fontSize: 13, fontWeight: 700, color: "#475569" }}>{fmtDate(day)}</div>{items.map((activity) => { const Icon = ICON_MAP[activity.type] || FileText; return <div key={activity.id} style={{ display: "flex", gap: 12, marginBottom: 12 }}><div style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #dbe2ea", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} /></div><div style={{ padding: "10px 14px", borderRadius: 14, border: "1px solid #e6eaf2", background: "#fff", flex: 1 }}><div style={{ fontWeight: 700 }}>{activity.notes || "Untitled"}</div><div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>{classify(activity)} · {fmtDateTime(activity.date)}</div></div></div>; })}</div>)}</div></div>;
 }
-const LeftPanel = ({ lead }) => {
-  const initials = getInitials(lead.name); const meta = getStatusMeta(lead.status); const fields = buildLeadFields(lead);
-  return <div style={{ overflowY: "auto", height: "100%", padding: "0 0 20px" }}><div style={{ background: "linear-gradient(135deg, #f8faff 0%, #eef2ff 100%)", padding: "16px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 12 }}><div style={{ width: 50, height: 50, borderRadius: "50%", background: lead.avatarBg || "#4f46e5", color: "white", fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{initials}</div><div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>{lead.name}</div>{lead.company && <div style={{ fontSize: 12, color: "#6b7280" }}>{lead.company}</div>}<span style={{ marginTop: 4, display: "inline-block", padding: "2px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700, background: meta.bg, color: meta.color }}>{formatStatus(lead.status)}</span><div style={{ display: "flex", gap: 8, marginTop: 8 }}><QuickActionLink href={`tel:${lead.phone}`} title="Call"><Phone size={14} /></QuickActionLink><QuickActionLink href={`mailto:${lead.email}`} title="Email"><Mail size={14} /></QuickActionLink><QuickActionLink href={`https://wa.me/${lead.phone?.replace(/\D/g, "")}`} title="WhatsApp" target="_blank" rel="noreferrer"><FaWhatsapp size={14} /></QuickActionLink></div></div></div><div style={{ padding: "16px 16px 0" }}><div style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>Contact Info</div>{fields.map((field) => <DetailField key={field.label} {...field} />)}</div></div>;
-};
+
+function DetailRow({ Icon, label, value, href }) {
+  return <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #f3f4f6" }}><div style={{ width: 24, height: 24, borderRadius: 7, background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={12} color="#6b7280" /></div><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>{label}</div>{href && value ? <a href={href} style={{ fontSize: 12.5, color: "#4f46e5", fontWeight: 500 }}>{value}</a> : <div style={{ fontSize: 12, color: "#111827", fontWeight: 500 }}>{value || EMPTY_VALUE}</div>}</div></div>;
+}
+
+function LeftPanel({ lead }) {
+  const meta = getStatusMeta(lead.status);
+
+  return <div style={{ overflowY: "auto", height: "100%" }}><div style={{ background: "linear-gradient(135deg, #f8faff 0%, #eef2ff 100%)", padding: 16, borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 12 }}><div style={{ width: 50, height: 50, borderRadius: "50%", background: lead.avatarBg || "#4f46e5", color: "white", fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{getInitials(lead.name)}</div><div><div style={{ fontSize: 15, fontWeight: 700 }}>{lead.name}</div><div style={{ fontSize: 12, color: "#6b7280" }}>{lead.company}</div><span style={{ marginTop: 4, display: "inline-block", padding: "2px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700, background: meta.bg, color: meta.color }}>{formatStatus(lead.status)}</span></div></div><div style={{ padding: 16 }}><DetailRow Icon={Mail} label="Email" value={lead.email} href={`mailto:${lead.email}`} /><DetailRow Icon={Phone} label="Phone" value={lead.phone} href={`tel:${lead.phone}`} /><DetailRow Icon={Briefcase} label="Company" value={lead.company} /><DetailRow Icon={Tag} label="Source" value={formatLeadSource(lead.source)} /><DetailRow Icon={UserCheck} label="Owner" value={lead.assignee} /><DetailRow Icon={Calendar} label="Follow-Up" value={lead.followUpDate ? fmtDate(lead.followUpDate) : "Not set"} /><DetailRow Icon={MapPin} label="Address" value={lead.address || [lead.city, lead.state, lead.zip, lead.country].filter(Boolean).join(", ")} /></div></div>;
+}
+
 function RightPanel({ leadId }) {
-  const [timeline, setTimeline] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(null);
+  const [timeline, setTimeline] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const fetchTimeline = useCallback(async () => {
-    if (!leadId) return; setLoading(true); setError(null);
-    try { const data = await leadsAPI.getTimeline(leadId); setTimeline(Array.isArray(data) ? data : []); } catch (e) { setError(e.message); } finally { setLoading(false); }
+    setLoading(true);
+    try {
+      const data = await leadsAPI.getTimeline(leadId);
+      setTimeline(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   }, [leadId]);
-  useEffect(() => { fetchTimeline(); }, [fetchTimeline]);
-  const groupedTimeline = groupEntriesByDate(timeline, (event) => event.date);
-  return <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}><div style={{ padding: "16px 18px 14px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)" }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9)" }}><Activity size={15} color="#4f46e5" strokeWidth={2} /></div><div><div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>Timeline History</div>{!loading && !error && <div style={{ fontSize: 11, color: "#9ca3af" }}>{timeline.length} event{timeline.length !== 1 ? "s" : ""}</div>}</div></div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><button type="button" title="Filter timeline" style={{ background: "#ffffff", border: "1px solid #d9deeb", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(15,23,42,0.04)" }}><Filter size={14} color="#475569" strokeWidth={2} /></button><button onClick={fetchTimeline} title="Refresh timeline" style={{ background: "#ffffff", border: "1px solid #d9deeb", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(15,23,42,0.04)" }}><RefreshCw size={13} color="#475569" strokeWidth={2} /></button></div></div><div style={{ flex: 1, overflowY: "auto", padding: "18px 18px 20px", background: "linear-gradient(180deg, #fcfdff 0%, #f8fafc 100%)" }}>{loading && <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "#9ca3af" }}><div style={{ width: 28, height: 28, border: "3px solid #e5e7eb", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite", marginBottom: 10 }} /><span style={{ fontSize: 12 }}>Loading timeline...</span></div>}{!loading && error && <div style={{ padding: 14, background: "#fff5f5", border: "1.5px solid #fecaca", borderRadius: 8, textAlign: "center" }}><AlertTriangle size={20} color="#ef4444" style={{ marginBottom: 6 }} /><div style={{ fontSize: 12, color: "#dc2626", fontWeight: 600 }}>Failed to load timeline</div><div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>{error}</div><button onClick={fetchTimeline} style={{ marginTop: 10, padding: "5px 12px", border: "none", borderRadius: 6, background: "#4f46e5", color: "white", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Retry</button></div>}{!loading && !error && timeline.length === 0 && <div style={{ textAlign: "center", padding: "48px 0", color: "#9ca3af" }}><Clock size={32} color="#d1d5db" /><p style={{ marginTop: 8, fontSize: 13 }}>No timeline events</p><span style={{ fontSize: 12 }}>Events will appear here as the lead progresses.</span></div>}{!loading && !error && timeline.length > 0 && <div style={{ position: "relative" }}><div style={{ position: "absolute", left: 15, top: 16, bottom: 16, width: 2, background: "linear-gradient(to bottom, #e5e7eb 0%, #e5e7eb 95%, transparent 100%)", borderRadius: 2 }} />{groupedTimeline.map((group) => <div key={group.key} style={{ marginBottom: 22 }}><TimelineDateBadge label={fmtDate(group.rawDate)} />{group.items.map((event, index) => <SideTimelineItem key={`${group.key}-${index}`} event={event} index={index} isLast={index === group.items.length - 1} />)}</div>)}</div>}</div><style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }`}</style></div>;
+
+  useEffect(() => {
+    fetchTimeline();
+  }, [fetchTimeline]);
+
+  return <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}><div style={{ padding: "16px 18px 14px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}><div style={{ fontSize: 13, fontWeight: 800 }}>Timeline History</div><button onClick={fetchTimeline} style={{ background: "#fff", border: "1px solid #d9deeb", borderRadius: 10, width: 34, height: 34 }}><RefreshCw size={13} /></button></div><div style={{ flex: 1, overflowY: "auto", padding: 18 }}>{loading ? <div>Loading timeline...</div> : timeline.map((event, index) => <div key={index} style={{ marginBottom: 16, padding: 12, borderRadius: 14, border: "1px solid #e6eaf2", background: "#fff" }}><div style={{ fontSize: 12, fontWeight: 800, color: "#4f46e5" }}>{event.type}</div><div style={{ marginTop: 4, fontSize: 12.5, color: "#334155" }}>{event.description || EMPTY_VALUE}</div><div style={{ marginTop: 6, fontSize: 11.5, color: "#94a3b8" }}>{fmtDateTime(event.date)}</div></div>)}</div></div>;
 }
-export function LeadDetailsModal({ lead, onClose }) {
+
+export default function LeadDetailsModal({ lead, onClose }) {
   const [animated, setAnimated] = useState(false);
-  useEffect(() => { const t = requestAnimationFrame(() => setAnimated(true)); return () => cancelAnimationFrame(t); }, []);
-  return <><div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)", zIndex: 500, opacity: animated ? 1 : 0, transition: "opacity 0.2s ease" }} /><div style={{ position: "fixed", inset: 0, zIndex: 501, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", pointerEvents: "none" }}><div onClick={(e) => e.stopPropagation()} style={{ pointerEvents: "all", width: "min(1200px, 96vw)", height: "min(780px, 92vh)", background: "white", borderRadius: 16, boxShadow: "0 24px 80px rgba(0,0,0,0.22)", display: "flex", flexDirection: "column", overflow: "hidden", transform: animated ? "scale(1) translateY(0)" : "scale(0.95) translateY(20px)", opacity: animated ? 1 : 0, transition: "transform 0.3s cubic-bezier(0.34,1.2,0.64,1), opacity 0.25s ease" }}><div style={{ padding: "13px 20px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, flexShrink: 0, background: "#fafafa" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}><button onClick={onClose} style={{ background: "none", border: "1.5px solid #e5e7eb", borderRadius: 6, padding: "6px", cursor: "pointer", display: "flex", alignItems: "center" }}><X size={15} color="#6b7280" strokeWidth={2} /></button></div></div><div style={{ flex: 1, display: "grid", gridTemplateColumns: "250px 1fr 360px", overflow: "hidden", minHeight: 0 }}><div style={{ borderRight: "1px solid #e5e7eb", overflow: "hidden", display: "flex", flexDirection: "column" }}><LeftPanel lead={lead} /></div><div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}><MiddlePanel lead={lead} /></div><div style={{ borderLeft: "1px solid #e5e7eb", background: "#fafbfc", overflow: "hidden", display: "flex", flexDirection: "column" }}><RightPanel leadId={lead.id} /></div></div></div></div></>;
+
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setAnimated(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+
+  return <><div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 500, opacity: animated ? 1 : 0 }} /><div style={{ position: "fixed", inset: 0, zIndex: 501, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, pointerEvents: "none" }}><div onClick={(event) => event.stopPropagation()} style={{ pointerEvents: "all", width: "min(1280px, 96vw)", height: "min(780px, 92vh)", background: "white", borderRadius: 16, boxShadow: "0 24px 80px rgba(0,0,0,0.22)", display: "flex", flexDirection: "column", overflow: "hidden", transform: animated ? "scale(1)" : "scale(0.95)", opacity: animated ? 1 : 0, transition: "all .2s ease" }}><div style={{ padding: "13px 20px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "flex-end", background: "#fafafa" }}><button onClick={onClose} style={{ background: "none", border: "1.5px solid #e5e7eb", borderRadius: 6, padding: 6 }}><X size={15} color="#6b7280" /></button></div><div style={{ flex: 1, display: "grid", gridTemplateColumns: "250px 1fr 360px", overflow: "hidden" }}><div style={{ borderRight: "1px solid #e5e7eb" }}><LeftPanel lead={lead} /></div><div style={{ overflow: "hidden" }}><MiddlePanel lead={lead} /></div><div style={{ borderLeft: "1px solid #e5e7eb", background: "#fafbfc" }}><RightPanel leadId={lead.id} /></div></div></div></div></>;
 }
-export default LeadDetailsModal;
