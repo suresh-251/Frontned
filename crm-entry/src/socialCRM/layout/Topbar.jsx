@@ -78,7 +78,7 @@ function TopbarBrandSwitcher() {
         <div className="absolute top-full mt-2 left-0 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden" style={{ left: "auto" }}>
           <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Your Brands</p>
-            <button onClick={() => { setOpen(false); navigate("brands"); }} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Manage →</button>
+            <button onClick={() => { setOpen(false); navigate("/crm/socialmedia/brands"); }} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Manage →</button>
           </div>
           <div className="max-h-52 overflow-y-auto">
             {brands.length === 0 && <p className="px-4 py-3 text-sm text-gray-500 text-center">No brands yet</p>}

@@ -1,7 +1,33 @@
 import { useRef, useState } from "react";
 import { useBrand } from "../context/BrandContext";
 import { uploadBrandLogo, getBrandLogoSrc } from "../api/brand.api";
+import { connectBrandChannel } from "../api/auth.api";
 import toast from "react-hot-toast";
+
+const PLATFORMS = [
+  {
+    id: "facebook",
+    label: "Facebook & Instagram",
+    description: "Pages, leads, and Instagram Business",
+    color: "blue",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+      </svg>
+    ),
+  },
+  {
+    id: "linkedin",
+    label: "LinkedIn",
+    description: "Company pages and organic posts",
+    color: "sky",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+      </svg>
+    ),
+  },
+];
 
 function initials(name = "") {
   return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
@@ -166,6 +192,8 @@ export default function BrandManager() {
   const [newLogoFile, setNewLogoFile] = useState(null);
   const [creating, setCreating] = useState(false);
   const [switching, setSwitching] = useState(null);
+  const [connectPanel, setConnectPanel] = useState(null); // brand slug with open panel
+  const [connectingPlatform, setConnectingPlatform] = useState(null); // "brandSlug:platform"
 
   const handleActivate = async (slug) => {
     setSwitching(slug);
@@ -332,6 +360,16 @@ export default function BrandManager() {
                         </button>
                       )}
                       <button
+                        onClick={() => setConnectPanel(connectPanel === brand.slug ? null : brand.slug)}
+                        className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all border ${connectPanel === brand.slug ? "text-green-700 bg-green-50 border-green-200" : "text-green-700 bg-green-50 hover:bg-green-100 border-green-200"}`}
+                        title="Connect social channels"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        Connect
+                      </button>
+                      <button
                         onClick={() => setEditBrand(brand)}
                         className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all"
                         title="Edit brand"
@@ -353,6 +391,52 @@ export default function BrandManager() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Connect Channels Panel */}
+                  {connectPanel === brand.slug && (
+                    <div className="border-t border-slate-100 px-5 py-4 bg-slate-50 rounded-b-2xl">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Connect Channels</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {PLATFORMS.map((p) => {
+                          const key = `${brand.slug}:${p.id}`;
+                          const isConnecting = connectingPlatform === key;
+                          return (
+                            <button
+                              key={p.id}
+                              disabled={isConnecting}
+                              onClick={async () => {
+                                setConnectingPlatform(key);
+                                try {
+                                  await connectBrandChannel(brand.slug, p.id);
+                                } catch {
+                                  toast.error("Failed to start connection");
+                                  setConnectingPlatform(null);
+                                }
+                              }}
+                              className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left hover:shadow-sm disabled:opacity-60 disabled:cursor-wait ${
+                                p.color === "blue"
+                                  ? "bg-blue-50 border-blue-200 hover:bg-blue-100 text-blue-800"
+                                  : "bg-sky-50 border-sky-200 hover:bg-sky-100 text-sky-800"
+                              }`}
+                            >
+                              <span className={p.color === "blue" ? "text-blue-600" : "text-sky-600"}>
+                                {isConnecting ? (
+                                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                                  </svg>
+                                ) : p.icon}
+                              </span>
+                              <div>
+                                <p className="text-xs font-bold">{isConnecting ? "Connecting..." : p.label}</p>
+                                <p className="text-[10px] opacity-70">{p.description}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

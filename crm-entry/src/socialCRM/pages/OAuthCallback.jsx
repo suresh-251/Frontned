@@ -16,10 +16,9 @@ export default function OAuthCallback() {
     const returnUrl = params.get("returnUrl");
     const message = params.get("message");
 
-    if (status === "connected") {
+    if (status === "connected_select_resource" || status === "connected") {
       toast.success("Account connected successfully 🎉");
 
-      // Check if user has brands set up; if not, force brand setup first
       getBrands()
         .then((brands) => {
           const hasActive = brands.some((b) => b.isActive);
@@ -30,9 +29,14 @@ export default function OAuthCallback() {
           }
         })
         .catch(() => {
-          // Cannot determine brand state — send to brand setup to be safe
           navigate("/crm/socialmedia/brand/setup", { replace: true });
         });
+      return;
+    }
+
+    if (status === "connected_create_resource") {
+      toast(message || "No page/account available. Create one in Meta, then reconnect.");
+      navigate("/crm/socialmedia/dashboard", { replace: true });
       return;
     }
 

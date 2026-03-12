@@ -47,3 +47,26 @@ export const connectPlatform = (platform) => {
     connect(platform);
   }
 };
+
+/**
+ * Connect a channel to a specific brand.
+ * 1. Activates the brand so OAuth callback assigns pages to it.
+ * 2. Redirects to the existing platform OAuth connect flow.
+ */
+export const connectBrandChannel = async (brandSlug, platform) => {
+  const token = localStorage.getItem("accessToken");
+  const returnUrl = "/crm/socialmedia/brands";
+
+  // Activate the brand first via existing endpoint
+  await api.post(`/brands/${brandSlug}/activate`);
+  localStorage.setItem("brandSlug", brandSlug);
+
+  if (platform === "facebook" || platform === "instagram") {
+    try { await api.post("/auth/facebook/revoke-permissions"); } catch { /* ignore */ }
+    window.location.href =
+      `${BASE_URL}/auth/facebook/connect?access_token=${encodeURIComponent(token)}&returnUrl=${encodeURIComponent(returnUrl)}`;
+  } else {
+    window.location.href =
+      `${BASE_URL}/auth/${platform}/connect?access_token=${encodeURIComponent(token)}&returnUrl=${encodeURIComponent(returnUrl)}`;
+  }
+};
