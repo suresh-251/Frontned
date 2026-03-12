@@ -214,3 +214,8 @@ button, a, input, select {
   animation: slideInRight 0.3s ease-out;
 }
 
+
+.sales-crm-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
