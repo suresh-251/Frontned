@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../api/apiClient";
 import { BASE_URL } from "../api/apiClient";
 import { useBrand } from "../context/BrandContext";
@@ -41,6 +41,17 @@ const PLATFORM_FILTER_OPTIONS = [
   { key: "LinkedIn",  label: "LinkedIn",  text: "text-purple-600", border: "border-purple-300", fill: "bg-purple-600" },
 ];
 
+const POST_SORT_OPTIONS = [
+  { key: "newest", label: "Newest First" },
+  { key: "oldest", label: "Oldest First" },
+  { key: "reach_desc", label: "Reach: High to Low" },
+  { key: "reach_asc", label: "Reach: Low to High" },
+  { key: "platform", label: "Platform (A-Z)" },
+  { key: "type", label: "Post Type (A-Z)" },
+];
+
+const DRAFTS_STORAGE_KEY = "social.postDrafts.v1";
+
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_NAMES   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
@@ -58,6 +69,51 @@ function parseAccountIds(raw) {
 function parseResults(raw) {
   if (!raw) return [];
   try { return JSON.parse(raw) ?? []; } catch { return []; }
+}
+
+function readDraftsFromStorage() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(DRAFTS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDraftsToStorage(drafts) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+  } catch {
+    // Ignore storage write failures (private mode / quota).
+  }
+}
+
+function getDraftsForBrand(brandSlug) {
+  if (!brandSlug) return [];
+  return readDraftsFromStorage()
+    .filter(draft => draft.brandSlug === brandSlug)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+function upsertDraftInStorage(draft) {
+  const allDrafts = readDraftsFromStorage();
+  const idx = allDrafts.findIndex(d => d.id === draft.id && d.brandSlug === draft.brandSlug);
+  if (idx >= 0) allDrafts[idx] = draft;
+  else allDrafts.push(draft);
+  writeDraftsToStorage(allDrafts);
+}
+
+function removeDraftFromStorage(brandSlug, draftId) {
+  const allDrafts = readDraftsFromStorage();
+  const filtered = allDrafts.filter(d => !(d.brandSlug === brandSlug && d.id === draftId));
+  writeDraftsToStorage(filtered);
+}
+
+function getPostReach(post = {}) {
+  return parseResults(post.postResultsJson).reduce((sum, result) => sum + (result.reach ?? 0), 0);
 }
 function getPostPlatforms(post = {}) {
   const fromExplicit = parsePlatforms(post.platforms).map(normPlatform).filter(Boolean);
@@ -86,6 +142,35 @@ function getCalendarDays(year, month) {
   for (let i = 1; i <= daysInMonth; i++) days.push(i);
   while (days.length % 7 !== 0) days.push(null);
   return days;
+}
+
+function getTimeValue(post) {
+  const ts = new Date(getPostDate(post)).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function comparePosts(a, b, sortBy) {
+  let diff = 0;
+
+  if (sortBy === "oldest") {
+    diff = getTimeValue(a) - getTimeValue(b);
+  } else if (sortBy === "reach_desc") {
+    diff = getPostReach(b) - getPostReach(a);
+  } else if (sortBy === "reach_asc") {
+    diff = getPostReach(a) - getPostReach(b);
+  } else if (sortBy === "platform") {
+    const aPlatform = getPostPlatforms(a)[0] || "";
+    const bPlatform = getPostPlatforms(b)[0] || "";
+    diff = aPlatform.localeCompare(bPlatform);
+  } else if (sortBy === "type") {
+    diff = (a.postType || "").localeCompare(b.postType || "");
+  } else {
+    // default: newest first
+    diff = getTimeValue(b) - getTimeValue(a);
+  }
+
+  if (diff !== 0) return diff;
+  return getTimeValue(b) - getTimeValue(a);
 }
 
 function StatusTabIcon({ type, cls = "w-4 h-4" }) {
@@ -721,8 +806,14 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
   const [showPreview, setShowPreview]     = useState(false);
   const [previewPlatform, setPreviewPl]   = useState("Facebook");
   const [filePreviewUrls, setPreviewUrls] = useState([]);
+  const [drafts, setDrafts]               = useState([]);
+  const [editingDraftId, setEditingDraftId] = useState(null);
+  const [draftNotice, setDraftNotice]     = useState("");
 
   const currentType = POST_TYPES.find(t => t.key === mode);
+  const refreshDrafts = useCallback(() => {
+    setDrafts(getDraftsForBrand(activeBrand?.slug));
+  }, [activeBrand?.slug]);
 
   useEffect(() => {
     if (!activeBrand?.slug) { setALoading(false); return; }
@@ -737,6 +828,12 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
       .catch(() => setAccounts([]))
       .finally(() => setALoading(false));
   }, [activeBrand?.slug]);
+
+  useEffect(() => {
+    refreshDrafts();
+    setEditingDraftId(null);
+    setDraftNotice("");
+  }, [refreshDrafts]);
 
   useEffect(() => { setFiles([]); setPreviewUrls([]); }, [mode]);
 
@@ -767,6 +864,88 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   })();
 
+  const resetComposer = () => {
+    setMode("Text");
+    setContent("");
+    setFiles([]);
+    setDocTitle("");
+    setSched(false);
+    setScheduledAt("");
+    setSelected(new Set());
+    setResults(null);
+    setError("");
+    setEditingDraftId(null);
+    setDraftNotice("");
+  };
+
+  const loadDraftForEdit = (draft) => {
+    setMode(draft.mode || "Text");
+    setContent(draft.content || "");
+    setDocTitle(draft.documentTitle || "");
+    setSched(Boolean(draft.scheduleEnabled));
+    setScheduledAt(draft.scheduleEnabled ? (draft.scheduledAt || "") : "");
+    setSelected(new Set(draft.targetAccountIds || []));
+    setFiles([]);
+    setResults(null);
+    setError("");
+    setEditingDraftId(draft.id);
+    setDraftNotice(
+      draft.mediaFileNames?.length
+        ? "Draft loaded. Re-upload media files before posting."
+        : "Draft loaded."
+    );
+  };
+
+  const removeDraft = (draftId) => {
+    if (!activeBrand?.slug) return;
+    removeDraftFromStorage(activeBrand.slug, draftId);
+    refreshDrafts();
+    if (editingDraftId === draftId) {
+      setEditingDraftId(null);
+    }
+    setDraftNotice("Draft deleted.");
+  };
+
+  const saveDraft = () => {
+    if (!activeBrand?.slug) {
+      setError("Select an active brand first.");
+      return;
+    }
+    if (!content.trim() && !documentTitle.trim() && !selected.size && !scheduleEnabled && !files.length) {
+      setError("Write something or choose settings before saving draft.");
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const existing = drafts.find(d => d.id === editingDraftId);
+    const draftId = existing?.id || `draft_${Date.now()}`;
+
+    const draft = {
+      id: draftId,
+      brandSlug: activeBrand.slug,
+      mode,
+      content: content || "",
+      documentTitle: documentTitle || "",
+      scheduleEnabled,
+      scheduledAt: scheduleEnabled ? (scheduledAt || "") : "",
+      targetAccountIds: [...selected],
+      mediaFileNames: files.map(file => file.name),
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: nowIso,
+    };
+
+    upsertDraftInStorage(draft);
+    refreshDrafts();
+    setEditingDraftId(draftId);
+    setResults(null);
+    setError("");
+    setDraftNotice(
+      files.length
+        ? "Draft saved. Media files are not stored in draft, re-upload before posting."
+        : "Draft saved successfully."
+    );
+  };
+
   const submit = async () => {
     if (!selected.size)                               { setError("Select at least one account"); return; }
     if (currentType?.needsMedia && !files.length)     { setError(`Select a file for ${mode} post`); return; }
@@ -790,6 +969,11 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
         headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
       });
       setResults(res.data);
+      if (editingDraftId && activeBrand?.slug) {
+        removeDraftFromStorage(activeBrand.slug, editingDraftId);
+        setEditingDraftId(null);
+        refreshDrafts();
+      }
       if (!scheduleEnabled) { setContent(""); setFiles([]); setSelected(new Set()); }
       onPosted?.({ scheduled: scheduleEnabled });
     } catch (e) {
@@ -877,6 +1061,53 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
               )}
             </div>
 
+            {/* Drafts */}
+            <div className="bg-white rounded-xl border border-gray-200 p-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-semibold text-gray-600">Saved Drafts</span>
+                <button type="button" onClick={resetComposer}
+                  className="text-[11px] font-semibold text-gray-500 hover:text-gray-700 hover:underline">
+                  New Draft
+                </button>
+              </div>
+
+              {drafts.length === 0 ? (
+                <p className="text-[11px] text-gray-400">No drafts yet. Use Save as Draft to keep unfinished posts.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
+                  {drafts.map(draft => {
+                    const title = draft.content?.trim()
+                      ? draft.content.trim().slice(0, 56)
+                      : (draft.documentTitle?.trim() ? draft.documentTitle.trim().slice(0, 56) : `${draft.mode} draft`);
+                    const isEditing = draft.id === editingDraftId;
+                    return (
+                      <div key={draft.id}
+                        className={`rounded-lg border px-2.5 py-2 flex items-center gap-2 ${isEditing ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-gray-50"}`}>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-semibold text-gray-700 truncate">{title}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {draft.mode} · {fmtLocal(draft.updatedAt)}{draft.mediaFileNames?.length ? " · media re-upload needed" : ""}
+                          </p>
+                        </div>
+
+                        <button type="button" onClick={() => loadDraftForEdit(draft)}
+                          className={`px-2 py-1 rounded text-[10px] font-semibold ${isEditing ? "bg-blue-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-100"}`}>
+                          {isEditing ? "Editing" : "Edit"}
+                        </button>
+
+                        <button type="button" onClick={() => removeDraft(draft.id)}
+                          className="px-2 py-1 rounded text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100">
+                          Delete
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {draftNotice && <p className="text-[10px] text-blue-600 mt-2">{draftNotice}</p>}
+            </div>
+
             {/* Post type */}
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-1.5">Post Type</p>
@@ -932,10 +1163,16 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
               </div>
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-400">{selected.size > 0 ? `${selected.size} account${selected.size > 1 ? "s" : ""} selected` : "No accounts selected"}</p>
-                <button onClick={submit} disabled={posting || !selected.size}
-                  className="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm">
-                  {posting ? (<><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>{scheduleEnabled ? "Scheduling…" : "Posting…"}</>) : scheduleEnabled ? "📅 Schedule" : "🚀 Post Now"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={saveDraft} disabled={posting}
+                    className="px-3.5 py-2 bg-white text-gray-700 rounded-xl font-semibold border border-gray-200 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-xs shadow-sm">
+                    {editingDraftId ? "Update Draft" : "Save as Draft"}
+                  </button>
+                  <button onClick={submit} disabled={posting || !selected.size}
+                    className="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm">
+                    {posting ? (<><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>{scheduleEnabled ? "Scheduling…" : "Posting…"}</>) : scheduleEnabled ? "📅 Schedule" : "🚀 Post Now"}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1197,11 +1434,14 @@ export default function PostHistory() {
   const [tab, setTab]             = useState("completed");
   const [viewMode, setViewMode]   = useState("table");
   const [platformFilter, setPlatformFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("newest");
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [hoveredPlatformFilter, setHoveredPlatformFilter] = useState(null);
   const [showCompose, setCompose] = useState(false);
   const [editingPost, setEditing] = useState(null);
   const [deletingPost, setDeleting] = useState(null);
   const [deleteLoading, setDelLoad] = useState(false);
+  const sortMenuRef = useRef(null);
 
   const today = new Date();
   const [calYear, setCalYear]   = useState(today.getFullYear());
@@ -1243,6 +1483,27 @@ export default function PostHistory() {
 
   useEffect(() => { loadScheduled(); loadHistory(1); }, [loadScheduled, loadHistory]);
 
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (!sortMenuRef.current) return;
+      if (!sortMenuRef.current.contains(e.target)) {
+        setSortMenuOpen(false);
+      }
+    };
+    const handleEscape = (e) => {
+      if (e.key === "Escape") setSortMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("touchstart", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
   const refresh = () => { loadScheduled(); loadHistory(historyPage); };
 
   const cancelPost = async (id) => {
@@ -1273,13 +1534,20 @@ export default function PostHistory() {
     return posts.filter(post => getPostPlatforms(post).includes(platformFilter));
   }, [platformFilter]);
 
+  const sortPosts = useCallback((posts) => {
+    const sorted = [...posts];
+    sorted.sort((a, b) => comparePosts(a, b, sortBy));
+    return sorted;
+  }, [sortBy]);
+
   const completed = history.filter(p => p.status === "Completed");
   const failed    = history.filter(p => p.status === "Failed");
   const allPosts  = [...scheduled, ...history];
-  const filteredCompleted = filterByPlatform(completed);
-  const filteredFailed    = filterByPlatform(failed);
-  const filteredScheduled = filterByPlatform(scheduled);
-  const filteredAllPosts  = filterByPlatform(allPosts);
+  const filteredCompleted = sortPosts(filterByPlatform(completed));
+  const filteredFailed    = sortPosts(filterByPlatform(failed));
+  const filteredScheduled = sortPosts(filterByPlatform(scheduled));
+  const filteredAllPosts  = sortPosts(filterByPlatform(allPosts));
+  const activeSortOption = POST_SORT_OPTIONS.find(option => option.key === sortBy) ?? POST_SORT_OPTIONS[0];
 
   const counts = { completed: completed.length, scheduled: scheduled.length, failed: failed.length };
 
@@ -1334,29 +1602,72 @@ export default function PostHistory() {
           </button>
         </div>
 
-        {/* Platform filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {PLATFORM_FILTER_OPTIONS.map(option => {
-            const active = platformFilter === option.key;
-            const hovered = hoveredPlatformFilter === option.key;
-            return (
-              <button
-                key={option.key}
-                onClick={() => setPlatformFilter(option.key)}
-                onMouseEnter={() => setHoveredPlatformFilter(option.key)}
-                onMouseLeave={() => setHoveredPlatformFilter(null)}
-                onBlur={() => setHoveredPlatformFilter(null)}
-                className={`relative overflow-hidden px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${option.border}`}
-              >
-                <span
-                  className={`pointer-events-none absolute inset-0 ${option.fill} ${active ? "transition-none" : "transition-transform duration-700 ease-in-out"} ${(active || hovered) ? "scale-x-100 origin-left" : "scale-x-0 origin-left"}`}
-                />
-                <span className={`relative z-10 transition-colors duration-200 ${(active || hovered) ? "text-white" : option.text}`}>
-                  {option.label}
-                </span>
-              </button>
-            );
-          })}
+        {/* Platform filters + sort */}
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {PLATFORM_FILTER_OPTIONS.map(option => {
+              const active = platformFilter === option.key;
+              const hovered = hoveredPlatformFilter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  onClick={() => setPlatformFilter(option.key)}
+                  onMouseEnter={() => setHoveredPlatformFilter(option.key)}
+                  onMouseLeave={() => setHoveredPlatformFilter(null)}
+                  onBlur={() => setHoveredPlatformFilter(null)}
+                  className={`relative overflow-hidden px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${option.border}`}
+                >
+                  <span
+                    className={`pointer-events-none absolute inset-0 ${option.fill} ${active ? "transition-none" : "transition-transform duration-700 ease-in-out"} ${(active || hovered) ? "scale-x-100 origin-left" : "scale-x-0 origin-left"}`}
+                  />
+                  <span className={`relative z-10 transition-colors duration-200 ${(active || hovered) ? "text-white" : option.text}`}>
+                    {option.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div ref={sortMenuRef} className="relative ml-auto">
+            <button
+              type="button"
+              onClick={() => setSortMenuOpen(prev => !prev)}
+              aria-haspopup="listbox"
+              aria-expanded={sortMenuOpen}
+              className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 shadow-sm"
+            >
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Sort by</span>
+              <span className="text-xs font-semibold text-gray-700">{activeSortOption.label}</span>
+              <svg className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-300 ${sortMenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <div
+              className={`absolute right-0 top-full mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-20 origin-top-right transition-all duration-200 ${sortMenuOpen ? "opacity-100 scale-100 translate-y-0 pointer-events-auto" : "opacity-0 scale-95 -translate-y-1 pointer-events-none"}`}
+            >
+              <div role="listbox" aria-label="Sort posts" className="py-1">
+                {POST_SORT_OPTIONS.map(option => {
+                  const selected = sortBy === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => { setSortBy(option.key); setSortMenuOpen(false); }}
+                      className={`w-full px-3 py-2 text-left text-xs font-medium flex items-center justify-between transition-colors ${selected ? "text-blue-700 bg-blue-50" : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"}`}
+                    >
+                      <span>{option.label}</span>
+                      {selected && (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Content */}
