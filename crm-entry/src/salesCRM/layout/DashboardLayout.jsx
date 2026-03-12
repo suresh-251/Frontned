@@ -9,7 +9,7 @@ const DashboardLayout = () => {
       <Topbar />
 
       {/* Page Content */}
-      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 p-6 pt-20">
+      <main className="sales-crm-scroll flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 p-6 pt-20 overscroll-y-contain">
         <Outlet />
       </main>
 
@@ -18,3 +18,4 @@ const DashboardLayout = () => {
 };
 
 export default DashboardLayout;
+

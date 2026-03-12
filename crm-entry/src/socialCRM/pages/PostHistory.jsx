@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import api from "../api/apiClient";
 import { BASE_URL } from "../api/apiClient";
 import { useBrand } from "../context/BrandContext";
@@ -23,9 +23,9 @@ const PLATFORM_META = {
 
 // Tabs: Published first, then Scheduled, then Failed
 const STATUS_TABS = [
-  { key: "completed", label: "Published", badge: "bg-green-100 text-green-700" },
-  { key: "scheduled", label: "Scheduled", badge: "bg-blue-100 text-blue-700"   },
-  { key: "failed",    label: "Failed",    badge: "bg-red-100 text-red-700"     },
+  { key: "completed", label: "Published", badge: "bg-green-100 text-green-700", icon: "published", iconColor: "text-green-600" },
+  { key: "scheduled", label: "Scheduled", badge: "bg-blue-100 text-blue-700",   icon: "scheduled", iconColor: "text-blue-600" },
+  { key: "failed",    label: "Failed",    badge: "bg-red-100 text-red-700",     icon: "failed", iconColor: "text-red-600" },
 ];
 
 const PLATFORM_COLORS = {
@@ -33,6 +33,13 @@ const PLATFORM_COLORS = {
   Instagram: "bg-pink-100 text-pink-700",
   LinkedIn:  "bg-indigo-100 text-indigo-700",
 };
+
+const PLATFORM_FILTER_OPTIONS = [
+  { key: "All",       label: "All",       text: "text-slate-600",  border: "border-slate-300",  fill: "bg-slate-600" },
+  { key: "Instagram", label: "Instagram", text: "text-pink-600",   border: "border-pink-300",   fill: "bg-gradient-to-r from-orange-500 to-pink-500" },
+  { key: "Facebook",  label: "Facebook",  text: "text-blue-600",   border: "border-blue-300",   fill: "bg-blue-600" },
+  { key: "LinkedIn",  label: "LinkedIn",  text: "text-purple-600", border: "border-purple-300", fill: "bg-purple-600" },
+];
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_NAMES   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -52,6 +59,16 @@ function parseResults(raw) {
   if (!raw) return [];
   try { return JSON.parse(raw) ?? []; } catch { return []; }
 }
+function getPostPlatforms(post = {}) {
+  const fromExplicit = parsePlatforms(post.platforms).map(normPlatform).filter(Boolean);
+  const fromResults = parseResults(post.postResultsJson)
+    .map(r => normPlatform(r.platform || (r.accountId || "").split("_")[0]))
+    .filter(Boolean);
+  const fromTargets = parseAccountIds(post.targetAccountIds)
+    .map(id => normPlatform((id || "").split("_")[0]))
+    .filter(Boolean);
+  return [...new Set([...fromExplicit, ...fromResults, ...fromTargets])];
+}
 function fmtLocal(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("en-IN", {
@@ -69,6 +86,28 @@ function getCalendarDays(year, month) {
   for (let i = 1; i <= daysInMonth; i++) days.push(i);
   while (days.length % 7 !== 0) days.push(null);
   return days;
+}
+
+function StatusTabIcon({ type, cls = "w-4 h-4" }) {
+  if (type === "published") {
+    return (
+      <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    );
+  }
+  if (type === "scheduled") {
+    return (
+      <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01m8.99-4a9 9 0 11-17.98 0 9 9 0 0117.98 0z" />
+    </svg>
+  );
 }
 
 // ── Platform SVG ───────────────────────────────────────────────────────────────
@@ -170,7 +209,7 @@ function PostCard({ post, onEdit, onDelete }) {
   return (
     <div className={`bg-white rounded-xl border border-gray-200 shadow-sm flex overflow-hidden border-l-4 ${statusColor} hover:shadow-md transition-shadow`}>
       {/* Thumbnail */}
-      <div className="flex-shrink-0 w-24 h-24 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
+      <div className="shrink-0 w-24 h-24 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
         {hasMedia ? (
           <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-24 h-24" />
         ) : (
@@ -247,7 +286,7 @@ function PostCard({ post, onEdit, onDelete }) {
                   )}
                 </div>
                 <a href={link.url} target="_blank" rel="noopener noreferrer"
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors">
+                  className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors">
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
@@ -299,7 +338,7 @@ function ScheduledCard({ post, cancellingId, onCancel }) {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex overflow-hidden border-l-4 border-l-blue-400 hover:shadow-md transition-shadow">
-      <div className="flex-shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
+      <div className="shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
         {hasMedia && (isImage || isVideo) ? (
           <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-20 h-20" />
         ) : (
@@ -400,7 +439,7 @@ function PostPreview({ platform, content, mode, brandName, filePreviewUrls }) {
       </div>
       <div className="p-2.5">
         <div className="flex items-center gap-1.5 mb-1.5">
-          <div className="w-5 h-5 bg-gradient-to-br from-pink-500 to-purple-600 rounded-full" />
+          <div className="w-5 h-5 bg-linear-to-br from-pink-500 to-purple-600 rounded-full" />
           <span className="font-semibold text-gray-900 text-[10px]">{brandName || "your_brand"}</span>
         </div>
         <p className="text-gray-700 leading-relaxed line-clamp-3 text-[10px]">{content || <span className="text-gray-300">Caption will appear here…</span>}</p>
@@ -480,7 +519,7 @@ function CalendarPostPopover({ post, onClose }) {
               {post.status === "Completed" ? "Published" : post.status === "Scheduled" ? "Scheduled" : "Failed"}
             </span>
           </div>
-          <button onClick={onClose} className="p-0.5 hover:bg-gray-100 rounded flex-shrink-0 text-gray-400">
+          <button onClick={onClose} className="p-0.5 hover:bg-gray-100 rounded shrink-0 text-gray-400">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -600,7 +639,7 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
         {days.map((day, i) => {
           const dayPosts = day ? (byDay[day] || []) : [];
           return (
-            <div key={i} className={`min-h-[110px] p-1.5 transition-colors relative
+            <div key={i} className={`min-h-27.5 p-1.5 transition-colors relative
               ${!day ? "bg-gray-50/60" : ""}
               ${isToday(day) ? "bg-blue-50/50" : day ? "hover:bg-gray-50/80" : ""}`}>
               {day && (
@@ -768,7 +807,7 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
               <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -929,7 +968,7 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
 
           {/* Preview panel (optional) */}
           {showPreview && (
-            <div className="w-60 border-l border-gray-200 bg-gray-50/80 p-3 overflow-y-auto flex-shrink-0">
+            <div className="w-60 border-l border-gray-200 bg-gray-50/80 p-3 overflow-y-auto shrink-0">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Preview</p>
               <div className="flex flex-wrap gap-1 mb-3">
                 {previewPlatforms.map(p => {
@@ -1002,7 +1041,7 @@ function PostTableRow({ post, onEdit, onDelete }) {
       {/* Thumbnail + Caption */}
       <td className="px-4 py-3">
         <div className="flex items-center gap-3 max-w-xs">
-          <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
+          <div className="shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
             {hasMedia
               ? <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-12 h-12" />
               : <div className="w-12 h-12 flex items-center justify-center text-xl">
@@ -1044,7 +1083,7 @@ function PostTableRow({ post, onEdit, onDelete }) {
           : <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">✗ Failed</span>
         }
         {post.status === "Failed" && post.errorMessage && (
-          <p className="text-[10px] text-red-400 mt-0.5 max-w-[120px] truncate" title={post.errorMessage}>{post.errorMessage}</p>
+          <p className="text-[10px] text-red-400 mt-0.5 max-w-30 truncate" title={post.errorMessage}>{post.errorMessage}</p>
         )}
       </td>
 
@@ -1058,10 +1097,10 @@ function PostTableRow({ post, onEdit, onDelete }) {
               <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline group/link">
                 <PlatformSvg p={link.platform} cls="w-3.5 h-3.5" />
-                <span className="truncate max-w-[130px]">
+                <span className="truncate max-w-32.5">
                   {link.platform}{link.accountName ? ` · ${link.accountName}` : ""}
                 </span>
-                <svg className="w-3 h-3 opacity-0 group-hover/link:opacity-70 flex-shrink-0 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3 h-3 opacity-0 group-hover/link:opacity-70 shrink-0 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
               </a>
@@ -1157,6 +1196,8 @@ export default function PostHistory() {
 
   const [tab, setTab]             = useState("completed");
   const [viewMode, setViewMode]   = useState("table");
+  const [platformFilter, setPlatformFilter] = useState("All");
+  const [hoveredPlatformFilter, setHoveredPlatformFilter] = useState(null);
   const [showCompose, setCompose] = useState(false);
   const [editingPost, setEditing] = useState(null);
   const [deletingPost, setDeleting] = useState(null);
@@ -1227,9 +1268,18 @@ export default function PostHistory() {
     setHistory(prev => prev.map(p => p.id === id ? { ...p, content: newContent } : p));
   };
 
+  const filterByPlatform = useCallback((posts) => {
+    if (platformFilter === "All") return posts;
+    return posts.filter(post => getPostPlatforms(post).includes(platformFilter));
+  }, [platformFilter]);
+
   const completed = history.filter(p => p.status === "Completed");
   const failed    = history.filter(p => p.status === "Failed");
   const allPosts  = [...scheduled, ...history];
+  const filteredCompleted = filterByPlatform(completed);
+  const filteredFailed    = filterByPlatform(failed);
+  const filteredScheduled = filterByPlatform(scheduled);
+  const filteredAllPosts  = filterByPlatform(allPosts);
 
   const counts = { completed: completed.length, scheduled: scheduled.length, failed: failed.length };
 
@@ -1273,6 +1323,7 @@ export default function PostHistory() {
           {STATUS_TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-all ${tab === t.key ? "border-blue-600 text-blue-600 bg-blue-50" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100"}`}>
+              <StatusTabIcon type={t.icon} cls={`w-4 h-4 ${t.iconColor}`} />
               {t.label}
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${t.badge}`}>{counts[t.key]}</span>
             </button>
@@ -1283,6 +1334,31 @@ export default function PostHistory() {
           </button>
         </div>
 
+        {/* Platform filters */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {PLATFORM_FILTER_OPTIONS.map(option => {
+            const active = platformFilter === option.key;
+            const hovered = hoveredPlatformFilter === option.key;
+            return (
+              <button
+                key={option.key}
+                onClick={() => setPlatformFilter(option.key)}
+                onMouseEnter={() => setHoveredPlatformFilter(option.key)}
+                onMouseLeave={() => setHoveredPlatformFilter(null)}
+                onBlur={() => setHoveredPlatformFilter(null)}
+                className={`relative overflow-hidden px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${option.border}`}
+              >
+                <span
+                  className={`pointer-events-none absolute inset-0 ${option.fill} ${active ? "transition-none" : "transition-transform duration-700 ease-in-out"} ${(active || hovered) ? "scale-x-100 origin-left" : "scale-x-0 origin-left"}`}
+                />
+                <span className={`relative z-10 transition-colors duration-200 ${(active || hovered) ? "text-white" : option.text}`}>
+                  {option.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Content */}
         {viewMode === "calendar" ? (
           <CalendarView year={calYear} month={calMonth}
@@ -1291,23 +1367,30 @@ export default function PostHistory() {
             onPrevYear={() => setCalYear(y => y - 1)}
             onNextYear={() => setCalYear(y => y + 1)}
             onSetYear={(y) => { setCalYear(y); if (y === new Date().getFullYear()) setCalMonth(new Date().getMonth()); }}
-            posts={allPosts} tab={tab} />
+            posts={filteredAllPosts} tab={tab} />
         ) : (
           <>
             {/* Published / Failed — table */}
             {(tab === "completed" || tab === "failed") && (
               historyLoading ? <LoadingCard /> :
-              (tab === "completed" ? completed : failed).length === 0
-                ? <EmptyCard icon={tab === "completed" ? "✅" : "❌"} msg={tab === "completed" ? "No published posts yet." : "No failed posts."} />
-                : <PostTable posts={tab === "completed" ? completed : failed} onEdit={setEditing} onDelete={setDeleting} />
+              (tab === "completed" ? filteredCompleted : filteredFailed).length === 0
+                ? <EmptyCard
+                    icon={tab === "completed" ? "✅" : "❌"}
+                    msg={tab === "completed"
+                      ? (platformFilter === "All" ? "No published posts yet." : `No published ${platformFilter} posts yet.`)
+                      : (platformFilter === "All" ? "No failed posts." : `No failed ${platformFilter} posts.`)}
+                  />
+                : <PostTable posts={tab === "completed" ? filteredCompleted : filteredFailed} onEdit={setEditing} onDelete={setDeleting} />
             )}
 
             {/* Scheduled — card list */}
             {tab === "scheduled" && (
               scheduledLoading ? <LoadingCard /> :
-              scheduled.length === 0 ? <EmptyCard icon="🗓" msg="No scheduled posts." /> :
+              filteredScheduled.length === 0
+                ? <EmptyCard icon="🗓" msg={platformFilter === "All" ? "No scheduled posts." : `No scheduled ${platformFilter} posts.`} />
+                :
               <div className="space-y-2">
-                {scheduled.map(post => (
+                {filteredScheduled.map(post => (
                   <ScheduledCard key={post.id} post={post} cancellingId={cancellingId} onCancel={cancelPost} />
                 ))}
               </div>
