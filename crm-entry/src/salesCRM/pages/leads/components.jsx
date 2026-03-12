@@ -455,8 +455,8 @@ export function ImportModal({ onClose, onImport }) {
               <input ref={fileRef} type="file" accept=".csv" style={{ display: "none" }} onChange={(event) => handleFile(event.target.files[0])} />
               <div className="drop-icon"><IUpload s={32} c="#a5b4fc" /></div>
               <div className="drop-title">Drop your CSV here</div>
-              <div className="drop-sub">or click to browse � supports standard CRM exports</div>
-              <div className="drop-hint">name, email, phone, company, status, source, score, owner�</div>
+              <div className="drop-sub">or click to browse, supports standard CRM exports</div>
+              <div className="drop-hint">name, email, phone, company, status, source, score, owner</div>
             </div>
           )}
           {step === "map" && parsed && (
@@ -465,9 +465,9 @@ export function ImportModal({ onClose, onImport }) {
               {parsed.headers.map((header) => (
                 <div key={header} className="map-row">
                   <span className="map-col">{header}</span>
-                  <span className="map-sample">{parsed.rows[0]?.[header] || "�"}</span>
+                  <span className="map-sample">{parsed.rows[0]?.[header] || "-"}</span>
                   <select className="map-select" value={mapping[header] || ""} onChange={(event) => setMapping((current) => ({ ...current, [header]: event.target.value }))}>
-                    <option value="">� skip �</option>
+                    <option value="">- skip -</option>
                     {LEAD_FIELDS.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}
                   </select>
                 </div>
@@ -476,20 +476,20 @@ export function ImportModal({ onClose, onImport }) {
           )}
           {step === "preview" && (
             <div className="preview-wrap">
-              <div className="preview-info"><span className="preview-count">{parsed.rows.length} leads</span> ready to import{parsed.rows.length > 5 && <span className="preview-more"> � showing first 5</span>}</div>
+              <div className="preview-info"><span className="preview-count">{parsed.rows.length} leads</span> ready to import{parsed.rows.length > 5 && <span className="preview-more"> - showing first 5</span>}</div>
               <div className="preview-scroll">
                 <table className="preview-table">
                   <thead><tr>{Object.values(mapping).filter(Boolean).map((field) => <th key={field}>{LEAD_FIELDS.find((item) => item.key === field)?.label || field}</th>)}</tr></thead>
-                  <tbody>{parsed.rows.slice(0, 5).map((row, index) => <tr key={index}>{parsed.headers.filter((header) => mapping[header]).map((header) => <td key={header}>{row[header] || "�"}</td>)}</tr>)}</tbody>
+                  <tbody>{parsed.rows.slice(0, 5).map((row, index) => <tr key={index}>{parsed.headers.filter((header) => mapping[header]).map((header) => <td key={header}>{row[header] || "-"}</td>)}</tr>)}</tbody>
                 </table>
               </div>
             </div>
           )}
         </div>
         <div className="modal-footer">
-          {step !== "upload" && <button className="btn-ghost" onClick={() => setStep(step === "preview" ? "map" : "upload")}>? Back</button>}
+          {step !== "upload" && <button className="btn-ghost" onClick={() => setStep(step === "preview" ? "map" : "upload")}>Back</button>}
           <button className="btn-ghost" onClick={onClose} style={{ marginLeft: step === "upload" ? "auto" : "0" }}>Cancel</button>
-          {step === "map" && <button className="btn-primary" onClick={() => setStep("preview")} disabled={!Object.values(mapping).some(Boolean)}>Preview ?</button>}
+          {step === "map" && <button className="btn-primary" onClick={() => setStep("preview")} disabled={!Object.values(mapping).some(Boolean)}>Preview</button>}
           {step === "preview" && <button className="btn-primary" onClick={doImport}><IUpload s={12} />&ensp;Import {parsed.rows.length} Leads</button>}
         </div>
       </div>
@@ -776,6 +776,7 @@ export function KanbanBoard({ leads, groupBy, onUpdateLead, onOpenDetails, onAdj
     </div>
   );
 }
+
 
 
 

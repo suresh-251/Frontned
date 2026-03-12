@@ -20,7 +20,7 @@ export const makeInitialActivity = (leads) => {
 };
 
 export const fmtDate = (dateString) => {
-  if (!dateString) return "—";
+  if (!dateString) return "-";
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -34,14 +34,11 @@ export const offsetDay = (days) => new Date(Date.now() + days * 86400000).toISOS
 
 export function getFollowUpLabel(dateStr) {
   if (!dateStr) return null;
-
   const today = todayStr();
   const tomorrow = offsetDay(1);
-
   if (dateStr < today) return { label: fmtDate(dateStr), type: "overdue" };
   if (dateStr === today) return { label: "Today", type: "today" };
   if (dateStr === tomorrow) return { label: "Tomorrow", type: "tomorrow" };
-
   return { label: fmtDate(dateStr), type: "normal" };
 }
 
@@ -60,37 +57,26 @@ export function guessField(header) {
 export function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return { headers: [], rows: [] };
-
   const headers = lines[0].split(",").map((header) => header.replace(/^"|"$/g, "").trim());
   const rows = lines.slice(1).map((line) => {
     const cols = [];
     let current = "";
     let inQuotes = false;
-
     for (const character of line) {
-      if (character === '"') {
-        inQuotes = !inQuotes;
-      } else if (character === "," && !inQuotes) {
+      if (character === '"') inQuotes = !inQuotes;
+      else if (character === "," && !inQuotes) {
         cols.push(current.trim());
         current = "";
-      } else {
-        current += character;
-      }
+      } else current += character;
     }
-
     cols.push(current.trim());
     return headers.reduce((obj, header, index) => ({ ...obj, [header]: cols[index] || "" }), {});
   });
-
   return { headers, rows };
 }
 
 export function getInitials(name = "") {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2);
+  return name.split(" ").map((part) => part[0]).join("").slice(0, 2);
 }
 
 export function getScoreTier(score) {
@@ -100,6 +86,7 @@ export function getScoreTier(score) {
 }
 
 export function createLeadRecord(lead, index = 0) {
+  const addressParts = [lead.address, lead.street, lead.city, lead.state, lead.postalCode ?? lead.zip, lead.country].filter(Boolean);
   return {
     id: lead.id,
     name: lead.firstName || "Unknown Lead",
@@ -118,11 +105,11 @@ export function createLeadRecord(lead, index = 0) {
     followUpDate: lead.nextFollowUpAt ? lead.nextFollowUpAt.split("T")[0] : "",
     lastContacted: lead.lastContactedAt ? lead.lastContactedAt.split("T")[0] : "",
     respondedTo: "",
-    address: "",
-    city: "",
-    state: "",
-    zip: "",
-    country: "",
+    address: lead.address || lead.street || addressParts.join(", "),
+    city: lead.city || "",
+    state: lead.state || "",
+    zip: lead.postalCode || lead.zip || "",
+    country: lead.country || "",
   };
 }
 
