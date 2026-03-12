@@ -608,3 +608,21 @@
   margin-top: 6px;
   font-weight: 700;
 }
+
+.kanban-followup-date-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1.5px solid #dbe4f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.kanban-followup-date-input:focus {
+  outline: none;
+  border-color: var(--ci);
+  box-shadow: 0 0 0 3px var(--ci-ring);
+}

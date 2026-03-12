@@ -1,4 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   BarChart2,
@@ -139,7 +140,7 @@ export function FilterModal({ onClose, filters, activeFilterCount, onApply, assi
               <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Status</label>
               <select value={localFilters.status} onChange={(event) => updateFilter("status", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", cursor: "pointer" }}>
                 <option value="All">All Statuses</option>
-                {STATUS_LIST.map((status) => <option key={status} value={status}>{status}</option>)}
+                {STATUS_LIST.map((status) => <option key={status} value={status}>{formatStatus(status)}</option>)}
               </select>
             </div>
             <div style={{ marginBottom: "12px" }}>
@@ -150,7 +151,7 @@ export function FilterModal({ onClose, filters, activeFilterCount, onApply, assi
               </select>
             </div>
             <div style={{ marginBottom: "12px" }}>
-              <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Assigned To</label>
+              <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>Assignee</label>
               <select value={localFilters.assignee} onChange={(event) => updateFilter("assignee", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", cursor: "pointer" }}>
                 {["All", ...assignees].map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
               </select>
@@ -216,8 +217,52 @@ export function FilterModal({ onClose, filters, activeFilterCount, onApply, assi
 export function StatusCell({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  useClickOutside(ref, () => setOpen(false));
+  const menuRef = useRef(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 188, maxHeight: 260 });
   const meta = STATUS_META[value] || {};
+
+  const getMenuPos = (rect) => {
+    const preferredHeight = 260;
+    const gap = 8;
+    const viewportPadding = 12;
+    const minWidth = Math.max(188, rect.width);
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const availableAbove = rect.top - viewportPadding;
+    const openBelow = availableBelow >= 180 || availableBelow >= availableAbove;
+    const maxHeight = Math.max(160, Math.min(preferredHeight, openBelow ? availableBelow - gap : availableAbove - gap));
+    const top = openBelow
+      ? Math.max(viewportPadding, rect.bottom + gap)
+      : Math.max(viewportPadding, rect.top - maxHeight - gap);
+    const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - minWidth - viewportPadding);
+    return { top, left, width: minWidth, maxHeight };
+  };
+
+  useEffect(() => {
+    if (!open || !ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    setMenuPos(getMenuPos(rect));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event) => {
+      if (ref.current?.contains(event.target) || menuRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const reposition = () => {
+      if (!ref.current) return;
+      const rect = ref.current.getBoundingClientRect();
+      setMenuPos(getMenuPos(rect));
+    };
+    document.addEventListener("mousedown", close);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]);
 
   return (
     <div className="status-cell" ref={ref}>
@@ -226,8 +271,28 @@ export function StatusCell({ value, onChange }) {
         <span className="status-pill-label">{formatStatus(value)}</span>
         <span className="status-pill-caret"><IChevD s={9} c={meta.color} /></span>
       </button>
-      {open && (
-        <div className="status-menu">
+      {open && createPortal(
+        <div
+          className="status-menu"
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            top: menuPos.top,
+            left: menuPos.left,
+            minWidth: menuPos.width,
+            maxHeight: menuPos.maxHeight,
+            overflowY: "auto",
+            zIndex: 5000,
+            display: "grid",
+            gap: 2,
+            background: "#ffffff",
+            border: "1.5px solid #e5e7eb",
+            borderRadius: 12,
+            boxShadow: "0 18px 30px rgba(15, 23, 42, 0.14)",
+            padding: 6,
+            overscrollBehavior: "contain",
+          }}
+        >
           {STATUS_LIST.map((status) => {
             const currentMeta = STATUS_META[status];
             return (
@@ -237,7 +302,8 @@ export function StatusCell({ value, onChange }) {
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -271,21 +337,72 @@ export function SourceCell({ value, onChange }) {
 export function FollowUpCell({ value, onChange }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
-  useClickOutside(ref, () => setEditing(false));
+  const panelRef = useRef(null);
+  const [panelPos, setPanelPos] = useState(null);
   const info = value ? getFollowUpLabel(value) : null;
+
+  const getPanelPos = () => {
+    if (!ref.current) return null;
+    const rect = ref.current.getBoundingClientRect();
+    const panelHeight = 262;
+    const panelWidth = 232;
+    const viewportPadding = 12;
+    const gap = 8;
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const availableAbove = rect.top - viewportPadding;
+    const openBelow = availableBelow >= panelHeight || availableBelow >= availableAbove;
+    const top = openBelow
+      ? Math.max(viewportPadding, rect.bottom + gap)
+      : Math.max(viewportPadding, rect.top - Math.min(panelHeight, availableAbove - gap) - gap);
+    const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - panelWidth - viewportPadding);
+    return { top, left };
+  };
+
+  useLayoutEffect(() => {
+    if (!editing) return;
+    setPanelPos(getPanelPos());
+  }, [editing]);
+
+  useEffect(() => {
+    if (!editing) return;
+    const close = (event) => {
+      if (ref.current?.contains(event.target) || panelRef.current?.contains(event.target)) return;
+      setEditing(false);
+      setPanelPos(null);
+    };
+    const reposition = () => setPanelPos(getPanelPos());
+    document.addEventListener("mousedown", close);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [editing]);
+
+  const toggleEditing = () => {
+    if (editing) {
+      setEditing(false);
+      setPanelPos(null);
+      return;
+    }
+    setPanelPos(getPanelPos());
+    setEditing(true);
+  };
 
   return (
     <div className="followup-cell" ref={ref}>
-      <button onClick={() => setEditing((current) => !current)} className={`followup-btn ${!value ? "followup-btn--empty" : ""} ${info ? `followup-btn--${info.type}` : ""}`}>
+      <button onClick={toggleEditing} className={`followup-btn ${!value ? "followup-btn--empty" : ""} ${info ? `followup-btn--${info.type}` : ""}`}>
         {info?.type === "overdue" ? <AlertTriangle size={11} color="#dc2626" strokeWidth={2} aria-hidden="true" /> : <ICal s={11} c="#2563eb" />}
         {info ? <span>{info.label}</span> : <span>No follow-up</span>}
       </button>
-      {editing && (
-        <div className="followup-picker">
+      {editing && panelPos && createPortal(
+        <div className="followup-picker followup-picker--compact" ref={panelRef} style={{ position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 5000 }}>
           <div className="followup-quick">
-            <button onClick={() => { onChange(todayStr()); setEditing(false); }}>Today</button>
-            <button onClick={() => { onChange(offsetDay(1)); setEditing(false); }}>Tomorrow</button>
-            <button onClick={() => { onChange(offsetDay(3)); setEditing(false); }}>+3 days</button>
+            <button onClick={() => { onChange(todayStr()); setEditing(false); setPanelPos(null); }}>Today</button>
+            <button onClick={() => { onChange(offsetDay(1)); setEditing(false); setPanelPos(null); }}>Tomorrow</button>
+            <button onClick={() => { onChange(offsetDay(3)); setEditing(false); setPanelPos(null); }}>+3 days</button>
           </div>
 
           <DatePicker
@@ -294,31 +411,25 @@ export function FollowUpCell({ value, onChange }) {
               const iso = date.toISOString().split("T")[0];
               onChange(iso);
               setEditing(false);
+              setPanelPos(null);
             }}
             inline
+            showMonthDropdown
+            showYearDropdown
+            dropdownMode="select"
+            yearDropdownItemNumber={12}
+            calendarClassName="followup-datepicker"
           />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 }
-
-export function ScoreBar({ score, onAdjust }) {
-  const [hover, setHover] = useState(false);
+export function ScoreBar({ score }) {
   const tier = getScoreTier(score);
 
-  return (
-    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-      <div className={`score-badge score-badge--${tier}`}>{score}</div>
-      {hover && (
-        <div className="score-adj-menu">
-          {[-20, -10, +10, +20].map((delta) => (
-            <button key={delta} className="score-adj-btn" onClick={(event) => { event.stopPropagation(); onAdjust(delta); }}>{delta > 0 ? `+${delta}` : delta}</button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return <div className={`score-badge score-badge--${tier}`}>{score}</div>;
 }
 
 export function AddLeadDropdown({ onSelectType }) {
@@ -393,7 +504,7 @@ export function CreateLeadModal({ leadType, onClose, onSave }) {
           ))}
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Status</label>
-            <select value={form.status} onChange={(event) => handle("status", event.target.value)} style={{ ...inputStyle, background: "white" }}>{STATUS_LIST.map((status) => <option key={status}>{status}</option>)}</select>
+            <select value={form.status} onChange={(event) => handle("status", event.target.value)} style={{ ...inputStyle, background: "white" }}>{STATUS_LIST.map((status) => <option key={status} value={status}>{formatStatus(status)}</option>)}</select>
           </div>
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Source</label>
@@ -486,21 +597,106 @@ export function EditModal({ lead, onClose, onSave, onDelete, salesUsers = [], sa
 export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDetails, onAdjustScore }) {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
+  const [pendingFollowUpDrop, setPendingFollowUpDrop] = useState(null);
+  const boardRef = useRef(null);
+  const dragScrollRef = useRef({ direction: 0, rafId: null });
+  const followUpColumns = ["Past Follow-Ups", "Today", "Tomorrow", "Upcoming", "No Follow Up"];
+  const followUpMeta = {
+    "Past Follow-Ups": { color: "#dc2626", bg: "#fee2e2" },
+    Today: { color: "#ea580c", bg: "#ffedd5" },
+    Tomorrow: { color: "#16a34a", bg: "#dcfce7" },
+    Upcoming: { color: "#2563eb", bg: "#dbeafe" },
+    "No Follow Up": { color: "#64748b", bg: "#e2e8f0" },
+  };
 
   const grouped = useMemo(() => {
+    if (groupBy === "status") {
+      return STATUS_LIST.reduce((acc, status) => {
+        acc[status] = leads.filter((lead) => (lead.status || STATUS_LIST[0]) === status);
+        return acc;
+      }, {});
+    }
+
+    if (groupBy === "followUpDate") {
+      const map = followUpColumns.reduce((acc, label) => {
+        acc[label] = [];
+        return acc;
+      }, {});
+      const today = todayStr();
+      const tomorrow = offsetDay(1);
+      leads.forEach((lead) => {
+        if (!lead.followUpDate) map["No Follow Up"].push(lead);
+        else if (lead.followUpDate < today) map["Past Follow-Ups"].push(lead);
+        else if (lead.followUpDate === today) map.Today.push(lead);
+        else if (lead.followUpDate === tomorrow) map.Tomorrow.push(lead);
+        else map.Upcoming.push(lead);
+      });
+      return map;
+    }
+
     const map = {};
     leads.forEach((lead) => {
       let key = lead[groupBy];
-      if (groupBy === "followUpDate") {
-        if (!key) key = "No Follow Up";
-        else key = getFollowUpLabel(key)?.label || "Unknown";
-      }
       if (!key) key = "Unknown";
       if (!map[key]) map[key] = [];
       map[key].push(lead);
     });
     return map;
   }, [groupBy, leads]);
+
+  const columnKeys = useMemo(() => {
+    if (groupBy === "status") return STATUS_LIST;
+    if (groupBy === "followUpDate") return followUpColumns;
+    return Object.keys(grouped);
+  }, [groupBy, grouped]);
+
+  useEffect(() => () => {
+    if (dragScrollRef.current.rafId) cancelAnimationFrame(dragScrollRef.current.rafId);
+  }, []);
+
+  const stopAutoScroll = () => {
+    dragScrollRef.current.direction = 0;
+    if (dragScrollRef.current.rafId) {
+      cancelAnimationFrame(dragScrollRef.current.rafId);
+      dragScrollRef.current.rafId = null;
+    }
+  };
+
+  const startAutoScroll = (direction) => {
+    if (!boardRef.current) return;
+    dragScrollRef.current.direction = direction;
+    if (dragScrollRef.current.rafId) return;
+
+    const tick = () => {
+      const board = boardRef.current;
+      if (!board || !dragScrollRef.current.direction) {
+        dragScrollRef.current.rafId = null;
+        return;
+      }
+      board.scrollLeft += dragScrollRef.current.direction * 18;
+      dragScrollRef.current.rafId = requestAnimationFrame(tick);
+    };
+
+    dragScrollRef.current.rafId = requestAnimationFrame(tick);
+  };
+
+  const handleBoardDragOver = (event) => {
+    const board = boardRef.current;
+    if (!board) return;
+    const rect = board.getBoundingClientRect();
+    const edge = 96;
+    if (event.clientX > rect.right - edge) startAutoScroll(1);
+    else if (event.clientX < rect.left + edge) startAutoScroll(-1);
+    else stopAutoScroll();
+  };
+
+  const commitFollowUpDrop = (leadId, date) => {
+    if (!date) return;
+    onUpdateLead(leadId, "followUpDate", date);
+    setPendingFollowUpDrop(null);
+    setDraggedId(null);
+    setDragOverCol(null);
+  };
 
   return (
     <>
@@ -516,99 +712,136 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
           <select value={groupBy} onChange={(event) => setGroupBy(event.target.value)}>
             <option value="status">Status</option>
             <option value="followUpDate">Follow-Up</option>
-            <option value="assignee">Owner</option>
+            <option value="assignee">Assignee</option>
             <option value="source">Source</option>
           </select>
         </div>
       </div>
-      <div className="kanban-board">
-      {Object.keys(grouped).map((columnKey) => {
-        const meta = groupBy === "status" ? STATUS_META[columnKey] || { color: "#374151", bg: "#f3f4f6" } : { color: "#374151", bg: "#f3f4f6" };
-        const colLeads = grouped[columnKey] || [];
-        const isOver = dragOverCol === columnKey;
+      <div className="kanban-board" ref={boardRef} onDragOver={handleBoardDragOver} onDragEnd={stopAutoScroll} onDrop={stopAutoScroll}>
+        {columnKeys.map((columnKey) => {
+          const meta = groupBy === "status"
+            ? STATUS_META[columnKey] || { color: "#374151", bg: "#f3f4f6" }
+            : groupBy === "followUpDate"
+              ? followUpMeta[columnKey] || { color: "#374151", bg: "#f3f4f6" }
+              : { color: "#374151", bg: "#f3f4f6" };
+          const colLeads = grouped[columnKey] || [];
+          const isOver = dragOverCol === columnKey;
 
-        return (
-          <div
-            key={columnKey}
-            className={`kanban-column ${isOver ? "kanban-column--over" : ""}`}
-            style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}
-            onDragOver={(event) => { event.preventDefault(); setDragOverCol(columnKey); }}
-            onDragLeave={() => setDragOverCol(null)}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (draggedId) {
-                let nextValue = columnKey;
-                if (groupBy === "followUpDate") {
-                  if (columnKey === "Today") nextValue = todayStr();
-                  else if (columnKey === "Tomorrow") nextValue = offsetDay(1);
-                  else if (columnKey === "No Follow Up") nextValue = "";
+          return (
+            <div
+              key={columnKey}
+              className={`kanban-column ${isOver ? "kanban-column--over" : ""}`}
+              style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}
+              onDragOver={(event) => { event.preventDefault(); setDragOverCol(columnKey); }}
+              onDragLeave={() => setDragOverCol(null)}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (draggedId) {
+                  let nextValue = columnKey;
+                  if (groupBy === "followUpDate") {
+                    if (columnKey === "Past Follow-Ups") {
+                      setPendingFollowUpDrop({ leadId: draggedId, lane: columnKey, suggestedDate: offsetDay(-1), min: "", max: todayStr() });
+                      stopAutoScroll();
+                      return;
+                    }
+                    if (columnKey === "Upcoming") {
+                      setPendingFollowUpDrop({ leadId: draggedId, lane: columnKey, suggestedDate: offsetDay(3), min: offsetDay(2), max: "" });
+                      stopAutoScroll();
+                      return;
+                    }
+                    if (columnKey === "Today") nextValue = todayStr();
+                    else if (columnKey === "Tomorrow") nextValue = offsetDay(1);
+                    else if (columnKey === "No Follow Up") nextValue = "";
+                  }
+                  onUpdateLead(draggedId, groupBy, nextValue);
                 }
-                onUpdateLead(draggedId, groupBy, nextValue);
-              }
-              setDraggedId(null);
-              setDragOverCol(null);
-            }}
-          >
-            <div className="kanban-column__header">
-              <div>
-                <div className="kanban-column__label">{groupBy === "status" ? formatStatus(columnKey) : groupBy === "source" ? formatLeadSource(columnKey) : columnKey}</div>
-                <div className="kanban-column__sub">Drag and drop leads into this lane</div>
+                setDraggedId(null);
+                setDragOverCol(null);
+                stopAutoScroll();
+              }}
+            >
+              <div className="kanban-column__header">
+                <div>
+                  <div className="kanban-column__label">{groupBy === "status" ? formatStatus(columnKey) : groupBy === "source" ? formatLeadSource(columnKey) : columnKey}</div>
+                  <div className="kanban-column__sub">Drag and drop leads into this lane</div>
+                </div>
+                <span className="kanban-column__count">{colLeads.length}</span>
               </div>
-              <span className="kanban-column__count">{colLeads.length}</span>
-            </div>
 
-            <div className="kanban-column__list">
-              {colLeads.map((lead) => {
-                const initials = getInitials(lead.name);
-                const tier = getScoreTier(lead.score);
-                const scoreColors = { high: "#059669", mid: "#d97706", low: "#dc2626" };
-                const scoreBackgrounds = { high: "#d1fae5", mid: "#fef3c7", low: "#fee2e2" };
+              <div className="kanban-column__list">
+                {colLeads.map((lead) => {
+                  const initials = getInitials(lead.name);
+                  const tier = getScoreTier(lead.score);
+                  const scoreColors = { high: "#059669", mid: "#d97706", low: "#dc2626" };
+                  const scoreBackgrounds = { high: "#d1fae5", mid: "#fef3c7", low: "#fee2e2" };
 
-                return (
-                  <div
-                    key={lead.id}
-                    className={`kanban-card ${draggedId === lead.id ? "kanban-card--dragging" : ""}`}
-                    draggable
-                    onDragStart={(event) => { setDraggedId(lead.id); event.dataTransfer.effectAllowed = "move"; }}
-                    onClick={() => onOpenDetails(lead.id)}
-                  >
-                    <div className="kanban-card__top">
-                      <div className="kanban-card__identity">
-                        <div className="kanban-card__avatar" style={{ background: lead.avatarBg }}>{initials}</div>
-                        <div className="kanban-card__identity-text">
-                          <div className="kanban-card__name">{lead.name}</div>
-                          <div className="kanban-card__company">{lead.company}</div>
+                  return (
+                    <div
+                      key={lead.id}
+                      className={`kanban-card ${draggedId === lead.id ? "kanban-card--dragging" : ""}`}
+                      draggable
+                      onDragStart={(event) => { setDraggedId(lead.id); event.dataTransfer.effectAllowed = "move"; }}
+                      onDragEnd={() => { stopAutoScroll(); setDraggedId(null); setDragOverCol(null); }}
+                      onClick={() => onOpenDetails(lead.id)}
+                    >
+                      <div className="kanban-card__top">
+                        <div className="kanban-card__identity">
+                          <div className="kanban-card__avatar" style={{ background: lead.avatarBg }}>{initials}</div>
+                          <div className="kanban-card__identity-text">
+                            <div className="kanban-card__name">{lead.name}</div>
+                            <div className="kanban-card__company">{lead.company}</div>
+                          </div>
                         </div>
+                        <div className="kanban-card__score" style={{ background: scoreBackgrounds[tier], color: scoreColors[tier] }}>{lead.score}</div>
                       </div>
-                      <div className="kanban-card__score" style={{ background: scoreBackgrounds[tier], color: scoreColors[tier] }}>{lead.score}</div>
-                    </div>
 
-                    <div className="kanban-card__meta"><User size={10} /><span>{lead.assignee}</span></div>
-                    {lead.followUpDate && (() => {
-                      const info = getFollowUpLabel(lead.followUpDate);
-                      const color = info.type === "overdue" ? "#dc2626" : info.type === "today" ? "#d97706" : info.type === "tomorrow" ? "#0284c7" : "#6b7280";
-                      return <div className="kanban-card__followup" style={{ color }}><Calendar size={10} />{info.label}</div>;
-                    })()}
-                  </div>
-                );
-              })}
+                      <div className="kanban-card__meta"><User size={10} /><span>{lead.assignee}</span></div>
+                      {lead.followUpDate && (() => {
+                        const info = getFollowUpLabel(lead.followUpDate);
+                        const color = info.type === "overdue" ? "#dc2626" : info.type === "today" ? "#d97706" : info.type === "tomorrow" ? "#0284c7" : "#6b7280";
+                        return <div className="kanban-card__followup" style={{ color }}><Calendar size={10} />{info.label}</div>;
+                      })()}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {pendingFollowUpDrop && (
+        <div className="overlay" onClick={() => setPendingFollowUpDrop(null)}>
+          <div className="modal" style={{ width: 304, borderRadius: 14 }} onClick={(event) => event.stopPropagation()}>
+            <div className="modal-hdr">
+              <div>
+                <div className="modal-title">Set Follow-Up Date</div>
+                <div className="modal-sub">Choose a date for {pendingFollowUpDrop.lane}</div>
+              </div>
+              <button className="icon-btn modal-close" onClick={() => setPendingFollowUpDrop(null)}><IX s={15} /></button>
+            </div>
+            <div className="modal-body" style={{ padding: "12px 14px", display: "grid", gap: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "grid", gap: 6 }}>
+                Follow-Up Date
+                <input
+                  type="date"
+                  value={pendingFollowUpDrop.suggestedDate}
+                  min={pendingFollowUpDrop.min || undefined}
+                  max={pendingFollowUpDrop.max || undefined}
+                  className="kanban-followup-date-input"
+                  onChange={(event) => setPendingFollowUpDrop((current) => ({ ...current, suggestedDate: event.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-ghost" onClick={() => setPendingFollowUpDrop(null)}>Cancel</button>
+              <button className="btn-primary" onClick={() => commitFollowUpDrop(pendingFollowUpDrop.leadId, pendingFollowUpDrop.suggestedDate)} disabled={!pendingFollowUpDrop.suggestedDate}>Save Date</button>
             </div>
           </div>
-        );
-      })}
-    </div>
+        </div>
+      )}
     </>
   );
 }
-
-
-
-
-
-
-
-
-
 
 export function ManageColumnsPanel({ visibleCols, setVisibleCols, rowsPerPage, setRowsPerPage, wrapText, setWrapText, onClose }) {
   const toggleColumn = (key, always) => {
@@ -679,7 +912,7 @@ export function ImportModal({ onClose, onImport }) {
           <label style={{ display: "grid", gap: 10, padding: 18, border: "1.5px dashed #cbd5e1", borderRadius: 12, background: "#f8fafc", cursor: "pointer", textAlign: "center" }}>
             <IUpload s={16} c="#4f46e5" />
             <span>{fileName || "Choose CSV file"}</span>
-            <span className="drop-hint">name, email, phone, company, status, source, score, owner</span>
+            <span className="drop-hint">name, email, phone, company, status, source, score, assignee</span>
             <input type="file" accept=".csv" onChange={handleFile} style={{ display: "none" }} />
           </label>
           {error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
@@ -833,4 +1066,5 @@ export function LeadsPerformanceChart({ onClose, leads }) {
     </>
   );
 }
+
 

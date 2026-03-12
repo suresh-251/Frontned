@@ -18,8 +18,6 @@ import {
   IEdit,
   IFilter,
   IKanban,
-  IMail,
-  IPhone,
   IRows,
   ISearch,
   ISettings,
@@ -32,7 +30,7 @@ import {
   StatCard,
   StatusCell,
 } from "./leads/components";
-import { fmtDate, formatLeadSource, getInitials, leadToUpdatePayload, makeInitialActivity, normalizeLeads, todayStr } from "./leads/utils";
+import { fmtDate, formatLeadSource, formatStatus, getInitials, leadToUpdatePayload, makeInitialActivity, normalizeLeads, todayStr } from "./leads/utils";
 
 const VISIBLE_COLUMNS_STORAGE_KEY = "crm_visible_columns";
 const SEARCH_FIELD_OPTIONS = [
@@ -58,7 +56,7 @@ function DeletedLeadsPanel({ leads }) {
           <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 15, fontWeight: 700, color: "#111827" }}><History size={16} />Deleted Leads History</span>
           <span style={{ display: "flex", alignItems: "center", gap: 10, color: "#64748b", fontSize: 13, fontWeight: 700 }}>{leads.length} deleted<IChevD s={12} style={{ transform: open ? "rotate(180deg)" : "none" }} /></span>
         </button>
-        {open && <div className="table-scroll" style={{ borderTop: "1px solid #eef2f7" }}><table className="table"><thead><tr className="thead-row"><th className="th">Lead ID</th><th className="th">Name</th><th className="th">Company</th><th className="th">Source</th><th className="th">Status</th><th className="th">Deleted Flag</th><th className="th">Created</th></tr></thead><tbody>{leads.map((lead) => <tr key={lead.id} className="row"><td className="td"><span className="cell-txt">{lead.id}</span></td><td className="td"><span className="cell-txt">{lead.name}</span></td><td className="td"><span className="cell-txt">{lead.company}</span></td><td className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td><td className="td"><span className="cell-txt">{lead.status}</span></td><td className="td"><span className="cell-txt">{lead.isDeleted ? "Deleted" : "Active"}</span></td><td className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td></tr>)}</tbody></table></div>}
+        {open && <div className="table-scroll" style={{ borderTop: "1px solid #eef2f7" }}><table className="table"><thead><tr className="thead-row"><th className="th">Lead ID</th><th className="th">Name</th><th className="th">Company</th><th className="th">Source</th><th className="th">Status</th><th className="th">Created</th></tr></thead><tbody>{leads.map((lead) => <tr key={lead.id} className="row"><td className="td"><span className="cell-txt">{lead.id}</span></td><td className="td"><span className="cell-txt">{lead.name}</span></td><td className="td"><span className="cell-txt">{lead.company}</span></td><td className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td><td className="td"><span className="cell-txt">{formatStatus(lead.status)}</span></td><td className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td></tr>)}</tbody></table></div>}
       </div>
     </div>
   );
@@ -92,7 +90,19 @@ export default function Leads() {
   const [kanbanGroupBy, setKanbanGroupBy] = useState("status");
   const [showChart, setShowChart] = useState(false);
 
-  const salesUserOptions = useMemo(() => salesUsers.map((user) => user.name?.trim() || user.username || user.email || `User ${user.userId}`), [salesUsers]);
+  const salesUserOptions = useMemo(() => salesUsers.map((user) => user.name?.trim() || user.username || user.email || `User ${user.userId || user.id}`), [salesUsers]);
+
+  const applyAssigneeNames = useCallback((items, users) => {
+    const userMap = new Map((users || []).map((user) => [
+      Number(user.id || user.userId || 0),
+      user.name?.trim() || user.username || user.email || `User ${user.id || user.userId}`
+    ]).filter(([id]) => id > 0));
+
+    return items.map((lead) => ({
+      ...lead,
+      assignee: userMap.get(Number(lead.assignedToUserId || 0)) || lead.assignee || "Unassigned",
+    }));
+  }, []);
 
   const mergeLead = useCallback((updatedLead) => {
     setLeads((current) => current.map((lead) => (lead.id === updatedLead.id ? { ...lead, ...updatedLead } : lead)));
@@ -125,9 +135,9 @@ export default function Leads() {
           leadsAPI.getDashboard(),
           leadsAPI.getSalesUsers(),
         ]);
-        const normalizedLeads = normalizeLeads(leadsData);
+        const normalizedLeads = applyAssigneeNames(normalizeLeads(leadsData), userData);
         setLeads(normalizedLeads);
-        setDeletedLeads(normalizeLeads(deletedData));
+        setDeletedLeads(applyAssigneeNames(normalizeLeads(deletedData), userData));
         setActivityLog(makeInitialActivity(normalizedLeads));
         setStats(statsData);
         setSalesUsers(userData);
@@ -136,7 +146,7 @@ export default function Leads() {
       }
     };
     loadData();
-  }, []);
+  }, [applyAssigneeNames]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -172,7 +182,11 @@ export default function Leads() {
     }
     mergeLead(nextLead);
     try {
-      if (field === "status") await leadsAPI.updateStatus(id, value);
+      if (field === "status") {
+        const updated = await leadsAPI.updateStatus(id, value);
+        const [normalized] = normalizeLeads([{ ...existing, ...updated, id }]);
+        mergeLead({ ...nextLead, ...normalized, status: updated?.status || value, score: updated?.score ?? normalized?.score ?? nextLead.score });
+      }
       else if (field === "followUpDate") await leadsAPI.update(id, { nextFollowUpAt: value ? `${value}T00:00:00.000Z` : null });
       else if (field === "source") await leadsAPI.update(id, { ...leadToUpdatePayload(nextLead), source: value });
       else if (field === "assignee") {
@@ -235,14 +249,48 @@ export default function Leads() {
   const handleExportSelected = () => {
     const selectedLeads = leads.filter((lead) => selected.has(lead.id));
     if (!selectedLeads.length) return;
-    const headers = ["id", "name", "company", "email", "phone", "status", "source", "score"];
-    const rows = selectedLeads.map((lead) => headers.map((header) => `"${String(lead[header] ?? "").replace(/"/g, '""')}"`).join(","));
-    const blob = new Blob([[headers.join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8" });
+
+    const columns = [
+      ["Lead ID", "id"],
+      ["Lead Name", "name"],
+      ["Company", "company"],
+      ["Email", "email"],
+      ["Phone", "phone"],
+      ["Status", "status"],
+      ["Follow-Up", "followUpDate"],
+      ["Assignee", "assignee"],
+      ["Source", "source"],
+      ["Score", "score"],
+      ["Deposits", "deposits"],
+      ["Comments", "comments"],
+      ["Created Date", "createdDate"],
+    ];
+
+    const escapeCsv = (value) => {
+      const text = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
+      return '"' + text.replace(/"/g, '""') + '"';
+    };
+
+    const rows = selectedLeads.map((lead) => columns.map(([_, key]) => {
+      const value = key === "status"
+        ? formatStatus(lead[key])
+        : key === "source"
+          ? formatLeadSource(lead[key])
+          : key === "createdDate" || key === "followUpDate"
+            ? (lead[key] ? fmtDate(lead[key]) : "")
+            : lead[key];
+      return escapeCsv(value);
+    }).join(","));
+
+    const csv = [columns.map(([label]) => escapeCsv(label)).join(","), ...rows].join("\r\n");
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `leads-${todayStr()}.csv`;
+    link.download = `sales-crm-leads-${todayStr()}.csv`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
@@ -322,13 +370,13 @@ export default function Leads() {
 
       <div className="toolbar"><div className="toolbar-mid"><button className={`btn-ghost ${activeFilterCount > 0 ? "btn-ghost--active" : ""}`} onClick={() => setShowFilter(true)}><IFilter s={12} />&ensp;Filter{activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}</button><div className="toolbar-divider" /><div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: "8px", overflow: "hidden", background: "white" }}>{[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", border: "none", borderRight: k === "list" ? "1px solid #e5e7eb" : "none", background: viewMode === k ? "#eef2ff" : "transparent", color: viewMode === k ? "#4f46e5" : "#6b7280" }}><I s={13} />{l}</button>)}</div><div className="toolbar-divider" /><div className="unified-search"><select className="search-field-select" value={searchField} onChange={(event) => setSearchField(event.target.value)}>{SEARCH_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><div className="unified-divider" /><div className="search-wrap"><span className="search-ico"><ISearch s={14} c="#9ca3af" /></span><input type="text" className="search-inp unified-inp" placeholder={`Search by ${activeSearchFieldLabel.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} /></div></div><div className="toolbar-divider" /><button className={`icon-btn-outline ${showChart ? "icon-btn-outline--on" : ""}`} onClick={() => setShowChart(!showChart)}><BarChart3 size={14} /></button><div className="toolbar-divider" /><AddLeadDropdown onSelectType={handleAddLeadType} /></div></div>
 
-      {hasActiveFilters && <div className="chips-bar">{search && <span className="chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip"><span className="chip-dot" style={{ background: STATUS_META[filters.status]?.color || "#4f46e5" }} />Status: {filters.status}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, status: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip">Source: {formatLeadSource(filters.source)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, source: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip">Owner: {filters.assignee}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, assignee: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateFrom && <span className="chip">Created from: {filters.createdDateFrom}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateTo && <span className="chip">Created to: {filters.createdDateTo}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateFrom && <span className="chip">Follow-up from: {filters.followUpDateFrom}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateTo && <span className="chip">Follow-up to: {filters.followUpDateTo}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
+      {hasActiveFilters && <div className="chips-bar">{search && <span className="chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip"><span className="chip-dot" style={{ background: STATUS_META[filters.status]?.color || "#4f46e5" }} />Status: {formatStatus(filters.status)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, status: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip">Source: {formatLeadSource(filters.source)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, source: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip">Assignee: {filters.assignee}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, assignee: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateFrom && <span className="chip">Created from: {filters.createdDateFrom}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateTo && <span className="chip">Created to: {filters.createdDateTo}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateFrom && <span className="chip">Follow-up from: {filters.followUpDateFrom}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateTo && <span className="chip">Follow-up to: {filters.followUpDateTo}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
 
-      {selected.size > 0 && <div className="bulk-bar"><span className="bulk-cnt">{selected.size} selected</span><button className="bulk-btn">Assign Owner</button><button className="bulk-btn">Change Status</button><button className="bulk-btn" onClick={handleExportSelected}>Export</button><button className="bulk-btn bulk-btn--danger" onClick={handleBulkDelete}>Delete</button><button className="bulk-close" onClick={() => setSelected(new Set())}><IX s={12} c="#6b7280" /></button></div>}
+      {selected.size > 0 && <div className="bulk-bar"><span className="bulk-cnt">{selected.size} selected</span><button className="bulk-btn">Assign Assignee</button><button className="bulk-btn">Change Status</button><button className="bulk-btn" onClick={handleExportSelected}>Export</button><button className="bulk-btn bulk-btn--danger" onClick={handleBulkDelete}>Delete</button><button className="bulk-close" onClick={() => setSelected(new Set())}><IX s={12} c="#6b7280" /></button></div>}
 
       {viewMode === "kanban" && <KanbanBoard leads={filtered} groupBy={kanbanGroupBy} setGroupBy={setKanbanGroupBy} onUpdateLead={updateLead} onOpenDetails={fetchLeadDetail} onAdjustScore={adjustScore} />}
 
-      {viewMode === "list" && <div className="table-card-shell"><div className="table-card"><div className="table-scroll"><table className={`table ${wrapText ? "table--wrap" : ""}`}><thead><tr className="thead-row"><th className="th th-check"><input type="checkbox" className="cb" checked={allOnPageSel} onChange={toggleAll} /></th>{activeCols.map((col) => <th key={col.key} className={`th th-${col.key}`} onClick={() => { if (sortBy === col.key) setSortDir((current) => current === "asc" ? "desc" : "asc"); else { setSortBy(col.key); setSortDir("asc"); } }}><span className="th-inner">{col.label}<SortIcon sortBy={sortBy} sortDir={sortDir} col={col.key} /></span></th>)}<th className="th th-actions"><button className={`icon-btn-outline ${showColPanel ? "icon-btn-outline--on" : ""}`} onClick={() => setShowColPanel(true)}><ISettings s={13} /></button></th></tr></thead><tbody>{paginated.map((lead) => { const initials = getInitials(lead.name); const isSel = selected.has(lead.id); return <tr key={lead.id} className={`row ${isSel ? "row--sel" : ""}`}><td className="td td-check"><input type="checkbox" className="cb" checked={isSel} onChange={() => toggleOne(lead.id)} /></td>{activeCols.map((col) => { switch (col.key) { case "id": return <td key="id" className="td"><span className="cell-txt">{lead.id}</span></td>; case "name": return <td key="name" className="td td-name"><div className="name-cell"><div className="avatar" style={{ background: lead.avatarBg }}>{initials}</div><div className="name-block"><button className="name-link" onClick={() => fetchLeadDetail(lead.id)}>{lead.name}</button></div></div></td>; case "status": return <td key="status" className="td td-status"><StatusCell value={lead.status} onChange={(value) => updateLead(lead.id, "status", value)} /></td>; case "followUp": return <td key="followUp" className="td td-followup"><FollowUpCell value={lead.followUpDate} onChange={(value) => updateLead(lead.id, "followUpDate", value)} /></td>; case "source": return <td key="source" className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td>; case "score": return <td key="score" className="td td-score"><ScoreBar score={lead.score} onAdjust={(delta) => adjustScore(lead.id, delta)} /></td>; case "company": return <td key="company" className="td"><span className="cell-txt">{lead.company}</span></td>; case "phone": return <td key="phone" className="td"><a href={`tel:${lead.phone}`} className="link-cell">{lead.phone}</a></td>; case "email": return <td key="email" className="td"><a href={`mailto:${lead.email}`} className="link-cell">{lead.email}</a></td>; case "assignee": return <td key="assignee" className="td"><span className="cell-txt">{lead.assignee}</span></td>; case "createdDate": return <td key="createdDate" className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td>; default: return <td key={col.key} className="td"><span className="cell-txt">{String(lead[col.key] ?? "")}</span></td>; } })}<td className="td td-actions"><div className="row-acts"><button className="act-btn"><IPhone s={12} /></button><button className="act-btn"><IMail s={12} /></button><button className="act-btn act-btn--edit" onClick={() => setEditLead(lead)}><IEdit s={12} /></button></div></td></tr>; })}</tbody></table></div></div></div>}
+      {viewMode === "list" && <div className="table-card-shell"><div className="table-card"><div className="table-scroll"><table className={`table ${wrapText ? "table--wrap" : ""}`}><thead><tr className="thead-row"><th className="th th-check"><input type="checkbox" className="cb" checked={allOnPageSel} onChange={toggleAll} /></th>{activeCols.map((col) => <th key={col.key} className={`th th-${col.key}`} onClick={() => { if (sortBy === col.key) setSortDir((current) => current === "asc" ? "desc" : "asc"); else { setSortBy(col.key); setSortDir("asc"); } }}><span className="th-inner">{col.label}<SortIcon sortBy={sortBy} sortDir={sortDir} col={col.key} /></span></th>)}<th className="th th-actions"><button className={`icon-btn-outline ${showColPanel ? "icon-btn-outline--on" : ""}`} onClick={() => setShowColPanel(true)}><ISettings s={13} /></button></th></tr></thead><tbody>{paginated.map((lead) => { const initials = getInitials(lead.name); const isSel = selected.has(lead.id); return <tr key={lead.id} className={`row ${isSel ? "row--sel" : ""}`}><td className="td td-check"><input type="checkbox" className="cb" checked={isSel} onChange={() => toggleOne(lead.id)} /></td>{activeCols.map((col) => { switch (col.key) { case "id": return <td key="id" className="td"><span className="cell-txt">{lead.id}</span></td>; case "name": return <td key="name" className="td td-name"><div className="name-cell"><div className="avatar" style={{ background: lead.avatarBg }}>{initials}</div><div className="name-block"><button className="name-link" onClick={() => fetchLeadDetail(lead.id)}>{lead.name}</button></div></div></td>; case "status": return <td key="status" className="td td-status"><StatusCell value={lead.status} onChange={(value) => updateLead(lead.id, "status", value)} /></td>; case "followUp": return <td key="followUp" className="td td-followup"><FollowUpCell value={lead.followUpDate} onChange={(value) => updateLead(lead.id, "followUpDate", value)} /></td>; case "source": return <td key="source" className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td>; case "score": return <td key="score" className="td td-score"><ScoreBar score={lead.score} /></td>; case "company": return <td key="company" className="td"><span className="cell-txt">{lead.company}</span></td>; case "phone": return <td key="phone" className="td"><a href={`tel:${lead.phone}`} className="link-cell">{lead.phone}</a></td>; case "email": return <td key="email" className="td"><a href={`mailto:${lead.email}`} className="link-cell">{lead.email}</a></td>; case "assignee": return <td key="assignee" className="td"><span className="cell-txt">{lead.assignee}</span></td>; case "createdDate": return <td key="createdDate" className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td>; default: return <td key={col.key} className="td"><span className="cell-txt">{String(lead[col.key] ?? "")}</span></td>; } })}<td className="td td-actions"><div className="row-acts"><button className="act-btn act-btn--edit" onClick={() => setEditLead(lead)}><IEdit s={12} /></button></div></td></tr>; })}</tbody></table></div></div></div>}
 
       <DeletedLeadsPanel leads={deletedLeads} />
 
@@ -342,4 +390,6 @@ export default function Leads() {
     </div>
   );
 }
+
+
 

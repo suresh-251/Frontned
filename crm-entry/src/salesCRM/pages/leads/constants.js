@@ -173,14 +173,14 @@ export const LEAD_SOURCE_OPTIONS = [
 ];
 
 export const ALL_COLUMNS = [
-  { key: "id", label: "Lead ID", always: true },
+  { key: "id", label: "ID", always: true },
   { key: "name", label: "Lead Name", always: true },
   { key: "company", label: "Company", always: false },
   { key: "phone", label: "Phone", always: false },
   { key: "email", label: "Email", always: false },
   { key: "status", label: "Status", always: false },
   { key: "followUp", label: "Follow-Up", always: false },
-  { key: "assignee", label: "Owner", always: false },
+  { key: "assignee", label: "Assignee", always: false },
   { key: "source", label: "Source", always: false },
   { key: "score", label: "Score", always: false },
   { key: "deposits", label: "Deposits", always: false },
@@ -224,7 +224,7 @@ export const LEAD_FIELDS = [
   { key: "status", label: "Status" },
   { key: "source", label: "Source" },
   { key: "score", label: "Score" },
-  { key: "assignee", label: "Owner" },
+  { key: "assignee", label: "Assignee" },
   { key: "createdDate", label: "Created Date" },
   { key: "followUpDate", label: "Follow-Up Date" },
 ];
