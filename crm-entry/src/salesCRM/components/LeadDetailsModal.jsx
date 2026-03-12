@@ -1,24 +1,24 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import {
   X, Phone, Mail, Calendar, MessageSquare, Plus,
   Clock, FileText, Activity,
-  MapPin, Briefcase, TrendingUp, AlertTriangle, RefreshCw, UserCheck, Tag,
+  MapPin, Briefcase, TrendingUp, AlertTriangle, RefreshCw, UserCheck, Tag, Filter,
 } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import leadsAPI from "../api/leads.api";
 
 const fmtDate = (d) => {
-  if (!d) return "�";
+  if (!d) return "Ã¯Â¿Â½";
   const parsed = new Date(d);
   return isNaN(parsed)
-    ? "�"
+    ? "Ã¯Â¿Â½"
     : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
 const fmtDateTime = (iso) => {
-  if (!iso) return "�";
+  if (!iso) return "Ã¯Â¿Â½";
   const d = new Date(iso);
-  if (isNaN(d)) return "�";
+  if (isNaN(d)) return "Ã¯Â¿Â½";
   return d.toLocaleString("en-US", {
     month: "short", day: "numeric", year: "numeric",
     hour: "2-digit", minute: "2-digit",
@@ -106,7 +106,6 @@ function getCommunicationPayload(activeTab, notes, lead) {
       toEmail: lead.email,
     };
   }
-
   if (activeTab === "Calls") {
     return {
       leadId: lead.id,
@@ -116,7 +115,6 @@ function getCommunicationPayload(activeTab, notes, lead) {
       callResult: "Completed",
     };
   }
-
   if (activeTab === "Meetings") {
     return {
       leadId: lead.id,
@@ -125,7 +123,7 @@ function getCommunicationPayload(activeTab, notes, lead) {
       meetingDate: new Date().toISOString(),
       location: "Online",
     };
-
+  }
   if (activeTab === "WhatsApp") {
     return {
       leadId: lead.id,
@@ -135,15 +133,12 @@ function getCommunicationPayload(activeTab, notes, lead) {
       toPhone: lead.phone,
     };
   }
-  }
-
   return {
     leadId: lead.id,
     type: "Note",
     message: notes,
   };
 }
-
 function filterActivitiesByTab(activities, activeTab) {
   if (activeTab === "Activity") return activities;
   if (activeTab === "Notes") return activities.filter((activity) => activity.type === "note");
@@ -163,20 +158,43 @@ function buildLeadFields(lead) {
     { icon: UserCheck, label: "Owner", value: lead.assignee },
     { icon: Calendar, label: "Follow-Up", value: lead.followUpDate ? fmtDate(`${lead.followUpDate}T00:00:00`) : "Not set" },
     { icon: Clock, label: "Created", value: fmtDate(lead.createdDate) },
-    { icon: MapPin, label: "Address", value: lead.address || "�" },
+    { icon: MapPin, label: "Address", value: lead.address || "Ã¯Â¿Â½" },
   ];
 }
 
-function TimelineIcon({ type }) {
-  const cfg = TIMELINE_CFG[type] || TIMELINE_CFG.default;
-  const Ic = cfg.icon;
+function groupEntriesByDate(items, getDate) {
+  const groups = new Map();
+
+  items.forEach((item) => {
+    const rawDate = getDate(item);
+    const key = rawDate ? new Date(rawDate).toDateString() : "Unknown";
+    if (!groups.has(key)) {
+      groups.set(key, { key, rawDate, items: [] });
+    }
+    groups.get(key).items.push(item);
+  });
+
+  return Array.from(groups.values());
+}
+
+function TimelineDateBadge({ label }) {
   return (
-    <div style={{ width: 32, height: 32, borderRadius: "50%", background: cfg.bg, border: `2px solid ${cfg.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative", zIndex: 1 }}>
-      <Ic size={14} color={cfg.color} strokeWidth={2} />
+    <div style={{ margin: "4px 0 14px 88px" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", minHeight: 34, padding: "0 16px", borderRadius: 10, border: "1px solid #d9deeb", background: "#f8faff", boxShadow: "0 1px 0 rgba(255,255,255,0.9) inset", fontSize: 13, fontWeight: 700, color: "#475569" }}>{label}</span>
     </div>
   );
 }
 
+function TimelineIcon({ type, compact = false }) {
+  const cfg = TIMELINE_CFG[type] || TIMELINE_CFG.default;
+  const Ic = cfg.icon;
+  const size = compact ? 30 : 36;
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", background: cfg.bg, border: `2px solid ${cfg.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative", zIndex: 1, boxShadow: "0 6px 16px rgba(15,23,42,0.06)" }}>
+      <Ic size={compact ? 13 : 15} color={cfg.color} strokeWidth={2} />
+    </div>
+  );
+}
 function ActivityTabButton({ active, icon: Icon, label, onClick }) {
   return (
     <button
@@ -189,28 +207,89 @@ function ActivityTabButton({ active, icon: Icon, label, onClick }) {
   );
 }
 
-function ActivityItem({ activity }) {
+function HistoryTimelineItem({ activity, index, isLast }) {
   const { Ic, color, bg } = ACT_TYPE_MAP[activity.type] ?? ACT_TYPE_MAP.created;
   return (
-    <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-      <div style={{ width: 30, height: 30, borderRadius: "50%", background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Ic size={14} color={color} />
+    <div style={{ display: "grid", gridTemplateColumns: "96px 40px minmax(0, 1fr)", gap: 12, alignItems: "flex-start", marginBottom: isLast ? 0 : 18, position: "relative", animation: "fadeSlideIn 0.28s ease both", animationDelay: `${index * 0.04}s` }}>
+      <div style={{ paddingTop: 8, fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", whiteSpace: "nowrap" }}>{activity.time}</div>
+      <div style={{ position: "relative", display: "flex", justifyContent: "center", minHeight: 78 }}>
+        {!isLast && <span style={{ position: "absolute", top: 38, bottom: -20, width: 2, borderRadius: 999, background: "linear-gradient(180deg, #d9deeb 0%, #edf2f7 100%)" }} />}
+        <div style={{ width: 38, height: 38, borderRadius: "50%", background: bg, border: "2px solid #d9deeb", boxShadow: "0 8px 20px rgba(15,23,42,0.06)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+          <Ic size={15} color={color} />
+        </div>
       </div>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{activity.notes}</div>
-        <div style={{ fontSize: 11, color: "#9ca3af" }}>{fmtDate(activity.date)} � {activity.time}</div>
+      <div style={{ padding: "10px 14px 12px", borderRadius: 14, border: "1px solid #e6eaf2", background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)", boxShadow: "0 10px 24px rgba(15,23,42,0.05)" }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "#1f2937", lineHeight: 1.35 }}>{activity.notes}</div>
+        <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", minHeight: 24, padding: "0 10px", borderRadius: 999, background: bg, color, fontSize: 11, fontWeight: 700, textTransform: "capitalize" }}>{activity.type}</span>
+          <span style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 600 }}>{fmtDate(activity.date)}</span>
+        </div>
       </div>
     </div>
   );
 }
 
+function SideTimelineItem({ event, index, isLast }) {
+  const cfg = TIMELINE_CFG[event.type] || TIMELINE_CFG.default;
+  const eventTime = event.date ? new Date(event.date).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "Ã¯Â¿Â½";
+  const Ic = cfg.icon;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "78px 34px minmax(0, 1fr)", gap: 12, alignItems: "flex-start", marginBottom: isLast ? 0 : 18, position: "relative", animation: "fadeSlideIn 0.28s ease both", animationDelay: `${index * 0.05}s` }}>
+      <div style={{ paddingTop: 7, fontSize: 11.5, fontWeight: 700, color: "#64748b", textAlign: "right", whiteSpace: "nowrap" }}>{eventTime}</div>
+      <div style={{ position: "relative", display: "flex", justifyContent: "center", minHeight: 82 }}>
+        {!isLast && <span style={{ position: "absolute", top: 32, bottom: -22, width: 2, borderRadius: 999, background: "linear-gradient(180deg, #d7ddea 0%, #eef2f7 100%)" }} />}
+        <div style={{ width: 30, height: 30, borderRadius: "50%", background: cfg.bg, border: `2px solid ${cfg.border}`, boxShadow: "0 6px 16px rgba(15,23,42,0.06)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+          <Ic size={13} color={cfg.color} strokeWidth={2} />
+        </div>
+      </div>
+      <div style={{ padding: "10px 12px", borderRadius: 14, border: `1px solid ${cfg.border}`, background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)", boxShadow: "0 10px 24px rgba(15,23,42,0.045)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", minHeight: 24, padding: "0 10px", borderRadius: 999, background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 800 }}>{event.type}</span>
+        </div>
+        {event.description && <div style={{ fontSize: 12.5, color: "#334155", fontWeight: 600, lineHeight: 1.45 }}>{event.description}</div>}
+
+      </div>
+    </div>
+  );
+}
 function QuickActionLink({ href, title, children, target, rel }) {
   return (
-    <a href={href} title={title} target={target} rel={rel} style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #e5e7eb" }}>
+    <a
+      href={href}
+      title={title}
+      target={target}
+      rel={rel}
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: "50%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        border: "1px solid #dbe2ea",
+        background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+        boxShadow: "0 4px 10px rgba(15,23,42,0.05)",
+        color: "#475569",
+        transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px) scale(1.04)";
+        e.currentTarget.style.borderColor = "#c7d2fe";
+        e.currentTarget.style.boxShadow = "0 10px 22px rgba(79,70,229,0.16)";
+        e.currentTarget.style.background = "linear-gradient(180deg, #ffffff 0%, #eef2ff 100%)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0) scale(1)";
+        e.currentTarget.style.borderColor = "#dbe2ea";
+        e.currentTarget.style.boxShadow = "0 4px 10px rgba(15,23,42,0.05)";
+        e.currentTarget.style.background = "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)";
+      }}
+    >
       {children}
     </a>
   );
 }
+
 
 function DetailField({ icon: Icon, label, value, href }) {
   return (
@@ -222,30 +301,7 @@ function DetailField({ icon: Icon, label, value, href }) {
         <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, marginBottom: 1 }}>{label}</div>
         {href && value
           ? <a href={href} style={{ fontSize: 12.5, color: "#4f46e5", fontWeight: 500, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</a>
-          : <div style={{ fontSize: 12, color: "#111827", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value || "�"}</div>}
-      </div>
-    </div>
-  );
-}
-
-function TimelineEvent({ event, index, isLast }) {
-  const cfg = TIMELINE_CFG[event.type] || TIMELINE_CFG.default;
-  return (
-    <div style={{ display: "flex", gap: 12, marginBottom: isLast ? 0 : 16, position: "relative", animation: "fadeSlideIn 0.3s ease both", animationDelay: `${index * 0.05}s` }}>
-      <TimelineIcon type={event.type} />
-      <div
-        style={{ flex: 1, minWidth: 0, background: "white", border: "1.5px solid #f3f4f6", borderRadius: 8, padding: "9px 12px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "border-color 0.15s, box-shadow 0.15s" }}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = cfg.border; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f3f4f6"; e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)"; }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, background: cfg.bg, padding: "2px 7px", borderRadius: 12, letterSpacing: "0.02em" }}>{event.type}</span>
-        </div>
-        {event.description && <div style={{ fontSize: 12.5, color: "#374151", fontWeight: 500, lineHeight: 1.4, marginBottom: 5 }}>{event.description}</div>}
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <Clock size={10} color="#9ca3af" strokeWidth={2} />
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>{fmtDateTime(event.date)}</span>
-        </div>
+          : <div style={{ fontSize: 12, color: "#111827", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value || "Ã¯Â¿Â½"}</div>}
       </div>
     </div>
   );
@@ -272,6 +328,7 @@ function MiddlePanel({ lead }) {
   }, [loadCommunications]);
 
   const filtered = filterActivitiesByTab(activities, activeTab);
+  const groupedActivities = groupEntriesByDate(filtered, (activity) => activity.date);
   const composePlaceholder = TAB_COMPOSE_CFG[activeTab]?.placeholder || "Write a note...";
 
   const handleSave = async () => {
@@ -312,7 +369,19 @@ function MiddlePanel({ lead }) {
 
       <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
         {filtered.length === 0 && <div style={{ color: "#9ca3af", fontSize: 13 }}>No activity yet</div>}
-        {filtered.map((activity) => <ActivityItem key={activity.id} activity={activity} />)}
+        {groupedActivities.map((group) => (
+          <div key={group.key} style={{ marginBottom: 22 }}>
+            <TimelineDateBadge label={fmtDate(group.rawDate)} />
+            {group.items.map((activity, index) => (
+              <HistoryTimelineItem
+                key={activity.id}
+                activity={activity}
+                index={index}
+                isLast={index === group.items.length - 1}
+              />
+            ))}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -370,28 +439,36 @@ function RightPanel({ leadId }) {
     fetchTimeline();
   }, [fetchTimeline]);
 
+  const groupedTimeline = groupEntriesByDate(timeline, (event) => event.date);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "#eef2ff", display: "flex", alignItems: "center", justifyContent: "center" }}><Activity size={14} color="#4f46e5" strokeWidth={2} /></div>
+      <div style={{ padding: "16px 18px 14px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9)" }}><Activity size={15} color="#4f46e5" strokeWidth={2} /></div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Timeline</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>Timeline History</div>
             {!loading && !error && <div style={{ fontSize: 11, color: "#9ca3af" }}>{timeline.length} event{timeline.length !== 1 ? "s" : ""}</div>}
           </div>
         </div>
-        <button
-          onClick={fetchTimeline}
-          title="Refresh timeline"
-          style={{ background: "none", border: "1.5px solid #e5e7eb", borderRadius: 6, padding: "4px 7px", cursor: "pointer", display: "flex", alignItems: "center", transition: "border-color 0.15s" }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#4f46e5"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
-        >
-          <RefreshCw size={12} color="#6b7280" strokeWidth={2} />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            type="button"
+            title="Filter timeline"
+            style={{ background: "#ffffff", border: "1px solid #d9deeb", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(15,23,42,0.04)" }}
+          >
+            <Filter size={14} color="#475569" strokeWidth={2} />
+          </button>
+          <button
+            onClick={fetchTimeline}
+            title="Refresh timeline"
+            style={{ background: "#ffffff", border: "1px solid #d9deeb", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(15,23,42,0.04)" }}
+          >
+            <RefreshCw size={13} color="#475569" strokeWidth={2} />
+          </button>
+        </div>
       </div>
-
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "18px 18px 20px", background: "linear-gradient(180deg, #fcfdff 0%, #f8fafc 100%)" }}>
         {loading && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "#9ca3af" }}>
             <div style={{ width: 28, height: 28, border: "3px solid #e5e7eb", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite", marginBottom: 10 }} />
@@ -419,7 +496,19 @@ function RightPanel({ leadId }) {
         {!loading && !error && timeline.length > 0 && (
           <div style={{ position: "relative" }}>
             <div style={{ position: "absolute", left: 15, top: 16, bottom: 16, width: 2, background: "linear-gradient(to bottom, #e5e7eb 0%, #e5e7eb 95%, transparent 100%)", borderRadius: 2 }} />
-            {timeline.map((event, index) => <TimelineEvent key={index} event={event} index={index} isLast={index === timeline.length - 1} />)}
+            {groupedTimeline.map((group) => (
+              <div key={group.key} style={{ marginBottom: 22 }}>
+                <TimelineDateBadge label={fmtDate(group.rawDate)} />
+                {group.items.map((event, index) => (
+                  <SideTimelineItem
+                    key={`${group.key}-${index}`}
+                    event={event}
+                    index={index}
+                    isLast={index === group.items.length - 1}
+                  />
+                ))}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -458,7 +547,7 @@ export function LeadDetailsModal({ lead, onClose, activityLog, onUpdateLead, onA
             </div>
           </div>
 
-          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "260px 1fr 280px", overflow: "hidden", minHeight: 0 }}>
+          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "250px 1fr 360px", overflow: "hidden", minHeight: 0 }}>
             <div style={{ borderRight: "1px solid #e5e7eb", overflow: "hidden", display: "flex", flexDirection: "column" }}>
               <LeftPanel lead={lead} onUpdateLead={onUpdateLead} onAdjustScore={onAdjustScore} />
             </div>
@@ -476,4 +565,11 @@ export function LeadDetailsModal({ lead, onClose, activityLog, onUpdateLead, onA
 }
 
 export default LeadDetailsModal;
+
+
+
+
+
+
+
 
