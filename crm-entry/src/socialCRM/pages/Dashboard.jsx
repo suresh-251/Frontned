@@ -57,15 +57,17 @@ export default function Dashboard() {
     if (!slug) { setLoading(false); return; }
     setLoading(true);
     try {
-      const [accsRes, fbRes, igRes] = await Promise.allSettled([
+      const [accsRes, fbRes, igRes, igAnalyticsRes] = await Promise.allSettled([
         api.get(`/brands/${slug}/accounts`),
         api.get("/analytics/facebook/page"),
         api.get("/instagram/accounts"),
+        api.get("/dashboard/brand-health/analytics", { params: { platform: "instagram", days: 7 } }),
       ]);
       const rawAccs = accsRes.status === "fulfilled" ? (accsRes.value.data.accounts ?? []) : [];
       const igList = igRes.status === "fulfilled" ? (igRes.value.data ?? []) : [];
       const igMap = new Map(igList.map(a => [a.instagramBusinessId, a]));
       const fbData = fbRes.status === "fulfilled" ? fbRes.value?.data ?? null : null;
+      const igAnalytics = igAnalyticsRes.status === "fulfilled" ? igAnalyticsRes.value?.data ?? null : null;
 
       // Group by platform
       const grouped = {};
@@ -88,8 +90,8 @@ export default function Dashboard() {
       }
       setSelectedAccount(sel);
 
-      // Analytics: Facebook from /analytics endpoint
-      setAnalytics({ Facebook: fbData });
+      // Analytics: per-platform
+      setAnalytics({ Facebook: fbData, Instagram: igAnalytics });
     } finally {
       setLoading(false);
     }
@@ -131,12 +133,27 @@ export default function Dashboard() {
       return {
         acc,
         totalFollowers: fbData.fan_count ?? fbData.followers_count,
-        newFollowers: null, // not available from current API
+        newFollowers: null,
         reach: fbData.reach ?? null,
         engagement: fbData.totalEngagement ?? null,
         leads: stats.totalLeads ?? null,
       };
     }
+
+    if (platform === "Instagram") {
+      const ig = analytics["Instagram"];
+      if (ig?.isConnected) {
+        return {
+          acc,
+          totalFollowers: ig.followers ?? null,
+          newFollowers: null,
+          reach: ig.reach ?? null,
+          engagement: ig.totalEngagement ?? null,
+          leads: ig.totalLeads ?? null,
+        };
+      }
+    }
+
     return { acc, totalFollowers: null, newFollowers: null, reach: null, engagement: null, leads: null };
   };
 

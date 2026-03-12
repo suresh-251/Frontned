@@ -153,14 +153,22 @@ export default function Inbox() {
       const items = data?.items ?? data;
       if (Array.isArray(items) && items.length > 0) {
         setConvos(items);
-        // Auto-select first if nothing active
         if (!active) {
+          // Auto-select first conversation if none active
           const first = items[0];
           setActive(first);
           setLoadingMsgs(true);
           await fetchMessages(first.id, 1);
           setLoadingMsgs(false);
           try { await markConversationRead(first.id); } catch { /* offline */ }
+        } else {
+          // Refresh messages for the currently active conversation
+          const stillExists = items.find((i) => i.id === active.id);
+          if (stillExists) {
+            setLoadingMsgs(true);
+            await fetchMessages(active.id, 1);
+            setLoadingMsgs(false);
+          }
         }
       } else {
         setConvos([]);
@@ -180,7 +188,9 @@ export default function Inbox() {
     try {
       const result = await syncInbox();
       setSyncResult({ message: result.message, errors: result.errors ?? [] });
-      // Reload conversations after sync
+      // Clear stale message cache so reloadConvos fetches fresh data
+      setMessages({});
+      setMsgMeta({});
       await reloadConvos();
     } catch (err) {
       setSyncResult({
@@ -277,11 +287,14 @@ export default function Inbox() {
     setActive(c);
     setConvos((prev) => prev.map((x) => (x.id === c.id ? { ...x, unreadCount: 0 } : x)));
 
-    // Load messages if not yet fetched for this conversation
-    if (messages[c.id] === undefined) {
+    // Load messages — always fetch fresh when switching conversations
+    if (messages[c.id] === undefined || messages[c.id].length === 0) {
       setLoadingMsgs(true);
       await fetchMessages(c.id, 1);
       setLoadingMsgs(false);
+    } else {
+      // Silently refresh in background so newly synced messages appear
+      fetchMessages(c.id, 1);
     }
     try { await markConversationRead(c.id); } catch { /* offline */ }
   };
@@ -344,8 +357,8 @@ export default function Inbox() {
       (platFilter === "All" || c.platform === platFilter) &&
       (statFilter === "All" || c.status   === statFilter) &&
       (!search ||
-        c.userName.toLowerCase().includes(search.toLowerCase()) ||
-        c.lastMessage.toLowerCase().includes(search.toLowerCase()))
+        c.userName?.toLowerCase().includes(search.toLowerCase()) ||
+        c.lastMessage?.toLowerCase().includes(search.toLowerCase()))
   );
 
   const totalUnread = convos.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
