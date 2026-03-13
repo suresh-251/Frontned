@@ -65,6 +65,38 @@ const fmtTime = (v) => {
 };
 const timelineDateValue = (item) => item?.createdAt || item?.date || item?.eventDate || item?.updatedAt || item?.sentAt || item?.occurredAt || null;
 const timelineDescription = (item) => String(item?.description || "").replace(/from\s+([A-Za-z]+)\s+to\s+([A-Za-z]+)/g, (_, from, to) => `from ${formatStatus(from)} to ${formatStatus(to)}`);
+const timelineAuthor = (item) => item?.createdByName || item?.userName || item?.performedBy || item?.author || item?.createdBy || "";
+const timelineKind = (item) => {
+  const raw = String(item?.type || item?.eventType || "").toLowerCase();
+  if (raw.includes("call")) return "call";
+  if (raw.includes("meeting")) return "meeting";
+  if (raw.includes("email")) return "email";
+  if (raw.includes("whatsapp")) return "whatsapp";
+  if (raw.includes("attach")) return "attachment";
+  if (raw.includes("note")) return "note";
+  return "activity";
+};
+const timelineIcon = (item) => {
+  const kind = timelineKind(item);
+  if (kind === "meeting") return Calendar;
+  if (kind === "call") return Phone;
+  if (kind === "email") return Mail;
+  if (kind === "attachment") return Paperclip;
+  if (kind === "note") return FileText;
+  return Activity;
+};
+const getApiErrorMessage = (error, fallback = "Unable to save") => {
+  const data = error?.response?.data;
+  if (typeof data === "string" && data.trim()) return data;
+  if (typeof data?.message === "string" && data.message.trim()) return data.message;
+  if (Array.isArray(data?.errors)) return data.errors.join(", ");
+  if (data?.errors && typeof data.errors === "object") {
+    const messages = Object.values(data.errors).flat().filter(Boolean);
+    if (messages.length) return messages.join(", ");
+  }
+  if (typeof error?.message === "string" && error.message.trim()) return error.message;
+  return fallback;
+};
 const attachmentUrl = (a) => {
   const raw = a?.fileUrl || a?.url || a?.filePath || a?.path || "";
   if (!raw) return "";
@@ -73,11 +105,12 @@ const attachmentUrl = (a) => {
 };
 const commKind = (type = "") => {
   const raw = String(type).toLowerCase();
+  if (raw.includes("note")) return "notes";
   if (raw.includes("whatsapp")) return "whatsapp";
   if (raw.includes("email")) return "emails";
   if (raw.includes("call")) return "calls";
   if (raw.includes("meeting")) return "meetings";
-  return "notes";
+  return "other";
 };
 const mapActivity = (x) => ({ id: x?.id, title: x?.title || x?.subject || x?.type || "Activity", type: x?.type || "Activity", description: x?.description || "", date: x?.activityDate || x?.dueDate || x?.createdAt, dueDate: x?.dueDate || x?.activityDate || x?.createdAt, status: x?.status || "", priority: x?.priority || "" });
 const mapComm = (x) => ({ id: x?.id || `${x?.type}-${x?.date || x?.description}`, kind: commKind(x?.type), title: x?.type || "Update", description: x?.description || "", date: x?.date || x?.createdAt });
@@ -129,36 +162,58 @@ function LeftPanel({ lead }) {
 function Timeline({ items, loading, onRefresh }) {
   const groups = useMemo(() => items.reduce((acc, item) => { const key = fmtDate(timelineDateValue(item), false); (acc[key] ||= []).push(item); return acc; }, {}), [items]);
   return (
-    <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderLeft: "1px solid #e2e8f0", background: "#fcfcfd" }}>
-      <div style={{ borderBottom: "1px solid #e2e8f0", background: "#fcfcfd" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 28, padding: "0 22px" }}>
-          <button style={{ border: "none", background: "transparent", padding: "14px 0 12px", borderBottom: "3px solid #4f46e5", color: "#0f172a", fontSize: 14, fontWeight: 800, cursor: "default" }}>History</button>
-          <button style={{ border: "none", background: "transparent", padding: "14px 0 12px", color: "#475569", fontSize: 14, fontWeight: 700, cursor: "default" }}>Interactions</button>
-        </div>
-        <div style={{ padding: "18px 22px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Timeline History</div>
-          <button className="icon-btn" onClick={onRefresh} title="Refresh timeline" style={{ width: 38, height: 38, border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}><RefreshCw size={16} /></button>
+    <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderLeft: "1px solid #e2e8f0", background: "linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%)" }}>
+      <div style={{ borderBottom: "1px solid #e2e8f0", background: "linear-gradient(180deg, #ffffff 0%, #f7fbff 100%)", padding: "20px 22px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em" }}>Lead Story</div>
+            <div style={{ marginTop: 6, fontSize: 18, fontWeight: 800, color: "#0f172a" }}>Timeline</div>
+            <div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b", lineHeight: 1.5 }}>A clean view of status changes, communications, and lead updates.</div>
+          </div>
+          <button className="icon-btn" onClick={onRefresh} title="Refresh timeline" style={{ width: 40, height: 40, border: "1px solid #dbe4f0", borderRadius: 12, background: "#ffffff", boxShadow: "0 8px 20px rgba(148, 163, 184, 0.12)" }}><RefreshCw size={16} /></button>
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "18px 20px" }}>
-        {loading ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading timeline...</div> : null}
-        {!loading && !items.length ? <div style={{ color: "#94a3b8", fontSize: 13 }}>No timeline history available.</div> : null}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "18px 14px 22px 0" }}>
+        {loading ? <div style={{ color: "#94a3b8", fontSize: 13, padding: "16px 6px" }}>Loading timeline...</div> : null}
+        {!loading && !items.length ? (
+          <div style={{ marginTop: 8, padding: "20px 18px", border: "1px solid #e2e8f0", borderRadius: 18, background: "rgba(255,255,255,0.92)", boxShadow: "0 18px 36px rgba(148, 163, 184, 0.12)" }}>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: "#eef6ff", color: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center" }}><Activity size={18} /></div>
+            <div style={{ marginTop: 14, fontSize: 15, fontWeight: 800, color: "#0f172a" }}>No timeline updates yet</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "#64748b" }}>When this lead gets notes, calls, meetings, or status changes, they will appear here in a clean activity stream.</div>
+          </div>
+        ) : null}
         {!loading && Object.entries(groups).map(([date, group]) => (
-          <div key={date} style={{ marginBottom: 20 }}>
-            <div style={{ display: "inline-flex", minWidth: 132, justifyContent: "center", padding: "8px 12px", border: "1px solid #dbe4f0", borderRadius: 6, background: "#ffffff", fontSize: 12, fontWeight: 700, color: "#475569" }}>{date}</div>
-            <div style={{ position: "relative", marginTop: 12, paddingLeft: 16 }}>
-              <div style={{ position: "absolute", left: 25, top: 0, bottom: 0, width: 1, background: "#e2e8f0" }} />
-              {group.map((item, idx) => (
-                <div key={`${timelineDateValue(item)}-${item.type || item.eventType || idx}`} style={{ display: "grid", gridTemplateColumns: "72px 30px 1fr", gap: 12, alignItems: "start", paddingBottom: 20 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", paddingTop: 3 }}>{fmtTime(timelineDateValue(item))}</div>
-                  <div style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid #dbe4f0", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", position: "relative", zIndex: 1 }}><Activity size={14} /></div>
-                  <div style={{ paddingTop: 1 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>{item.type || item.eventType || "Update"}</div>
-                    <div style={{ marginTop: 2, fontSize: 12.5, lineHeight: 1.5, color: "#475569" }}>{timelineDescription(item)}</div>
-                    <div style={{ marginTop: 2, fontSize: 12, color: "#64748b" }}>{fmtDate(timelineDateValue(item), false)}</div>
+          <div key={date} style={{ marginBottom: 18 }}>
+            <div style={{ position: "relative", paddingBottom: 12 }}>
+              <div style={{ position: "absolute", left: 113, top: "calc(100% - 1px)", width: 1, height: 13, background: "#dbe4f0" }} />
+              <div style={{ display: "inline-flex", minWidth: 160, justifyContent: "center", marginLeft: 33, padding: "8px 14px", border: "1px solid #dbe4f0", borderRadius: 6, background: "#ffffff", fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>{date}</div>
+            </div>
+            <div style={{ position: "relative" }}>
+              <div style={{ position: "absolute", left: 113, top: 0, bottom: 0, width: 1, background: "#dbe4f0" }} />
+              {group.map((item, idx) => {
+                const EventIcon = timelineIcon(item);
+                const author = timelineAuthor(item);
+                const eventTitle = item.type || item.eventType || "Update";
+                const eventDescription = timelineDescription(item);
+                return (
+                  <div key={`${timelineDateValue(item)}-${item.type || item.eventType || idx}`} style={{ display: "grid", gridTemplateColumns: "78px 42px minmax(0, 1fr)", gap: 10, alignItems: "start", paddingBottom: 22 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", paddingTop: 10 }}>{fmtTime(timelineDateValue(item))}</div>
+                    <div style={{ width: 42, display: "flex", justifyContent: "center" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #dbe4f0", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", position: "relative", zIndex: 1 }}>
+                        <EventIcon size={15} />
+                      </div>
+                    </div>
+                    <div style={{ paddingTop: 7, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1e293b", lineHeight: 1.35, wordBreak: "break-word" }}>{eventTitle}</div>
+                      {eventDescription ? <div style={{ marginTop: 1, fontSize: 12.5, lineHeight: 1.45, color: "#334155", wordBreak: "break-word" }}>{eventDescription}</div> : null}
+                      <div style={{ marginTop: 2, fontSize: 11.5, lineHeight: 1.35, color: "#64748b", wordBreak: "break-word" }}>
+                        {author ? `by ${author} ` : ""}
+                        {fmtDate(timelineDateValue(item), false)}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
@@ -169,7 +224,7 @@ function Timeline({ items, loading, onRefresh }) {
 
 function Lane({ title, Icon, items }) {
   return (
-    <div style={{ minWidth: 248, flex: "0 0 248px", height: 272, display: "flex", flexDirection: "column", overflow: "hidden", borderRight: "1px solid #e5e7eb", background: "#ffffff" }}>
+    <div style={{ minWidth: 0, flex: "1 1 0", display: "flex", flexDirection: "column", overflow: "hidden", borderRight: "1px solid #e5e7eb", background: "#ffffff" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 28, height: 28, borderRadius: 8, background: "#ffffff", border: "1px solid #e2e8f0", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} /></div>
@@ -178,7 +233,9 @@ function Lane({ title, Icon, items }) {
         <div style={{ minWidth: 24, height: 24, padding: "0 7px", borderRadius: 999, background: "#ffffff", border: "1px solid #e2e8f0", color: "#475569", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{items.length}</div>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px" }}>
-        {!items.length ? <div style={{ minHeight: 110, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13, textAlign: "center" }}>No records found</div> : items.map((item) => (
+        {!items.length ? (
+          <div style={{ minHeight: 92, display: "flex", alignItems: "center", justifyContent: "center", border: "1px dashed #dbe4f0", borderRadius: 12, background: "#fbfdff", color: "#94a3b8", fontSize: 13, textAlign: "center" }}>No records found</div>
+        ) : items.map((item) => (
           <div key={item.id} style={{ padding: "0 0 12px", marginBottom: 12, borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ fontSize: 13.5, fontWeight: 800, color: "#334155" }}>{item.title}</div>
             {hasValue(item.description) && <div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b", lineHeight: 1.45 }}>{item.description}</div>}
@@ -195,13 +252,13 @@ function ActivitySection({ title, bg, items }) {
   const tasks = items.filter((x) => String(x.type).toLowerCase().includes("task"));
   const meetings = items.filter((x) => String(x.type).toLowerCase().includes("meeting"));
   const calls = items.filter((x) => String(x.type).toLowerCase().includes("call"));
+  const hasAnyItems = tasks.length || meetings.length || calls.length;
   return (
-    <section style={{ border: "1px solid #e2e8f0", borderRadius: 16, background: "#ffffff", overflow: "hidden" }}>
+    <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "#ffffff", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid #e5e7eb", background: "#ffffff" }}>
-        <div style={{ fontSize: 15.5, fontWeight: 800, color: "#1e293b" }}>{title}</div>
-        <div style={{ padding: "5px 10px", borderRadius: 999, background: "#f8fafc", color: "#64748b", fontSize: 12, fontWeight: 800 }}>{items.length} items</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>{title}</div>
       </div>
-      <div style={{ display: "flex", gap: 0, height: 260, overflowX: "auto", overflowY: "hidden", padding: 0 }}>
+      <div style={{ display: "flex", gap: 0, height: hasAnyItems ? 260 : "auto", overflowX: "auto", overflowY: "hidden", padding: 0, alignItems: "stretch" }}>
         <Lane title="Tasks" Icon={FileText} items={tasks} />
         <Lane title="Meetings" Icon={Calendar} items={meetings} />
         <Lane title="Calls" Icon={Phone} items={calls} />
@@ -234,14 +291,30 @@ function Composer({ tab, lead, onSaved }) {
       if (tab === "emails") await leadsAPI.addCommunication({ leadId: lead.id, type: "Email", subject: v.emailSubject, body: v.emailBody, toEmail: v.toEmail || lead.email, createdBy: lead.assignedToUserId || 0 });
       if (tab === "whatsapp") await leadsAPI.addCommunication({ leadId: lead.id, type: "WhatsApp", message: v.whatsappMessage, direction: v.whatsappDirection, createdBy: lead.assignedToUserId || 0 });
       if (tab === "calls") {
-        const payload = { leadId: lead.id, subject: v.callSubject, callType: v.callType, callResult: v.callResult, description: v.callDescription, callStartTime: v.callStartTime, assignedToUserId: lead.assignedToUserId || 0 };
+        const payload = {
+          leadId: lead.id,
+          subject: v.callSubject,
+          callType: v.callType,
+          callResult: v.callResult,
+          description: v.callDescription,
+          callStartTime: v.callStartTime,
+          ...(lead.assignedToUserId ? { assignedToUserId: lead.assignedToUserId } : {}),
+        };
         if (v.callMode === "schedule") await activitiesAPI.scheduleCall(payload); else await activitiesAPI.logCall(payload);
       }
-      if (tab === "meetings") await activitiesAPI.createMeeting({ leadId: lead.id, title: v.meetingTitle, startTime: v.meetingStartTime, endTime: v.meetingEndTime, assignedToUserId: lead.assignedToUserId || 0, description: v.meetingProvider === "Offline" ? v.meetingDescription : `${v.meetingProvider} meeting requested${v.meetingDescription ? ` - ${v.meetingDescription}` : ""}`, location: v.meetingLocation || v.meetingProvider });
+      if (tab === "meetings") await activitiesAPI.createMeeting({
+        leadId: lead.id,
+        title: v.meetingTitle,
+        startTime: v.meetingStartTime,
+        endTime: v.meetingEndTime,
+        ...(lead.assignedToUserId ? { assignedToUserId: lead.assignedToUserId } : {}),
+        description: v.meetingProvider === "Offline" ? v.meetingDescription : `${v.meetingProvider} meeting requested${v.meetingDescription ? ` - ${v.meetingDescription}` : ""}`,
+        location: v.meetingLocation || v.meetingProvider
+      });
       Toast.success("Saved successfully");
       onSaved?.();
     } catch (e) {
-      Toast.error(e?.response?.data?.message || "Unable to save");
+      Toast.error(getApiErrorMessage(e, "Unable to save"));
     } finally {
       setSubmitting(false);
     }
@@ -302,7 +375,7 @@ function Attachments({ leadId }) {
 }
 
 function Middle({ lead }) {
-  const [tab, setTab] = useState("activity"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]); const [comms, setComms] = useState([]);
+  const [tab, setTab] = useState("activity"); const [activityView, setActivityView] = useState("open"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]); const [comms, setComms] = useState([]);
   const load = async () => {
     if (!lead?.id) return;
     setLoading(true);
@@ -319,6 +392,7 @@ function Middle({ lead }) {
   };
   useEffect(() => { load(); }, [lead?.id]);
   const filtered = useMemo(() => comms.filter((x) => x.kind === tab), [comms, tab]);
+  const activityItems = activityView === "open" ? open : closed;
   return (
     <section style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 0", overflowX: "auto" }}>
@@ -327,11 +401,33 @@ function Middle({ lead }) {
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
         {loading && <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading details...</div>}
         {tab === "activity" && <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-            {[["Total", open.length + closed.length], ["Open", open.length], ["Closed", closed.length], ["Next Due", open[0]?.dueDate ? fmtDate(open[0].dueDate, false) : "Not set"]].map(([label, value]) => <div key={label} style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: "12px 14px", background: "#ffffff" }}><div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div><div style={{ marginTop: 8, fontSize: 16, fontWeight: 800, color: "#1e293b" }}>{value}</div></div>)}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#ffffff" }}>
+            {[
+              ["open", `Open Activities (${open.length})`],
+              ["closed", `Closed Activities (${closed.length})`],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setActivityView(id)}
+                style={{
+                  border: "none",
+                  borderRight: id === "open" ? "1px solid #e5e7eb" : "none",
+                  padding: "7px 12px",
+                  background: activityView === id ? "#eef2ff" : "transparent",
+                  color: activityView === id ? "#4f46e5" : "#6b7280",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap"
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            </div>
           </div>
-          <ActivitySection title="Open Activities" bg="#ffffff" items={open} />
-          <ActivitySection title="Closed Activities" bg="#ffffff" items={closed} />
+          <ActivitySection title={activityView === "open" ? "Open Activities" : "Closed Activities"} bg="#ffffff" items={activityItems} />
         </>}
         {tab !== "activity" && tab !== "attachments" && <>
           <Composer tab={tab} lead={lead} onSaved={load} />
@@ -352,9 +448,9 @@ export default function LeadDetailsModal({ lead, onClose }) {
   useEffect(() => { const onKey = (e) => { if (e.key === "Escape") onClose?.(); }; document.addEventListener("keydown", onKey); return () => document.removeEventListener("keydown", onKey); }, [onClose]);
   return (
     <div className="overlay" onClick={onClose} style={{ padding: 24, zIndex: 700 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1480px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "hidden", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", display: "grid", gridTemplateRows: "64px 1fr" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 16px", borderBottom: "1px solid #e5e7eb", background: "#fff" }}><button className="icon-btn" onClick={onClose} title="Close"><X size={18} /></button></div>
-        <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 360px" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1480px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "hidden", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
+        <button className="icon-btn" onClick={onClose} title="Close" style={{ position: "absolute", top: 14, right: 16, zIndex: 2, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(6px)" }}><X size={18} /></button>
+        <div style={{ minHeight: "100%", display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 360px" }}>
           <LeftPanel lead={lead} />
           <Middle lead={lead} />
           <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} />
