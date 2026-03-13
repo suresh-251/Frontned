@@ -11,6 +11,16 @@ const activitiesAPI = {
     return response.data;
   },
 
+  getOpen: async () => {
+    const response = await apiClient.get('/Activities/open');
+    return response.data;
+  },
+
+  getClosed: async () => {
+    const response = await apiClient.get('/Activities/closed');
+    return response.data;
+  },
+
   // Get activity by ID
   getById: async (id) => {
     const response = await apiClient.get(`/Activities/${id}`);

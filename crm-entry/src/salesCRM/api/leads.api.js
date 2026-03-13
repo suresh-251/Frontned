@@ -81,6 +81,21 @@ const leadsAPI = {
     return response.data;
   },
 
+  bulkUpdateStatus: async (ids, status) => {
+    const response = await apiClient.put("/Leads/bulk/status", {
+      ids,
+      status,
+    });
+    return response.data;
+  },
+
+  bulkDelete: async (ids) => {
+    const response = await apiClient.delete("/Leads/bulk", {
+      data: { ids },
+    });
+    return response.data;
+  },
+
   getSalesUsers: async () => {
     const data = await getUsers({ page: 1, pageSize: 200 });
     const users = Array.isArray(data)
@@ -150,11 +165,4 @@ const leadsAPI = {
 };
 
 export default leadsAPI;
-
-
-
-
-
-
-
 

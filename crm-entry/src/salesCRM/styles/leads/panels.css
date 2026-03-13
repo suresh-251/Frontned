@@ -611,7 +611,9 @@
 
 .kanban-followup-date-input {
   width: 100%;
-  min-height: 40px;
+  height: 48px;
+  min-height: 48px;
+  box-sizing: border-box;
   padding: 0 12px;
   border: 1.5px solid #dbe4f0;
   border-radius: 10px;
@@ -619,6 +621,13 @@
   color: #334155;
   font-size: 13px;
   font-weight: 600;
+  line-height: 48px;
+}
+
+.kanban-followup-date-input::-webkit-datetime-edit,
+.kanban-followup-date-input::-webkit-date-and-time-value {
+  padding: 0;
+  line-height: 48px;
 }
 
 .kanban-followup-date-input:focus {

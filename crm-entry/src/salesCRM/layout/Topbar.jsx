@@ -80,7 +80,7 @@ export default function Topbar() {
                 textDecoration: "none",
                 padding: "8px 14px",
                 borderRadius: "8px",
-                fontSize: "14px",
+                fontSize: "17px",
                 fontWeight: 600,
                 background: isActive ? "#eef2ff" : "transparent",
                 color: isActive ? "#5b4cf5" : "#6b7280",
@@ -100,19 +100,6 @@ export default function Topbar() {
           gap: "12px",
         }}
       >
-        <button
-          style={{
-            width: "36px",
-            height: "36px",
-            borderRadius: "10px",
-            border: "1px solid #e5e7eb",
-            background: "#f8fafc",
-            cursor: "pointer",
-          }}
-        >
-          ??
-        </button>
-
         <div ref={profileRef} style={{ position: "relative" }}>
           <button
             onClick={() => setProfileOpen((current) => !current)}

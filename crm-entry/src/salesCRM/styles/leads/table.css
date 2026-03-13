@@ -102,6 +102,34 @@
   background: #dbeafe;
 }
 
+.bulk-select {
+  min-width: 170px;
+  height: 34px;
+  padding: 0 34px 0 12px;
+  border: 1.5px solid #111827;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1d4ed8;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #4f46e5 50%),
+    linear-gradient(135deg, #4f46e5 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% - 1px),
+    calc(100% - 11px) calc(50% - 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.bulk-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
+}
+
 .bulk-btn--danger {
   color: #dc2626;
   border-color: #fecaca;
@@ -124,6 +152,10 @@
 
 .bulk-close:hover {
   background: #dbeafe;
+}
+
+.cb {
+  cursor: pointer;
 }
 
 /* ----------------------------------------
@@ -206,7 +238,7 @@
 }
 
 .th-actions {
-  width: 90px;
+  width: 56px;
   cursor: default;
 }
 
@@ -293,7 +325,7 @@
 }
 
 .td-actions {
-  min-width: 90px;
+  min-width: 56px;
 }
 
 /* Name cell */
@@ -454,41 +486,17 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border: 1.5px solid transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--ct2);
+  color: #0284c7;
   cursor: pointer;
   transition: all 0.12s;
   white-space: nowrap;
   max-width: 100%;
-  color: #0284c7;
-}
-
-.followup-btn--empty {
-  color: var(--cq);
-  font-style: italic;
-  background: transparent;
-  border-color: transparent;
-}.followup-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 6px;
-  border: 1.5px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ct2);
-  cursor: pointer;
-  transition: all 0.12s;
-  white-space: nowrap;
-  max-width: 100%;
-  color: #0284c7;
 }
 
 .followup-btn--empty {
@@ -497,3 +505,22 @@
   background: transparent;
   border-color: transparent;
 }
+
+.followup-btn--overdue {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.followup-btn--today {
+  background: #fefce8;
+  border-color: #fde68a;
+  color: #a16207;
+}
+
+.followup-btn--tomorrow {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+

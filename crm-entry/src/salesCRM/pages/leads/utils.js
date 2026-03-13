@@ -1,24 +1,5 @@
 import { AVATAR_COLORS, CSV_FIELD_MAP } from "./constants";
 
-export const makeInitialActivity = (leads) => {
-  const map = {};
-  leads.forEach((lead) => {
-    const acts = [{ id: Date.now() + lead.id, type: "created", date: lead.createdDate, time: "09:00 AM", notes: "Lead created" }];
-    if (lead.lastContacted) {
-      const type = lead.respondedTo || "call";
-      acts.unshift({
-        id: Date.now() + lead.id + 1,
-        type,
-        date: lead.lastContacted,
-        time: "10:30 AM",
-        notes: `${type.charAt(0).toUpperCase() + type.slice(1)} made`,
-      });
-    }
-    map[lead.id] = acts;
-  });
-  return map;
-};
-
 export const fmtDate = (dateString) => {
   if (!dateString) return "-";
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
@@ -179,5 +160,14 @@ export function createLeadRecord(lead, index = 0) {
 }
 
 export function normalizeLeads(apiLeads = []) {
-  return apiLeads.map((lead, index) => createLeadRecord(lead, index));
+  const items = Array.isArray(apiLeads)
+    ? apiLeads
+    : Array.isArray(apiLeads?.leads)
+      ? apiLeads.leads
+      : Array.isArray(apiLeads?.items)
+        ? apiLeads.items
+        : Array.isArray(apiLeads?.data)
+          ? apiLeads.data
+          : [];
+  return items.map((lead, index) => createLeadRecord(lead, index));
 }

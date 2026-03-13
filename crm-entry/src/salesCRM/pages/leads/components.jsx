@@ -79,6 +79,18 @@ export const IRows = mkI(List);
 export const IUpload = mkI(Upload);
 export const IKanban = mkI(LayoutGrid);
 
+const parseDateTimeValue = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toDateTimeValue = (date) => {
+  if (!date) return "";
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 function useClickOutside(ref, cb) {
   useEffect(() => {
     const handleMouseDown = (event) => {
@@ -113,12 +125,38 @@ export const StatCard = memo(({ label, value, detailValue = 0, detailLabel = "du
 
 export function FilterModal({ onClose, filters, activeFilterCount, onApply, assignees = [] }) {
   const [localFilters, setLocalFilters] = useState(filters);
+  const [dateField, setDateField] = useState(null);
+  const [dateMode, setDateMode] = useState("date");
+  const [activeDatePicker, setActiveDatePicker] = useState(null);
+
+  useEffect(() => {
+    setLocalFilters(filters);
+  }, [filters]);
+
   const updateFilter = (key, value) => setLocalFilters((prev) => ({ ...prev, [key]: value }));
   const handleApply = () => {
     onApply(localFilters);
     onClose();
   };
   const handleClear = () => setLocalFilters(CLEARED_FILTERS);
+  const datePrefixLabel = dateField === "createdDate" ? "Created Date" : "Follow-Up";
+  const fromKey = `${dateField}From`;
+  const toKey = `${dateField}To`;
+  const selectedSingleDate = dateField ? parseDateTimeValue(localFilters[fromKey] || localFilters[toKey]) : null;
+
+  const setSingleDate = (date) => {
+    if (!date) {
+      updateFilter(fromKey, "");
+      updateFilter(toKey, "");
+      return;
+    }
+    const fromDate = new Date(date);
+    fromDate.setHours(0, 0, 0, 0);
+    const toDate = new Date(date);
+    toDate.setHours(23, 59, 0, 0);
+    updateFilter(fromKey, toDateTimeValue(fromDate));
+    updateFilter(toKey, toDateTimeValue(toDate));
+  };
 
   return (
     <>
@@ -173,21 +211,133 @@ export function FilterModal({ onClose, filters, activeFilterCount, onApply, assi
           </div>
 
           <div style={{ marginBottom: "20px" }}>
-            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6b7280", margin: "0 0 12px 0" }}>Dates</h4>
-            {[["Created Date From", "createdDateFrom"], ["Created Date To", "createdDateTo"], ["Follow-up From", "followUpDateFrom"], ["Follow-up To", "followUpDateTo"]].map(([label, key]) => (
-              <div key={key} style={{ marginBottom: key === "followUpDateTo" ? "0" : "12px" }}>
-                <label style={{ fontSize: "12px", fontWeight: 500, color: "#374151", display: "block", marginBottom: "4px" }}>{label}</label>
-                <input type="date" value={localFilters[key]} onChange={(event) => updateFilter(key, event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px" }} />
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6b7280", margin: "0 0 12px 0" }}>Date Range</h4>
+            <div style={{ display: "inline-flex", gap: 6, padding: 4, borderRadius: 999, background: "#f3f4f6", marginBottom: 12 }}>
+              {[["createdDate", "Created Date"], ["followUpDate", "Follow-Up"]].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    setDateField(value);
+                    setActiveDatePicker(null);
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    border: "none",
+                    borderRadius: 999,
+                    background: dateField === value ? "#ffffff" : "transparent",
+                    color: dateField === value ? "#4f46e5" : "#6b7280",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: dateField === value ? "0 1px 3px rgba(15,23,42,0.08)" : "none",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {dateField && <div style={{ display: "inline-flex", gap: 6, padding: 4, borderRadius: 999, background: "#f3f4f6", marginBottom: 12 }}>
+              {[["date", "Date"], ["range", "Time Range"]].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => { setDateMode(value); setActiveDatePicker(null); }}
+                  style={{
+                    padding: "6px 12px",
+                    border: "none",
+                    borderRadius: 999,
+                    background: dateMode === value ? "#ffffff" : "transparent",
+                    color: dateMode === value ? "#4f46e5" : "#6b7280",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: dateMode === value ? "0 1px 3px rgba(15,23,42,0.08)" : "none",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>}
+            {dateField && dateMode === "date" ? (
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveDatePicker((current) => current === "single" ? null : "single")}
+                  style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, background: "#fff", fontSize: 13, fontWeight: 600, color: "#374151", textAlign: "left", cursor: "pointer" }}
+                >
+                  {selectedSingleDate ? selectedSingleDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : `Select ${datePrefixLabel}`}
+                </button>
+                {activeDatePicker === "single" && (
+                  <div style={{ marginTop: 10, border: "1.5px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff", width: "fit-content" }}>
+                    <DatePicker
+                      selected={selectedSingleDate}
+                      onChange={(date) => {
+                        setSingleDate(date);
+                        setActiveDatePicker(null);
+                      }}
+                      inline
+                      showMonthDropdown
+                      showYearDropdown
+                      dropdownMode="select"
+                      yearDropdownItemNumber={12}
+                      calendarClassName="followup-datepicker"
+                    />
+                  </div>
+                )}
               </div>
-            ))}
+            ) : dateField ? (
+              <div style={{ display: "grid", gap: 12 }}>
+                {[
+                  ["from", `${datePrefixLabel} From`, fromKey],
+                  ["to", `${datePrefixLabel} To`, toKey],
+                ].map(([pickerKey, label, key]) => (
+                  <div key={pickerKey} style={{ position: "relative" }}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveDatePicker((current) => current === pickerKey ? null : pickerKey)}
+                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, background: "#fff", fontSize: 13, fontWeight: 600, color: "#374151", textAlign: "left", cursor: "pointer" }}
+                    >
+                      {localFilters[key] ? parseDateTimeValue(localFilters[key])?.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : label}
+                    </button>
+                    {activeDatePicker === pickerKey && (
+                      <div style={{ marginTop: 10, border: "1.5px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff", width: "fit-content" }}>
+                        <DatePicker
+                          selected={parseDateTimeValue(localFilters[key])}
+                          onChange={(date) => {
+                            updateFilter(key, toDateTimeValue(date));
+                            setActiveDatePicker(null);
+                          }}
+                          inline
+                          showTimeSelect
+                          timeIntervals={15}
+                          dateFormat="MMM d, yyyy h:mm aa"
+                          showMonthDropdown
+                          showYearDropdown
+                          dropdownMode="select"
+                          yearDropdownItemNumber={12}
+                          calendarClassName="followup-datepicker"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div style={{ marginBottom: "20px" }}>
             <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6b7280", margin: "0 0 12px 0" }}>Location</h4>
             <div style={{ marginBottom: "8px" }}>
+              <input type="text" placeholder="Address" value={localFilters.address || ""} onChange={(event) => updateFilter("address", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", marginBottom: "8px" }} />
+            </div>
+            <div style={{ marginBottom: "8px" }}>
               <input type="text" placeholder="City" value={localFilters.city} onChange={(event) => updateFilter("city", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", marginBottom: "8px" }} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+            <div style={{ marginBottom: "8px" }}>
+              <input type="text" placeholder="Country" value={localFilters.country} onChange={(event) => updateFilter("country", event.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px" }} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 116px", gap: "8px" }}>
               <input type="text" placeholder="State" value={localFilters.state} onChange={(event) => updateFilter("state", event.target.value)} style={{ padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px" }} />
               <input type="text" placeholder="Zip" value={localFilters.zip} onChange={(event) => updateFilter("zip", event.target.value)} style={{ padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px" }} />
             </div>
@@ -575,7 +725,12 @@ export function EditModal({ lead, onClose, onSave, onDelete, salesUsers = [], sa
           </div>
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Next Follow-Up</label>
-            <input type="datetime-local" value={form.nextFollowUpAt ? form.nextFollowUpAt.slice(0, 16) : ""} onChange={(event) => handle("nextFollowUpAt", event.target.value ? event.target.value + ":00.000Z" : null)} style={inputStyle} />
+            <input
+              type="date"
+              value={form.nextFollowUpAt ? String(form.nextFollowUpAt).slice(0, 10) : ""}
+              onChange={(event) => handle("nextFollowUpAt", event.target.value ? `${event.target.value}T00:00:00.000Z` : null)}
+              style={inputStyle}
+            />
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "#374151", marginTop: 24 }}>
             <input type="checkbox" checked={!!form.whatsappEnabled} onChange={(event) => handle("whatsappEnabled", event.target.checked)} />
@@ -594,7 +749,7 @@ export function EditModal({ lead, onClose, onSave, onDelete, salesUsers = [], sa
   );
 }
 
-export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDetails, onAdjustScore }) {
+export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDetails }) {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [pendingFollowUpDrop, setPendingFollowUpDrop] = useState(null);
@@ -698,6 +853,8 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
     setDragOverCol(null);
   };
 
+  const isSourceReadOnly = groupBy === "source";
+
   return (
     <>
       <div className="kanban-toolbar">
@@ -732,9 +889,14 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
               key={columnKey}
               className={`kanban-column ${isOver ? "kanban-column--over" : ""}`}
               style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}
-              onDragOver={(event) => { event.preventDefault(); setDragOverCol(columnKey); }}
-              onDragLeave={() => setDragOverCol(null)}
+              onDragOver={(event) => {
+                if (isSourceReadOnly) return;
+                event.preventDefault();
+                setDragOverCol(columnKey);
+              }}
+              onDragLeave={() => { if (!isSourceReadOnly) setDragOverCol(null); }}
               onDrop={(event) => {
+                if (isSourceReadOnly) return;
                 event.preventDefault();
                 if (draggedId) {
                   let nextValue = columnKey;
@@ -763,7 +925,7 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
               <div className="kanban-column__header">
                 <div>
                   <div className="kanban-column__label">{groupBy === "status" ? formatStatus(columnKey) : groupBy === "source" ? formatLeadSource(columnKey) : columnKey}</div>
-                  <div className="kanban-column__sub">Drag and drop leads into this lane</div>
+                  <div className="kanban-column__sub">{isSourceReadOnly ? "Read-only lane grouping" : "Drag and drop leads into this lane"}</div>
                 </div>
                 <span className="kanban-column__count">{colLeads.length}</span>
               </div>
@@ -779,16 +941,29 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
                     <div
                       key={lead.id}
                       className={`kanban-card ${draggedId === lead.id ? "kanban-card--dragging" : ""}`}
-                      draggable
-                      onDragStart={(event) => { setDraggedId(lead.id); event.dataTransfer.effectAllowed = "move"; }}
+                      draggable={!isSourceReadOnly}
+                      onDragStart={(event) => {
+                        if (isSourceReadOnly) return;
+                        setDraggedId(lead.id);
+                        event.dataTransfer.effectAllowed = "move";
+                      }}
                       onDragEnd={() => { stopAutoScroll(); setDraggedId(null); setDragOverCol(null); }}
-                      onClick={() => onOpenDetails(lead.id)}
                     >
                       <div className="kanban-card__top">
                         <div className="kanban-card__identity">
                           <div className="kanban-card__avatar" style={{ background: lead.avatarBg }}>{initials}</div>
                           <div className="kanban-card__identity-text">
-                            <div className="kanban-card__name">{lead.name}</div>
+                            <button
+                              type="button"
+                              className="kanban-card__name"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onOpenDetails(lead.id);
+                              }}
+                              style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+                            >
+                              {lead.name}
+                            </button>
                             <div className="kanban-card__company">{lead.company}</div>
                           </div>
                         </div>
@@ -815,22 +990,18 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
             <div className="modal-hdr">
               <div>
                 <div className="modal-title">Set Follow-Up Date</div>
-                <div className="modal-sub">Choose a date for {pendingFollowUpDrop.lane}</div>
               </div>
               <button className="icon-btn modal-close" onClick={() => setPendingFollowUpDrop(null)}><IX s={15} /></button>
             </div>
-            <div className="modal-body" style={{ padding: "12px 14px", display: "grid", gap: 8 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "grid", gap: 6 }}>
-                Follow-Up Date
-                <input
-                  type="date"
-                  value={pendingFollowUpDrop.suggestedDate}
-                  min={pendingFollowUpDrop.min || undefined}
-                  max={pendingFollowUpDrop.max || undefined}
-                  className="kanban-followup-date-input"
-                  onChange={(event) => setPendingFollowUpDrop((current) => ({ ...current, suggestedDate: event.target.value }))}
-                />
-              </label>
+            <div className="modal-body" style={{ padding: "14px", display: "grid" }}>
+              <input
+                type="date"
+                value={pendingFollowUpDrop.suggestedDate}
+                min={pendingFollowUpDrop.min || undefined}
+                max={pendingFollowUpDrop.max || undefined}
+                className="kanban-followup-date-input"
+                onChange={(event) => setPendingFollowUpDrop((current) => ({ ...current, suggestedDate: event.target.value }))}
+              />
             </div>
             <div className="modal-footer">
               <button className="btn-ghost" onClick={() => setPendingFollowUpDrop(null)}>Cancel</button>
