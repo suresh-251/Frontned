@@ -1,7 +1,7 @@
 import hrApi from "./hr.api";
 
 // Fetch all payroll records
-export const getAllPayroll = () => hrApi.get("/api/Payroll");
+export const getAllPayroll = () => hrApi.get("/api/Payroll/all");
 
 // Fetch payroll by Employee ID
 export const getPayrollByEmployee = (employeeId) => hrApi.get(`/api/Payroll/${employeeId}`);
