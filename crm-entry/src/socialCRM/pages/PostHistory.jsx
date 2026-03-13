@@ -795,43 +795,8 @@ function CalendarPostPopover({ post, onClose }) {
                 </svg>
               </a>
             ))}
-          </div>
-        )}
-        <div className="p-3">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="flex flex-wrap gap-1">
-              {parsePlatforms(post.platforms).map(p => (
-                <span key={p} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PLATFORM_COLORS[p] ?? "bg-gray-100 text-gray-600"}`}>
-                  <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p}
-                </span>
-              ))}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${post.status === "Completed" ? "bg-green-100 text-green-700" : post.status === "Scheduled" ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-600"}`}>
-                {post.status === "Completed" ? "Published" : post.status === "Scheduled" ? "Scheduled" : "Failed"}
-              </span>
-            </div>
-            <button onClick={onClose} className="p-0.5 hover:bg-slate-100 rounded shrink-0 text-slate-400">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-          <p className="text-xs text-slate-700 line-clamp-3 leading-snug mb-1.5">
-            {post.content || <span className="italic text-slate-400">No caption</span>}
-          </p>
-          <p className="text-[10px] text-slate-500 mb-2">📅 {fmtLocal(post.scheduledAt ?? post.processedAt)}</p>
-          {viewLinks.length > 0 && (
-            <div className="flex flex-col gap-1">
-              {viewLinks.map((link, i) => (
-                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
-                  className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg transition-colors ${PLATFORM_META[link.platform]?.bg ?? "bg-slate-50"} ${PLATFORM_META[link.platform]?.color ?? "text-slate-700"} hover:opacity-90`}>
-                  <PlatformSvg p={link.platform} cls="w-3 h-3" />
-                  View on {link.platform}{link.accountName ? ` · ${link.accountName}` : ""}
-                  <svg className="w-3 h-3 ml-auto opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-              ))}
             </div>
           )}
-        </div>
       </div>
     </div>
   );
@@ -1049,13 +1014,14 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
   const [draftNotice, setDraftNotice]     = useState("");
 
   const currentType = POST_TYPES.find(t => t.key === mode);
-  const refreshDrafts = useCallback(() => {
-    setDrafts(getDraftsForBrand(activeBrand?.slug));
+
+  const loadDraftsFromApi = useCallback(async () => {
+    if (!activeBrand?.slug) return;
+    try {
+      const res = await api.get("/post/drafts");
+      setDrafts(Array.isArray(res.data) ? res.data : []);
+    } catch { /* silently fail */ }
   }, [activeBrand?.slug]);
-  const refreshAllDrafts = useCallback(() => {
-    refreshDrafts();
-    onDraftsUpdated?.();
-  }, [refreshDrafts, onDraftsUpdated]);
 
   useEffect(() => {
     if (!activeBrand?.slug) { setALoading(false); return; }
@@ -1072,10 +1038,10 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
   }, [activeBrand?.slug]);
 
   useEffect(() => {
-    refreshAllDrafts();
+    loadDraftsFromApi();
     setEditingDraftId(null);
     setDraftNotice("");
-  }, [refreshAllDrafts]);
+  }, [loadDraftsFromApi]);
 
   useEffect(() => { setFiles([]); setPreviewUrls([]); }, [mode]);
 
@@ -1121,77 +1087,36 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
   };
 
   const loadDraftForEdit = useCallback((draft) => {
-    setMode(draft.mode || "Text");
+    setMode(draft.postType || draft.mode || "Text");
     setContent(draft.content || "");
     setDocTitle(draft.documentTitle || "");
-    setSched(Boolean(draft.scheduleEnabled));
-    setScheduledAt(draft.scheduleEnabled ? (draft.scheduledAt || "") : "");
+    setSched(Boolean(draft.scheduledAt));
+    setScheduledAt(draft.scheduledAt || "");
     setSelected(new Set(parseAccountIds(draft.targetAccountIds)));
     setFiles([]);
     setResults(null);
     setError("");
     setEditingDraftId(draft.id);
-    setDraftNotice(
-      draft.mediaFileNames?.length
-        ? "Draft loaded. Re-upload media files before posting."
-        : "Draft loaded."
-    );
+    setDraftNotice("Draft loaded. Re-upload media files if needed.");
   }, []);
 
   useEffect(() => {
-    if (!initialDraft) return;
-    if (initialDraft.brandSlug && activeBrand?.slug && initialDraft.brandSlug !== activeBrand.slug) return;
-    loadDraftForEdit(initialDraft);
-  }, [initialDraft, activeBrand?.slug, loadDraftForEdit]);
+    if (!resumeDraft) return;
+    loadDraftForEdit(resumeDraft);
+  }, [resumeDraft, loadDraftForEdit]);
 
-  const removeDraft = (draftId) => {
-    if (!activeBrand?.slug) return;
-    removeDraftFromStorage(activeBrand.slug, draftId);
-    refreshAllDrafts();
-    if (editingDraftId === draftId) {
-      setEditingDraftId(null);
+  const removeDraft = async (draftId) => {
+    try {
+      await api.delete(`/post/draft/${draftId}`);
+      setDrafts(prev => prev.filter(d => d.id !== draftId));
+      if (editingDraftId === draftId) {
+        setEditingDraftId(null);
+        resetComposer();
+      }
+      setDraftNotice("Draft deleted.");
+    } catch {
+      setError("Failed to delete draft.");
     }
-    setDraftNotice("Draft deleted.");
-  };
-
-  const saveDraft = () => {
-    if (!activeBrand?.slug) {
-      setError("Select an active brand first.");
-      return;
-    }
-    if (!content.trim() && !documentTitle.trim() && !selected.size && !scheduleEnabled && !files.length) {
-      setError("Write something or choose settings before saving draft.");
-      return;
-    }
-
-    const nowIso = new Date().toISOString();
-    const existing = drafts.find(d => d.id === editingDraftId);
-    const draftId = existing?.id || `draft_${Date.now()}`;
-
-    const draft = {
-      id: draftId,
-      brandSlug: activeBrand.slug,
-      mode,
-      content: content || "",
-      documentTitle: documentTitle || "",
-      scheduleEnabled,
-      scheduledAt: scheduleEnabled ? (scheduledAt || "") : "",
-      targetAccountIds: [...selected],
-      mediaFileNames: files.map(file => file.name),
-      createdAt: existing?.createdAt || nowIso,
-      updatedAt: nowIso,
-    };
-
-    upsertDraftInStorage(draft);
-    refreshAllDrafts();
-    setEditingDraftId(draftId);
-    setResults(null);
-    setError("");
-    setDraftNotice(
-      files.length
-        ? "Draft saved. Media files are not stored in draft, re-upload before posting."
-        : "Draft saved successfully."
-    );
   };
 
   const submit = async () => {
@@ -1217,10 +1142,10 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
         headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
       });
       setResults(res.data);
-      if (editingDraftId && activeBrand?.slug) {
-        removeDraftFromStorage(activeBrand.slug, editingDraftId);
+      if (editingDraftId) {
+        try { await api.delete(`/post/draft/${editingDraftId}`); } catch { /* ok */ }
+        setDrafts(prev => prev.filter(d => d.id !== editingDraftId));
         setEditingDraftId(null);
-        refreshAllDrafts();
       }
       if (!scheduleEnabled) { setContent(""); setFiles([]); setSelected(new Set()); }
       onPosted?.({ scheduled: scheduleEnabled, draftId: resumeDraft?.id });
@@ -1242,11 +1167,12 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
     files.forEach(f => form.append("MediaFiles", f));
     if (documentTitle) form.append("DocumentTitle", documentTitle);
     try {
-      await api.post("/post/draft", form, {
+      const res = await api.post("/post/draft", form, {
         headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
       });
-      onPosted?.({ draftId: resumeDraft?.id });
-      onClose();
+      await loadDraftsFromApi();
+      setDraftNotice("Draft saved successfully.");
+      if (res.data?.id) setEditingDraftId(res.data.id);
     } catch (e) {
       setError(e.message || "Failed to save draft.");
     } finally {
@@ -1349,7 +1275,7 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
                   {drafts.map(draft => {
                     const title = draft.content?.trim()
                       ? draft.content.trim().slice(0, 56)
-                      : (draft.documentTitle?.trim() ? draft.documentTitle.trim().slice(0, 56) : `${draft.mode} draft`);
+                      : (draft.documentTitle?.trim() ? draft.documentTitle.trim().slice(0, 56) : `${draft.postType || draft.mode || "Text"} draft`);
                     const isEditing = draft.id === editingDraftId;
                     return (
                       <div key={draft.id}
@@ -1357,7 +1283,7 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
                         <div className="min-w-0 flex-1">
                           <p className="text-[11px] font-semibold text-gray-700 truncate">{title}</p>
                           <p className="text-[10px] text-gray-400">
-                            {draft.mode} · {fmtLocal(draft.updatedAt)}{draft.mediaFileNames?.length ? " · media re-upload needed" : ""}
+                            {draft.postType || draft.mode || "Text"} · {fmtLocal(draft.updatedAt || draft.createdAt)}
                           </p>
                         </div>
 
@@ -1807,6 +1733,12 @@ export default function PostHistory() {
   const [error, setError]                   = useState("");
   const PAGE_SIZE = 20;
 
+  const openComposeForNew = () => {
+    setComposeInitialDraft(null);
+    setResumingDraft(null);
+    setCompose(true);
+  };
+
   const loadScheduled = useCallback(async () => {
     if (!effectiveBrand?.slug) return;
     setSchedLoad(true); setError("");
@@ -1979,7 +1911,7 @@ export default function PostHistory() {
               className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 shadow-sm"
             >
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Sort by</span>
-              <span className="text-xs font-semibold text-gray-700">{activeSortOption.label}</span>
+              <span className="text-xs font-semibold text-gray-700">{(POST_SORT_OPTIONS.find(o => o.key === sortBy) || POST_SORT_OPTIONS[0]).label}</span>
               <svg className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-300 ${sortMenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
