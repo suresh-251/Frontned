@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../api/apiClient";
 import { BASE_URL } from "../api/apiClient";
 import { useBrand } from "../context/BrandContext";
@@ -42,8 +42,19 @@ const PLATFORM_FILTER_OPTIONS = [
   { key: "LinkedIn",  label: "LinkedIn",  text: "text-purple-600", border: "border-purple-300", fill: "bg-purple-600" },
 ];
 
+const POST_SORT_OPTIONS = [
+  { key: "newest", label: "Newest First" },
+  { key: "oldest", label: "Oldest First" },
+  { key: "reach_desc", label: "Reach: High to Low" },
+  { key: "reach_asc", label: "Reach: Low to High" },
+  { key: "platform", label: "Platform (A-Z)" },
+  { key: "type", label: "Post Type (A-Z)" },
+];
+
+const DRAFTS_STORAGE_KEY = "social.postDrafts.v1";
+
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const DAY_NAMES   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DAY_NAMES   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const normPlatform = (p) => { const m = { facebook:"Facebook", instagram:"Instagram", linkedin:"LinkedIn" }; return m[(p??"").toLowerCase()] ?? p; };
@@ -60,6 +71,51 @@ function parseResults(raw) {
   if (!raw) return [];
   try { return JSON.parse(raw) ?? []; } catch { return []; }
 }
+
+function readDraftsFromStorage() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(DRAFTS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDraftsToStorage(drafts) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+  } catch {
+    // Ignore storage write failures (private mode / quota).
+  }
+}
+
+function getDraftsForBrand(brandSlug) {
+  if (!brandSlug) return [];
+  return readDraftsFromStorage()
+    .filter(draft => draft.brandSlug === brandSlug)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+function upsertDraftInStorage(draft) {
+  const allDrafts = readDraftsFromStorage();
+  const idx = allDrafts.findIndex(d => d.id === draft.id && d.brandSlug === draft.brandSlug);
+  if (idx >= 0) allDrafts[idx] = draft;
+  else allDrafts.push(draft);
+  writeDraftsToStorage(allDrafts);
+}
+
+function removeDraftFromStorage(brandSlug, draftId) {
+  const allDrafts = readDraftsFromStorage();
+  const filtered = allDrafts.filter(d => !(d.brandSlug === brandSlug && d.id === draftId));
+  writeDraftsToStorage(filtered);
+}
+
+function getPostReach(post = {}) {
+  return parseResults(post.postResultsJson).reduce((sum, result) => sum + (result.reach ?? 0), 0);
+}
 function getPostPlatforms(post = {}) {
   const fromExplicit = parsePlatforms(post.platforms).map(normPlatform).filter(Boolean);
   const fromResults = parseResults(post.postResultsJson)
@@ -69,6 +125,14 @@ function getPostPlatforms(post = {}) {
     .map(id => normPlatform((id || "").split("_")[0]))
     .filter(Boolean);
   return [...new Set([...fromExplicit, ...fromResults, ...fromTargets])];
+}
+function getDraftPlatforms(draft = {}) {
+  const accountIds = parseAccountIds(draft.targetAccountIds);
+  return [...new Set(
+    accountIds
+      .map(id => normPlatform((id || "").split("_")[0]))
+      .filter(Boolean)
+  )];
 }
 function fmtLocal(iso) {
   if (!iso) return "—";
@@ -80,13 +144,76 @@ function fmtLocal(iso) {
 function getPostDate(post) { return post.scheduledAt || post.processedAt || post.createdAt; }
 
 function getCalendarDays(year, month) {
-  const firstDay    = new Date(year, month, 1).getDay();
+  // Monday-first grid to match the schedule view style.
+  const firstDay    = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const days = [];
   for (let i = 0; i < firstDay; i++) days.push(null);
   for (let i = 1; i <= daysInMonth; i++) days.push(i);
   while (days.length % 7 !== 0) days.push(null);
   return days;
+}
+
+function getISOWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+function getTimeValue(post) {
+  const ts = new Date(getPostDate(post)).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function comparePosts(a, b, sortBy) {
+  let diff = 0;
+
+  if (sortBy === "oldest") {
+    diff = getTimeValue(a) - getTimeValue(b);
+  } else if (sortBy === "reach_desc") {
+    diff = getPostReach(b) - getPostReach(a);
+  } else if (sortBy === "reach_asc") {
+    diff = getPostReach(a) - getPostReach(b);
+  } else if (sortBy === "platform") {
+    const aPlatform = getPostPlatforms(a)[0] || "";
+    const bPlatform = getPostPlatforms(b)[0] || "";
+    diff = aPlatform.localeCompare(bPlatform);
+  } else if (sortBy === "type") {
+    diff = (a.postType || "").localeCompare(b.postType || "");
+  } else {
+    // default: newest first
+    diff = getTimeValue(b) - getTimeValue(a);
+  }
+
+  if (diff !== 0) return diff;
+  return getTimeValue(b) - getTimeValue(a);
+}
+
+function getDraftTimeValue(draft) {
+  const ts = new Date(draft.updatedAt || draft.createdAt || 0).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function compareDrafts(a, b, sortBy) {
+  let diff = 0;
+
+  if (sortBy === "oldest") {
+    diff = getDraftTimeValue(a) - getDraftTimeValue(b);
+  } else if (sortBy === "platform") {
+    const aPlatform = getDraftPlatforms(a)[0] || "";
+    const bPlatform = getDraftPlatforms(b)[0] || "";
+    diff = aPlatform.localeCompare(bPlatform);
+  } else if (sortBy === "type") {
+    diff = (a.mode || "").localeCompare(b.mode || "");
+  } else {
+    // default: newest first
+    diff = getDraftTimeValue(b) - getDraftTimeValue(a);
+  }
+
+  if (diff !== 0) return diff;
+  return getDraftTimeValue(b) - getDraftTimeValue(a);
 }
 
 function StatusTabIcon({ type, cls = "w-4 h-4" }) {
@@ -614,7 +741,7 @@ function PostPreview({ platform, content, mode, brandName, filePreviewUrls }) {
   );
 }
 
-// ── Calendar View (Meta Business Suite style) ──────────────────────────────────
+// ── Calendar View (schedule-style layout) ──────────────────────────────────────
 function CalendarPostPopover({ post, onClose }) {
   const results  = parseResults(post.postResultsJson);
   const viewLinks = results.filter(r => r.success).map(buildViewLink).filter(Boolean);
@@ -670,6 +797,41 @@ function CalendarPostPopover({ post, onClose }) {
             ))}
           </div>
         )}
+        <div className="p-3">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="flex flex-wrap gap-1">
+              {parsePlatforms(post.platforms).map(p => (
+                <span key={p} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PLATFORM_COLORS[p] ?? "bg-gray-100 text-gray-600"}`}>
+                  <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p}
+                </span>
+              ))}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${post.status === "Completed" ? "bg-green-100 text-green-700" : post.status === "Scheduled" ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-600"}`}>
+                {post.status === "Completed" ? "Published" : post.status === "Scheduled" ? "Scheduled" : "Failed"}
+              </span>
+            </div>
+            <button onClick={onClose} className="p-0.5 hover:bg-slate-100 rounded shrink-0 text-slate-400">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+          <p className="text-xs text-slate-700 line-clamp-3 leading-snug mb-1.5">
+            {post.content || <span className="italic text-slate-400">No caption</span>}
+          </p>
+          <p className="text-[10px] text-slate-500 mb-2">📅 {fmtLocal(post.scheduledAt ?? post.processedAt)}</p>
+          {viewLinks.length > 0 && (
+            <div className="flex flex-col gap-1">
+              {viewLinks.map((link, i) => (
+                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
+                  className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg transition-colors ${PLATFORM_META[link.platform]?.bg ?? "bg-slate-50"} ${PLATFORM_META[link.platform]?.color ?? "text-slate-700"} hover:opacity-90`}>
+                  <PlatformSvg p={link.platform} cls="w-3 h-3" />
+                  View on {link.platform}{link.accountName ? ` · ${link.accountName}` : ""}
+                  <svg className="w-3 h-3 ml-auto opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -677,6 +839,8 @@ function CalendarPostPopover({ post, onClose }) {
 
 function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onSetYear, posts, tab }) {
   const days  = getCalendarDays(year, month);
+  const weeks = [];
+  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
   const today = new Date();
   const [activePost, setActivePost] = useState(null); // { postId, dayIdx }
   const [yearInput, setYearInput]   = useState(false);
@@ -696,6 +860,13 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
       (byDay[d.getDate()] = byDay[d.getDate()] || []).push(post);
   });
 
+  const getWeekLabel = (weekDays, weekIndex) => {
+    const firstRealDay = weekDays.find(Boolean);
+    const fallbackDay = Math.min(new Date(year, month + 1, 0).getDate(), (weekIndex * 7) + 1);
+    const labelDay = firstRealDay ?? fallbackDay;
+    return `W${getISOWeekNumber(new Date(year, month, labelDay))}`;
+  };
+
   const isToday = (day) => day && day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
   const goToday = () => { onSetYear(today.getFullYear()); };
 
@@ -706,128 +877,144 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
     "bg-blue-500 text-white";
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      {/* Calendar header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white">
-        {/* Year nav */}
-        <button onClick={onPrevYear} title="Previous year" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
-          </svg>
-        </button>
-        {/* Month nav */}
-        <button onClick={onPrev} title="Previous month" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-
-        {/* Month + Year (click year to edit inline) */}
-        <div className="flex-1 flex items-center justify-center gap-2">
-          <span className="text-sm font-bold text-gray-900">{MONTH_NAMES[month]}</span>
-          {yearInput ? (
-            <form onSubmit={e => { e.preventDefault(); const y = parseInt(yearDraft); if (y >= 2000 && y <= 2100) { onSetYear(y); } setYearInput(false); }}>
-              <input autoFocus type="number" min="2000" max="2100" value={yearDraft}
-                onChange={e => setYearDraft(e.target.value)}
-                onBlur={() => setYearInput(false)}
-                className="w-20 text-center text-sm font-bold text-blue-600 border-b-2 border-blue-400 outline-none bg-transparent" />
-            </form>
-          ) : (
-            <button onClick={() => { setYearDraft(String(year)); setYearInput(true); }}
-              className="text-sm font-bold text-blue-600 hover:text-blue-800 underline-offset-2 hover:underline transition-colors">
-              {year}
-            </button>
-          )}
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-[0_18px_44px_-32px_rgba(15,23,42,0.65)] overflow-hidden">
+      <div className="border-b border-slate-200 bg-slate-50/60">
+        <div className="px-4 pt-3">
+          <span className="inline-flex items-center pb-2 text-xs font-semibold text-blue-600 border-b-2 border-blue-500">
+            Work schedules
+          </span>
         </div>
 
-        <button onClick={onNext} title="Next month" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-        <button onClick={onNextYear} title="Next year" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M6 5l7 7-7 7" />
-          </svg>
-        </button>
+        <div className="px-4 pb-3 pt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <button onClick={onPrevYear} title="Previous year" className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button onClick={onPrev} title="Previous month" className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button onClick={goToday} className="h-8 px-3 text-xs font-semibold text-slate-600 border border-slate-200 bg-white rounded-md hover:bg-slate-100 transition-colors">
+              Today
+            </button>
+            <button onClick={onNext} title="Next month" className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <button onClick={onNextYear} title="Next year" className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M6 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
 
-        <button onClick={goToday}
-          className="ml-1 px-2.5 py-1 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
-          Today
-        </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-semibold text-slate-800">{MONTH_NAMES[month]}</span>
+            {yearInput ? (
+              <form onSubmit={e => { e.preventDefault(); const y = parseInt(yearDraft, 10); if (y >= 2000 && y <= 2100) { onSetYear(y); } setYearInput(false); }}>
+                <input autoFocus type="number" min="2000" max="2100" value={yearDraft}
+                  onChange={e => setYearDraft(e.target.value)}
+                  onBlur={() => setYearInput(false)}
+                  className="w-20 text-center text-xl font-semibold text-blue-600 border-b-2 border-blue-400 outline-none bg-transparent" />
+              </form>
+            ) : (
+              <button onClick={() => { setYearDraft(String(year)); setYearInput(true); }}
+                className="text-xl font-semibold text-slate-700 hover:text-blue-700 underline-offset-4 hover:underline transition-colors">
+                {year}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Day-of-week headers */}
-      <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50">
-        {DAY_NAMES.map(d => (
-          <div key={d} className="py-2 text-center text-[11px] font-bold text-gray-400 uppercase tracking-wider">{d}</div>
+      <div className="grid grid-cols-[56px_repeat(7,minmax(0,1fr))] border-b border-slate-200 bg-slate-50">
+        <div className="px-2 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-widest border-r border-slate-200">WK</div>
+        {DAY_NAMES.map((d) => (
+          <div key={d} className="py-2 text-center text-[11px] font-semibold text-slate-500 border-r last:border-r-0 border-slate-200 uppercase tracking-wide">{d}</div>
         ))}
       </div>
 
       {/* Day cells */}
-      <div className="grid grid-cols-7 divide-x divide-y divide-gray-100" onClick={() => setActivePost(null)}>
-        {days.map((day, i) => {
-          const dayPosts = day ? (byDay[day] || []) : [];
-          return (
-            <div key={i} className={`min-h-27.5 p-1.5 transition-colors relative
-              ${!day ? "bg-gray-50/60" : ""}
-              ${isToday(day) ? "bg-blue-50/50" : day ? "hover:bg-gray-50/80" : ""}`}>
-              {day && (
-                <>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`inline-flex w-6 h-6 items-center justify-center text-xs font-bold rounded-full
-                      ${isToday(day) ? "bg-blue-600 text-white shadow" : "text-gray-600 hover:bg-gray-200 cursor-default"}`}>
-                      {day}
-                    </span>
-                    {dayPosts.length > 0 && (
-                      <span className="text-[9px] text-gray-400 font-semibold">{dayPosts.length}</span>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    {dayPosts.slice(0, 3).map((post, j) => {
-                      const pls  = parsePlatforms(post.platforms);
-                      const time = new Date(getPostDate(post));
-                      const timeStr = time.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
-                      const isActive = activePost?.postId === post.id && activePost?.dayIdx === i;
-                      return (
-                        <div key={j} className="relative">
-                          <button
-                            onClick={e => { e.stopPropagation(); setActivePost(isActive ? null : { postId: post.id, dayIdx: i }); }}
-                            className={`w-full text-left text-[10px] px-1.5 py-1 rounded-md leading-tight truncate transition-all
-                              ${chipColor(post.status)} hover:opacity-90 shadow-sm`}>
-                            <span className="font-bold mr-0.5">{timeStr}</span>
-                            {pls[0] ? `· ${pls[0].slice(0,2)} ` : ""}
-                            {post.content?.slice(0, 22) || post.postType}
-                          </button>
-                          {isActive && (
-                            <CalendarPostPopover post={post} onClose={() => setActivePost(null)} />
-                          )}
-                        </div>
-                      );
-                    })}
-                    {dayPosts.length > 3 && (
-                      <button className="text-[10px] text-blue-500 font-semibold pl-0.5 hover:text-blue-700 text-left transition-colors">
-                        +{dayPosts.length - 3} more
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
+      <div className="divide-y divide-slate-200" onClick={() => setActivePost(null)}>
+        {weeks.map((weekDays, weekIndex) => (
+          <div key={weekIndex} className="grid grid-cols-[56px_repeat(7,minmax(0,1fr))]">
+            <div className="px-2 pt-3 text-[10px] font-semibold text-slate-400 bg-slate-50 border-r border-slate-200">
+              {getWeekLabel(weekDays, weekIndex)}
             </div>
-          );
-        })}
+
+            {weekDays.map((day, dayIndex) => {
+              const dayPosts = day ? (byDay[day] || []) : [];
+              const absoluteDayIdx = (weekIndex * 7) + dayIndex;
+              const isTodayCell = isToday(day);
+
+              return (
+                <div
+                  key={`${weekIndex}-${dayIndex}`}
+                  className={`relative min-h-32 p-2.5 transition-colors ${dayIndex !== 6 ? "border-r border-slate-200" : ""} ${!day ? "bg-slate-50/70" : isTodayCell ? "bg-slate-100" : "bg-white hover:bg-slate-50/70"}`}
+                >
+                  {day && (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-[9px] font-semibold uppercase tracking-wide ${isTodayCell ? "text-slate-500" : "text-transparent select-none"}`}>
+                          Today
+                        </span>
+                        <span className={`inline-flex min-w-6 h-6 px-1 items-center justify-center text-xs font-bold rounded-full ${isTodayCell ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-600"}`}>
+                          {day}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        {dayPosts.slice(0, 3).map((post, j) => {
+                          const pls = parsePlatforms(post.platforms);
+                          const time = new Date(getPostDate(post));
+                          const timeStr = time.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+                          const isActive = activePost?.postId === post.id && activePost?.dayIdx === absoluteDayIdx;
+
+                          return (
+                            <div key={j} className="relative">
+                              <button
+                                onClick={e => { e.stopPropagation(); setActivePost(isActive ? null : { postId: post.id, dayIdx: absoluteDayIdx }); }}
+                                className={`w-full text-left text-[10px] px-1.5 py-1 rounded-sm leading-tight truncate font-medium transition-all ${chipColor(post.status)} hover:opacity-95`}
+                              >
+                                <span className="font-bold mr-0.5">{timeStr}</span>
+                                {pls[0] ? `· ${pls[0].slice(0,2)} ` : ""}
+                                {post.content?.slice(0, 24) || post.postType}
+                              </button>
+                              {isActive && <CalendarPostPopover post={post} onClose={() => setActivePost(null)} />}
+                            </div>
+                          );
+                        })}
+
+                        {dayPosts.length > 3 && (
+                          <button className="text-[10px] text-blue-600 font-semibold hover:text-blue-700 text-left transition-colors">
+                            +{dayPosts.length - 3} more
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 px-4 py-2 border-t border-gray-100 bg-gray-50">
-        <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+      <div className="flex items-center gap-4 px-4 py-2.5 border-t border-slate-200 bg-slate-50">
+        <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
           <span className="w-3 h-3 rounded-sm bg-green-500 inline-block"></span>Published
         </span>
-        <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+        <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
           <span className="w-3 h-3 rounded-sm bg-blue-500 inline-block"></span>Scheduled
         </span>
-        <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
-          <span className="w-3 h-3 rounded-sm bg-red-400 inline-block"></span>Failed
+        <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+          <span className="w-3 h-3 rounded-sm bg-amber-400 inline-block"></span>Drafts (table only)
         </span>
         <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
           <span className="w-3 h-3 rounded-sm bg-yellow-400 inline-block"></span>Draft
@@ -857,8 +1044,18 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
   const [showPreview, setShowPreview]     = useState(false);
   const [previewPlatform, setPreviewPl]   = useState("Facebook");
   const [filePreviewUrls, setPreviewUrls] = useState([]);
+  const [drafts, setDrafts]               = useState([]);
+  const [editingDraftId, setEditingDraftId] = useState(null);
+  const [draftNotice, setDraftNotice]     = useState("");
 
   const currentType = POST_TYPES.find(t => t.key === mode);
+  const refreshDrafts = useCallback(() => {
+    setDrafts(getDraftsForBrand(activeBrand?.slug));
+  }, [activeBrand?.slug]);
+  const refreshAllDrafts = useCallback(() => {
+    refreshDrafts();
+    onDraftsUpdated?.();
+  }, [refreshDrafts, onDraftsUpdated]);
 
   useEffect(() => {
     if (!activeBrand?.slug) { setALoading(false); return; }
@@ -873,6 +1070,12 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
       .catch(() => setAccounts([]))
       .finally(() => setALoading(false));
   }, [activeBrand?.slug]);
+
+  useEffect(() => {
+    refreshAllDrafts();
+    setEditingDraftId(null);
+    setDraftNotice("");
+  }, [refreshAllDrafts]);
 
   useEffect(() => { setFiles([]); setPreviewUrls([]); }, [mode]);
 
@@ -903,6 +1106,94 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   })();
 
+  const resetComposer = () => {
+    setMode("Text");
+    setContent("");
+    setFiles([]);
+    setDocTitle("");
+    setSched(false);
+    setScheduledAt("");
+    setSelected(new Set());
+    setResults(null);
+    setError("");
+    setEditingDraftId(null);
+    setDraftNotice("");
+  };
+
+  const loadDraftForEdit = useCallback((draft) => {
+    setMode(draft.mode || "Text");
+    setContent(draft.content || "");
+    setDocTitle(draft.documentTitle || "");
+    setSched(Boolean(draft.scheduleEnabled));
+    setScheduledAt(draft.scheduleEnabled ? (draft.scheduledAt || "") : "");
+    setSelected(new Set(parseAccountIds(draft.targetAccountIds)));
+    setFiles([]);
+    setResults(null);
+    setError("");
+    setEditingDraftId(draft.id);
+    setDraftNotice(
+      draft.mediaFileNames?.length
+        ? "Draft loaded. Re-upload media files before posting."
+        : "Draft loaded."
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!initialDraft) return;
+    if (initialDraft.brandSlug && activeBrand?.slug && initialDraft.brandSlug !== activeBrand.slug) return;
+    loadDraftForEdit(initialDraft);
+  }, [initialDraft, activeBrand?.slug, loadDraftForEdit]);
+
+  const removeDraft = (draftId) => {
+    if (!activeBrand?.slug) return;
+    removeDraftFromStorage(activeBrand.slug, draftId);
+    refreshAllDrafts();
+    if (editingDraftId === draftId) {
+      setEditingDraftId(null);
+    }
+    setDraftNotice("Draft deleted.");
+  };
+
+  const saveDraft = () => {
+    if (!activeBrand?.slug) {
+      setError("Select an active brand first.");
+      return;
+    }
+    if (!content.trim() && !documentTitle.trim() && !selected.size && !scheduleEnabled && !files.length) {
+      setError("Write something or choose settings before saving draft.");
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const existing = drafts.find(d => d.id === editingDraftId);
+    const draftId = existing?.id || `draft_${Date.now()}`;
+
+    const draft = {
+      id: draftId,
+      brandSlug: activeBrand.slug,
+      mode,
+      content: content || "",
+      documentTitle: documentTitle || "",
+      scheduleEnabled,
+      scheduledAt: scheduleEnabled ? (scheduledAt || "") : "",
+      targetAccountIds: [...selected],
+      mediaFileNames: files.map(file => file.name),
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: nowIso,
+    };
+
+    upsertDraftInStorage(draft);
+    refreshAllDrafts();
+    setEditingDraftId(draftId);
+    setResults(null);
+    setError("");
+    setDraftNotice(
+      files.length
+        ? "Draft saved. Media files are not stored in draft, re-upload before posting."
+        : "Draft saved successfully."
+    );
+  };
+
   const submit = async () => {
     if (!selected.size)                               { setError("Select at least one account"); return; }
     if (currentType?.needsMedia && !files.length)     { setError(`Select a file for ${mode} post`); return; }
@@ -926,6 +1217,11 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
         headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
       });
       setResults(res.data);
+      if (editingDraftId && activeBrand?.slug) {
+        removeDraftFromStorage(activeBrand.slug, editingDraftId);
+        setEditingDraftId(null);
+        refreshAllDrafts();
+      }
       if (!scheduleEnabled) { setContent(""); setFiles([]); setSelected(new Set()); }
       onPosted?.({ scheduled: scheduleEnabled, draftId: resumeDraft?.id });
     } catch (e) {
@@ -1034,6 +1330,53 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
                   })}
                 </div>
               )}
+            </div>
+
+            {/* Drafts */}
+            <div className="bg-white rounded-xl border border-gray-200 p-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-semibold text-gray-600">Saved Drafts</span>
+                <button type="button" onClick={resetComposer}
+                  className="text-[11px] font-semibold text-gray-500 hover:text-gray-700 hover:underline">
+                  New Draft
+                </button>
+              </div>
+
+              {drafts.length === 0 ? (
+                <p className="text-[11px] text-gray-400">No drafts yet. Use Save as Draft to keep unfinished posts.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
+                  {drafts.map(draft => {
+                    const title = draft.content?.trim()
+                      ? draft.content.trim().slice(0, 56)
+                      : (draft.documentTitle?.trim() ? draft.documentTitle.trim().slice(0, 56) : `${draft.mode} draft`);
+                    const isEditing = draft.id === editingDraftId;
+                    return (
+                      <div key={draft.id}
+                        className={`rounded-lg border px-2.5 py-2 flex items-center gap-2 ${isEditing ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-gray-50"}`}>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-semibold text-gray-700 truncate">{title}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {draft.mode} · {fmtLocal(draft.updatedAt)}{draft.mediaFileNames?.length ? " · media re-upload needed" : ""}
+                          </p>
+                        </div>
+
+                        <button type="button" onClick={() => loadDraftForEdit(draft)}
+                          className={`px-2 py-1 rounded text-[10px] font-semibold ${isEditing ? "bg-blue-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-100"}`}>
+                          {isEditing ? "Editing" : "Edit"}
+                        </button>
+
+                        <button type="button" onClick={() => removeDraft(draft.id)}
+                          className="px-2 py-1 rounded text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100">
+                          Delete
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {draftNotice && <p className="text-[10px] text-blue-600 mt-2">{draftNotice}</p>}
             </div>
 
             {/* Post type */}
@@ -1345,6 +1688,81 @@ function PostTable({ posts, onEdit, onDelete }) {
   );
 }
 
+function DraftList({ drafts, onEdit, onDelete }) {
+  return (
+    <div className="space-y-2">
+      {drafts.map((draft) => {
+        const platforms = getDraftPlatforms(draft);
+        const title = draft.content?.trim()
+          ? draft.content.trim().slice(0, 160)
+          : (draft.documentTitle?.trim() ? draft.documentTitle.trim().slice(0, 160) : "Untitled draft");
+        const accountCount = parseAccountIds(draft.targetAccountIds).length;
+        const hasMedia = Array.isArray(draft.mediaFileNames) && draft.mediaFileNames.length > 0;
+
+        return (
+          <div key={draft.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                    {draft.mode || "Text"}
+                  </span>
+                  {platforms.length > 0 ? (
+                    platforms.map((platform) => (
+                      <span key={`${draft.id}-${platform}`} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PLATFORM_COLORS[platform] ?? "bg-gray-100 text-gray-600"}`}>
+                        <PlatformSvg p={platform} cls="w-2.5 h-2.5" />
+                        {platform}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">No platforms</span>
+                  )}
+                </div>
+
+                <p className="text-sm text-gray-700 line-clamp-3 leading-snug">
+                  {title}
+                </p>
+
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                  <span className="text-[11px] text-gray-400">Updated {fmtLocal(draft.updatedAt || draft.createdAt)}</span>
+                  <span className="text-[11px] text-gray-400">{accountCount} account{accountCount !== 1 ? "s" : ""}</span>
+                  {draft.scheduleEnabled && (
+                    <span className="text-[11px] text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
+                      Scheduled {fmtLocal(draft.scheduledAt)}
+                    </span>
+                  )}
+                  {hasMedia && (
+                    <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      Media re-upload needed
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onEdit(draft)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(draft.id)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function PostHistory() {
   const { activeBrand, brands, loading: brandLoading, switchBrand } = useBrand();
@@ -1361,11 +1779,15 @@ export default function PostHistory() {
   const [tab, setTab]             = useState("completed");
   const [viewMode, setViewMode]   = useState("table");
   const [platformFilter, setPlatformFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("newest");
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [hoveredPlatformFilter, setHoveredPlatformFilter] = useState(null);
   const [showCompose, setCompose] = useState(false);
+  const [composeInitialDraft, setComposeInitialDraft] = useState(null);
   const [editingPost, setEditing] = useState(null);
   const [deletingPost, setDeleting] = useState(null);
   const [deleteLoading, setDelLoad] = useState(false);
+  const sortMenuRef = useRef(null);
 
   const today = new Date();
   const [calYear, setCalYear]   = useState(today.getFullYear());
@@ -1374,6 +1796,7 @@ export default function PostHistory() {
   const [scheduled, setScheduled]           = useState([]);
   const [scheduledLoading, setSchedLoad]    = useState(false);
   const [history, setHistory]               = useState([]);
+  const [draftPosts, setDraftPosts]         = useState([]);
   const [historyLoading, setHistLoad]       = useState(false);
   const [historyPage, setHistoryPage]       = useState(1);
   const [historyTotal, setHistoryTotal]     = useState(0);
@@ -1493,7 +1916,7 @@ export default function PostHistory() {
                 📅 Calendar
               </button>
             </div>
-            <button onClick={() => setCompose(true)}
+            <button onClick={openComposeForNew}
               className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-all shadow-sm">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -1521,40 +1944,87 @@ export default function PostHistory() {
           </button>
         </div>
 
-        {/* Platform filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {PLATFORM_FILTER_OPTIONS.map(option => {
-            const active = platformFilter === option.key;
-            const hovered = hoveredPlatformFilter === option.key;
-            return (
-              <button
-                key={option.key}
-                onClick={() => setPlatformFilter(option.key)}
-                onMouseEnter={() => setHoveredPlatformFilter(option.key)}
-                onMouseLeave={() => setHoveredPlatformFilter(null)}
-                onBlur={() => setHoveredPlatformFilter(null)}
-                className={`relative overflow-hidden px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${option.border}`}
-              >
-                <span
-                  className={`pointer-events-none absolute inset-0 ${option.fill} ${active ? "transition-none" : "transition-transform duration-700 ease-in-out"} ${(active || hovered) ? "scale-x-100 origin-left" : "scale-x-0 origin-left"}`}
-                />
-                <span className={`relative z-10 transition-colors duration-200 ${(active || hovered) ? "text-white" : option.text}`}>
-                  {option.label}
-                </span>
-              </button>
-            );
-          })}
+        {/* Platform filters + sort */}
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {PLATFORM_FILTER_OPTIONS.map(option => {
+              const active = platformFilter === option.key;
+              const hovered = hoveredPlatformFilter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  onClick={() => setPlatformFilter(option.key)}
+                  onMouseEnter={() => setHoveredPlatformFilter(option.key)}
+                  onMouseLeave={() => setHoveredPlatformFilter(null)}
+                  onBlur={() => setHoveredPlatformFilter(null)}
+                  className={`relative overflow-hidden px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${option.border}`}
+                >
+                  <span
+                    className={`pointer-events-none absolute inset-0 ${option.fill} ${active ? "transition-none" : "transition-transform duration-700 ease-in-out"} ${(active || hovered) ? "scale-x-100 origin-left" : "scale-x-0 origin-left"}`}
+                  />
+                  <span className={`relative z-10 transition-colors duration-200 ${(active || hovered) ? "text-white" : option.text}`}>
+                    {option.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div ref={sortMenuRef} className="relative ml-auto">
+            <button
+              type="button"
+              onClick={() => setSortMenuOpen(prev => !prev)}
+              aria-haspopup="listbox"
+              aria-expanded={sortMenuOpen}
+              className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 shadow-sm"
+            >
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Sort by</span>
+              <span className="text-xs font-semibold text-gray-700">{activeSortOption.label}</span>
+              <svg className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-300 ${sortMenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <div
+              className={`absolute right-0 top-full mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-20 origin-top-right transition-all duration-200 ${sortMenuOpen ? "opacity-100 scale-100 translate-y-0 pointer-events-auto" : "opacity-0 scale-95 -translate-y-1 pointer-events-none"}`}
+            >
+              <div role="listbox" aria-label="Sort posts" className="py-1">
+                {POST_SORT_OPTIONS.map(option => {
+                  const selected = sortBy === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => { setSortBy(option.key); setSortMenuOpen(false); }}
+                      className={`w-full px-3 py-2 text-left text-xs font-medium flex items-center justify-between transition-colors ${selected ? "text-blue-700 bg-blue-50" : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"}`}
+                    >
+                      <span>{option.label}</span>
+                      {selected && (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Content */}
         {viewMode === "calendar" ? (
-          <CalendarView year={calYear} month={calMonth}
-            onPrev={() => { if (calMonth === 0) { setCalYear(y => y-1); setCalMonth(11); } else setCalMonth(m => m-1); }}
-            onNext={() => { if (calMonth === 11) { setCalYear(y => y+1); setCalMonth(0); } else setCalMonth(m => m+1); }}
-            onPrevYear={() => setCalYear(y => y - 1)}
-            onNextYear={() => setCalYear(y => y + 1)}
-            onSetYear={(y) => { setCalYear(y); if (y === new Date().getFullYear()) setCalMonth(new Date().getMonth()); }}
-            posts={filteredAllPosts} tab={tab} />
+          tab === "draft" ? (
+            <EmptyCard icon="📝" msg="Drafts are available in table view. Switch to Table to edit drafts." />
+          ) : (
+            <CalendarView year={calYear} month={calMonth}
+              onPrev={() => { if (calMonth === 0) { setCalYear(y => y-1); setCalMonth(11); } else setCalMonth(m => m-1); }}
+              onNext={() => { if (calMonth === 11) { setCalYear(y => y+1); setCalMonth(0); } else setCalMonth(m => m+1); }}
+              onPrevYear={() => setCalYear(y => y - 1)}
+              onNextYear={() => setCalYear(y => y + 1)}
+              onSetYear={(y) => { setCalYear(y); if (y === new Date().getFullYear()) setCalMonth(new Date().getMonth()); }}
+              posts={filteredAllPosts} tab={tab} />
+          )
         ) : (
           <>
             {/* Published (includes failed) — table */}
@@ -1608,7 +2078,7 @@ export default function PostHistory() {
       </div>
 
       {/* FAB */}
-      <button onClick={() => setCompose(true)} title="Compose post"
+      <button onClick={openComposeForNew} title="Compose post"
         className="fixed bottom-6 right-6 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center z-40">
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
