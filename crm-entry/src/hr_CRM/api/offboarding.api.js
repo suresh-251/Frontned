@@ -1,31 +1,40 @@
 import axios from "axios";
 
-const API_URL = "/api/OffBoarding";
-const getHeaders = () => ({
-  headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` }
+const API_URL = "https://crmhr.metagensoft.com/api/OffBoarding";
+
+const api = axios.create({
+  baseURL: API_URL,
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("accessToken");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 export const getOffBoardingList = async () => {
-  const res = await axios.get(API_URL, getHeaders());
+  const res = await api.get("/");
   return res.data;
 };
 
 export const getOffBoardingById = async (id) => {
-  const res = await axios.get(`${API_URL}/${id}`, getHeaders());
+  const res = await api.get(`/${id}`);
   return res.data;
 };
 
 export const createOffBoarding = async (data) => {
-  const res = await axios.post(`${API_URL}/create`, data, getHeaders());
+  const res = await api.post("/create", data);
   return res.data;
 };
 
 export const updateOffBoardingStatus = async (id, statusData) => {
-  const res = await axios.put(`${API_URL}/update-status/${id}`, statusData, getHeaders());
+  const res = await api.put(`/update-status/${id}`, statusData);
   return res.data;
 };
 
 export const deleteOffBoarding = async (id) => {
-  const res = await axios.delete(`${API_URL}/delete/${id}`, getHeaders());
+  const res = await api.delete(`/delete/${id}`);
   return res.data;
 };
