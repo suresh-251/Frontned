@@ -127,7 +127,7 @@ export const STATUS_LIST = [
   "NotInterested",
   "UnableToContact",
   "JunkLead",
-  "Need Review",
+  "NeedReview",
 ];
 
 export const STATUS_META = {
@@ -142,7 +142,7 @@ export const STATUS_META = {
   NotInterested: { color: "#ef4444", bg: "#fee2e2" },
   UnableToContact: { color: "#6b7280", bg: "#f3f4f6" },
   JunkLead: { color: "#374151", bg: "#e5e7eb" },
-  "Need Review": { color: "#9333ea", bg: "#f3e8ff" },
+  NeedReview: { color: "#9333ea", bg: "#f3e8ff" },
 };
 
 export const RESPONSE_TYPES = ["All", "Email", "Call", "Message"];

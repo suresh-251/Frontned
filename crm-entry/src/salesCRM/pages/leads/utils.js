@@ -1,4 +1,4 @@
-import { AVATAR_COLORS, CSV_FIELD_MAP } from "./constants";
+import { AVATAR_COLORS, CSV_FIELD_MAP, LEAD_SOURCE_OPTIONS, STATUS_LIST } from "./constants";
 
 export const fmtDate = (dateString) => {
   if (!dateString) return "-";
@@ -24,7 +24,7 @@ export function getFollowUpLabel(dateStr) {
 }
 
 export function formatStatus(status = "") {
-  return String(status).replace(/([A-Z])/g, " $1").trim();
+  return String(status).replace(/([A-Z])/g, " $1").replace(/\s+/g, " ").trim();
 }
 
 export function formatLeadSource(source = "") {
@@ -78,6 +78,22 @@ export function splitFullName(name = "") {
   };
 }
 
+function normalizeEnumValue(value) {
+  return String(value ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+export function sanitizeStatus(status) {
+  if (!status) return "FreshLead";
+  const matched = STATUS_LIST.find((item) => normalizeEnumValue(item) === normalizeEnumValue(status));
+  return matched || "FreshLead";
+}
+
+export function sanitizeLeadSource(source) {
+  if (!source) return "CustomizedInput";
+  const matched = LEAD_SOURCE_OPTIONS.find((item) => normalizeEnumValue(item) === normalizeEnumValue(source));
+  return matched || "CustomizedInput";
+}
+
 export function leadToUpdatePayload(lead = {}) {
   const splitName = splitFullName(lead.name || `${lead.firstName || ""} ${lead.lastName || ""}`.trim());
   return {
@@ -129,8 +145,8 @@ export function createLeadRecord(lead, index = 0) {
     title: lead.title || "",
     position: lead.position || "",
     industry: lead.industry || "",
-    status: lead.status || "New",
-    source: lead.source || "CustomizedInput",
+    status: sanitizeStatus(lead.status),
+    source: sanitizeLeadSource(lead.source),
     score: lead.score ?? 50,
     deposits: lead.deposits ?? 0,
     whatsappEnabled: !!lead.whatsappEnabled,

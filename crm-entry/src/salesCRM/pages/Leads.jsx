@@ -28,7 +28,7 @@ import {
   StatCard,
   StatusCell,
 } from "./leads/components";
-import { fmtDate, formatLeadSource, formatStatus, getInitials, leadToUpdatePayload, normalizeLeads } from "./leads/utils";
+import { fmtDate, formatLeadSource, formatStatus, getInitials, leadToUpdatePayload, normalizeLeads, sanitizeStatus } from "./leads/utils";
 
 const VISIBLE_COLUMNS_STORAGE_KEY = "crm_visible_columns";
 const SEARCH_FIELD_OPTIONS = [
@@ -177,26 +177,29 @@ export default function Leads() {
 
   const fetchLeadDetail = useCallback(async (id) => {
     try {
+      const existing = leads.find((lead) => lead.id === id);
       const data = await leadsAPI.getById(id);
       const [normalized] = normalizeLeads([data]);
-      setDetailsLead(normalized);
-      return normalized;
+      const merged = { ...existing, ...normalized };
+      setDetailsLead(merged);
+      return merged;
     } catch (error) {
       console.error("Failed to load lead details", error);
       return null;
     }
-  }, []);
+  }, [leads]);
 
   const fetchLeadForEdit = useCallback(async (id) => {
     try {
+      const existing = leads.find((lead) => lead.id === id);
       const data = await leadsAPI.getById(id);
       const [normalized] = normalizeLeads([data]);
-      return normalized;
+      return { ...existing, ...normalized };
     } catch (error) {
       console.error("Failed to load lead for edit", error);
       return null;
     }
-  }, []);
+  }, [leads]);
 
   useEffect(() => {
     localStorage.setItem(VISIBLE_COLUMNS_STORAGE_KEY, JSON.stringify(visibleCols));
@@ -265,7 +268,8 @@ export default function Leads() {
   const updateLead = useCallback(async (id, field, value) => {
     const existing = leads.find((lead) => lead.id === id);
     if (!existing) return;
-    let nextLead = { ...existing, [field]: value };
+    const normalizedValue = field === "status" ? sanitizeStatus(value) : value;
+    let nextLead = { ...existing, [field]: normalizedValue };
     if (field === "followUpDate") nextLead = { ...nextLead, nextFollowUpAt: value ? `${value}T00:00:00.000Z` : null };
     if (field === "assignee") {
       const selectedUser = salesUsers.find((user) => getSalesUserLabel(user) === value);
@@ -278,9 +282,17 @@ export default function Leads() {
     mergeLead(nextLead);
     try {
       if (field === "status") {
-        const updated = await leadsAPI.updateStatus(id, value);
-        const [normalized] = normalizeLeads([{ ...existing, ...updated, id }]);
-        mergeLead({ ...nextLead, ...normalized, status: updated?.status || value, score: updated?.score ?? normalized?.score ?? nextLead.score });
+        await leadsAPI.bulkUpdateStatus([id], normalizedValue);
+        try {
+          const refreshed = await leadsAPI.getAll();
+          const normalizedLeads = applyAssigneeNames(normalizeLeads(refreshed), salesUsers);
+          setLeads(normalizedLeads);
+          const refreshedLead = normalizedLeads.find((lead) => lead.id === id);
+          if (refreshedLead) mergeLead(refreshedLead);
+        } catch (refreshError) {
+          console.error("Failed to refresh leads after status update", refreshError);
+          mergeLead({ ...nextLead, status: normalizedValue });
+        }
       }
       else if (field === "followUpDate") await leadsAPI.update(id, { nextFollowUpAt: value ? `${value}T00:00:00.000Z` : null });
       else if (field === "source") await leadsAPI.update(id, { ...leadToUpdatePayload(nextLead), source: value });
@@ -508,6 +520,25 @@ export default function Leads() {
     }
   };
 
+  const handleImportLeads = async (newLeads) => {
+    const createdResults = await Promise.allSettled(newLeads.map((lead) => leadsAPI.create(lead)));
+    const successful = createdResults
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
+
+    if (!successful.length) {
+      throw new Error("Failed to import leads to database");
+    }
+
+    const normalized = normalizeLeads(successful);
+    setLeads((current) => [...normalized, ...current]);
+
+    const failedCount = createdResults.length - successful.length;
+    if (failedCount > 0) {
+      throw new Error(`${failedCount} lead(s) could not be imported.`);
+    }
+  };
+
   return (
     <div className="page">
       <div className="stat-grid">{STAT_CARDS.map(({ label, key, detailKey, detailLabel, helper, icon, alert, c }, index) => <StatCard key={label} label={label} value={stats[key] ?? 0} detailValue={stats[detailKey] ?? 0} detailLabel={detailLabel} helper={helper} icon={icon} alert={alert} c={c} delay={`${index * 0.07}s`} />)}</div>
@@ -527,7 +558,7 @@ export default function Leads() {
       {showColPanel && <ManageColumnsPanel visibleCols={visibleCols} setVisibleCols={setVisibleCols} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} wrapText={wrapText} setWrapText={setWrapText} onClose={() => setShowColPanel(false)} />}
       {detailsLead && <LeadDetailsModal lead={detailsLead} onClose={() => setDetailsLead(null)} />}
       {editLead && <EditModal lead={editLead} onClose={() => setEditLead(null)} onSave={handleSaveLead} onDelete={handleDeleteLead} salesUsers={salesUsers} saving={savingLead} deleting={deletingLead} />}
-      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={(newLeads) => setLeads((current) => [...current, ...newLeads])} />}
+      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImportLeads} />}
       {showFilter && <FilterModal onClose={() => setShowFilter(false)} filters={filters} activeFilterCount={activeFilterCount} onApply={setFilters} assignees={salesUserOptions} />}
       {createLeadType && <CreateLeadModal leadType={createLeadType} onClose={() => setCreateLeadType(null)} onSave={handleCreateLead} />}
       {showChart && <LeadsPerformanceChart onClose={() => setShowChart(false)} leads={leads} />}

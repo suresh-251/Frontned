@@ -67,13 +67,6 @@ const leadsAPI = {
     return response.data;
   },
 
-  updateStatus: async (leadId, status) => {
-    const response = await apiClient.put(`/Leads/${leadId}/status`, null, {
-      params: { status },
-    });
-    return response.data;
-  },
-
   assignLead: async (leadId, userId) => {
     const response = await apiClient.put(`/Leads/assign/${leadId}`, null, {
       params: { userId },
