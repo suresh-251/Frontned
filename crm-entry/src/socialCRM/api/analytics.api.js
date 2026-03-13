@@ -42,6 +42,15 @@ export const getTopPosts = async (days = 7, limit = 10) => {
 };
 
 /**
+ * Per-channel (connected account) metrics: followers, reach, engagement, leads.
+ * GET /api/analytics/brand/channels?days=30
+ */
+export const getChannelMetrics = async (days = 30) => {
+  const res = await api.get("/analytics/brand/channels", { params: { days } });
+  return res.data;
+};
+
+/**
  * Manual analytics sync — pulls fresh metrics from platform APIs,
  * promotes to PostMetrics, and re-aggregates BrandDailyMetrics for today.
  * POST /api/analytics/sync

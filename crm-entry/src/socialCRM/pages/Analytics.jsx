@@ -108,7 +108,7 @@ function Empty({ message }) {
 export default function Analytics() {
   const [days, setDays] = useState(7);
   const { activeBrand } = useBrand();
-  const { summary, loading, error, refresh, sync, syncing, syncResult } = useAnalytics(days);
+  const { summary, channels, loading, error, refresh, sync, syncing, syncResult } = useAnalytics(days);
 
   if (!activeBrand) {
     return (
@@ -435,6 +435,89 @@ export default function Analytics() {
               </ResponsiveContainer>
             )}
           </div>
+        </div>
+
+        {/* ── Connected Channels table (full width) ─────────────────────────── */}
+        <div className="col-span-12 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+              <FiUsers className="text-blue-500" size={14} /> Connected Channels
+            </h3>
+            <span className="text-[10px] text-slate-400 font-semibold">Last {days} days · followers synced daily at 02:00 UTC</span>
+          </div>
+
+          {loading ? (
+            <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading channels…</div>
+          ) : channels.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-14 text-slate-400">
+              <FiUsers size={32} className="mb-3 opacity-40" />
+              <p className="text-sm font-medium">No connected channels yet.</p>
+              <p className="text-xs mt-1">Connect Facebook, Instagram or LinkedIn to see metrics here.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
+                  <tr>
+                    <th className="px-5 py-3">Connected Channel</th>
+                    <th className="px-5 py-3 text-right">Total Followers</th>
+                    <th className="px-5 py-3 text-right">New Followers</th>
+                    <th className="px-5 py-3 text-right">Reach</th>
+                    <th className="px-5 py-3 text-right">Engagement</th>
+                    <th className="px-5 py-3 text-right">Leads</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {channels.map((ch) => {
+                    const color = PLATFORM_COLORS[ch.platform?.toLowerCase()] ?? "#94a3b8";
+                    return (
+                      <tr key={ch.accountId} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+                            <div>
+                              <p className="text-sm font-bold text-slate-700">{ch.accountName || ch.accountId}</p>
+                              <p className="text-[10px] text-slate-400 capitalize">{ch.platform}</p>
+                            </div>
+                            {ch.isActive && (
+                              <span className="ml-1 text-[9px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">● active</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">
+                          {ch.totalFollowers != null ? fmt(ch.totalFollowers) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-5 py-3 text-right text-sm font-semibold">
+                          {ch.newFollowers != null ? (
+                            <span className={ch.newFollowers >= 0 ? "text-emerald-600" : "text-rose-600"}>
+                              {ch.newFollowers >= 0 ? "+" : ""}{fmt(ch.newFollowers)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">
+                          {ch.totalReach > 0 ? fmt(ch.totalReach) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          {ch.totalEngagement > 0 ? (
+                            <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full">
+                              {fmt(ch.totalEngagement)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">
+                          {ch.totalLeads > 0 ? fmt(ch.totalLeads) : <span className="text-slate-300 text-sm">0</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Top posts table (full width) */}

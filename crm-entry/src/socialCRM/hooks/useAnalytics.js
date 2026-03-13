@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getBrandSummary, syncAnalytics } from "../api/analytics.api";
+import { getBrandSummary, getChannelMetrics, syncAnalytics } from "../api/analytics.api";
 import { useBrand } from "../context/BrandContext";
 
 /**
@@ -9,19 +9,24 @@ import { useBrand } from "../context/BrandContext";
 export default function useAnalytics(days = 7) {
   const { activeBrand } = useBrand();
 
-  const [summary, setSummary]       = useState(null);
-  const [loading, setLoading]       = useState(false);
-  const [error, setError]           = useState(null);
-  const [syncing, setSyncing]       = useState(false);
-  const [syncResult, setSyncResult] = useState(null); // { message, errors }
+  const [summary, setSummary]         = useState(null);
+  const [channels, setChannels]       = useState([]);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState(null);
+  const [syncing, setSyncing]         = useState(false);
+  const [syncResult, setSyncResult]   = useState(null); // { message, errors }
 
   const load = useCallback(async () => {
     if (!activeBrand?.slug) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await getBrandSummary(days);
-      setSummary(data);
+      const [summaryData, channelData] = await Promise.all([
+        getBrandSummary(days),
+        getChannelMetrics(days),
+      ]);
+      setSummary(summaryData);
+      setChannels(channelData ?? []);
     } catch (err) {
       setError(err.message || "Failed to load analytics");
     } finally {
@@ -50,5 +55,5 @@ export default function useAnalytics(days = 7) {
 
   useEffect(() => { load(); }, [load]);
 
-  return { summary, loading, error, refresh: load, sync, syncing, syncResult };
+  return { summary, channels, loading, error, refresh: load, sync, syncing, syncResult };
 }

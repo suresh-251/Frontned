@@ -3,6 +3,7 @@ import api from "../api/apiClient";
 import { BASE_URL } from "../api/apiClient";
 import { useBrand } from "../context/BrandContext";
 import { connectPlatform } from "../api/auth.api";
+import { reschedulePost } from "../api/unified.post.api";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const POST_TYPES = [
@@ -21,11 +22,11 @@ const PLATFORM_META = {
   LinkedIn:  { color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-200", badge: "bg-indigo-100 text-indigo-700", icon: "LI", label: "LinkedIn Pages"    },
 };
 
-// Tabs: Published first, then Scheduled, then Failed
+// Tabs: Published, Scheduled, Drafted  (Failed posts are visible inside Published with red highlight)
 const STATUS_TABS = [
-  { key: "completed", label: "Published", badge: "bg-green-100 text-green-700", icon: "published", iconColor: "text-green-600" },
-  { key: "scheduled", label: "Scheduled", badge: "bg-blue-100 text-blue-700",   icon: "scheduled", iconColor: "text-blue-600" },
-  { key: "failed",    label: "Failed",    badge: "bg-red-100 text-red-700",     icon: "failed", iconColor: "text-red-600" },
+  { key: "completed", label: "Published", badge: "bg-green-100 text-green-700",  icon: "published", iconColor: "text-green-600" },
+  { key: "scheduled", label: "Scheduled", badge: "bg-blue-100 text-blue-700",    icon: "scheduled", iconColor: "text-blue-600" },
+  { key: "drafted",   label: "Drafted",   badge: "bg-yellow-100 text-yellow-700",icon: "drafted",   iconColor: "text-yellow-600" },
 ];
 
 const PLATFORM_COLORS = {
@@ -89,20 +90,21 @@ function getCalendarDays(year, month) {
 }
 
 function StatusTabIcon({ type, cls = "w-4 h-4" }) {
-  if (type === "published") {
-    return (
-      <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    );
-  }
-  if (type === "scheduled") {
-    return (
-      <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    );
-  }
+  if (type === "published") return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+  if (type === "scheduled") return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+  if (type === "drafted") return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  );
   return (
     <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01m8.99-4a9 9 0 11-17.98 0 9 9 0 0117.98 0z" />
@@ -160,19 +162,31 @@ function platformFromUrl(url = "") {
   return "";
 }
 
+// Normalise a StoredPostResult to always use camelCase keys.
+// Old records were serialised with PascalCase; new ones use camelCase.
+function normResult(r) {
+  return {
+    accountId:   r.accountId   ?? r.AccountId   ?? "",
+    accountName: r.accountName ?? r.AccountName ?? "",
+    platform:    r.platform    ?? r.Platform    ?? "",
+    postId:      r.postId      ?? r.PostId      ?? "",
+    viewUrl:     r.viewUrl     ?? r.ViewUrl     ?? r.viewPostUrl ?? r.ViewPostUrl ?? "",
+    success:     r.success     ?? r.Success     ?? false,
+    reach:       r.reach       ?? r.Reach       ?? 0,
+  };
+}
+
 // Build a best-effort platform URL when viewUrl is absent (older posts)
 function buildFallbackUrl(r) {
   const p  = (r.platform || "").toLowerCase();
-  const id = r.postId || r.platformPostId || "";
+  const id = r.postId || "";
   if (!id) return null;
   if (p === "facebook") {
-    // postId can be "{pageId}_{objectId}" or just "{objectId}"
     if (id.includes("_")) {
       const [pageId, objectId] = id.split("_");
       return `https://www.facebook.com/${pageId}/posts/${objectId}`;
     }
-    const acct = r.accountId || "";
-    return `https://www.facebook.com/${acct}/posts/${id}`;
+    return `https://www.facebook.com/${r.accountId || ""}/posts/${id}`;
   }
   if (p === "instagram") return `https://www.instagram.com/p/${id}/`;
   if (p === "linkedin")  return `https://www.linkedin.com/feed/update/${encodeURIComponent(id)}`;
@@ -180,19 +194,20 @@ function buildFallbackUrl(r) {
 }
 
 // Build a view link object from a StoredPostResult, always attempting a URL
-function buildViewLink(r) {
-  const url = r.viewUrl || r.viewPostUrl || buildFallbackUrl(r);
+function buildViewLink(raw) {
+  const r   = normResult(raw);
+  const url = r.viewUrl || buildFallbackUrl(r);
   if (!url) return null;
   return {
     url,
-    platform:    r.platform || platformFromUrl(url) || normPlatform((r.accountId || "").split("_")[0]),
+    platform:    r.platform || platformFromUrl(url) || normPlatform(r.accountId.split("_")[0]),
     accountName: r.accountName || r.accountId || "",
   };
 }
 
 function PostCard({ post, onEdit, onDelete }) {
   const platforms    = parsePlatforms(post.platforms);
-  const results      = parseResults(post.postResultsJson);
+  const results      = parseResults(post.postResultsJson).map(normResult);
   const successResults = results.filter(r => r.success);
   const successCount   = successResults.length;
   const totalReach     = results.reduce((s, r) => s + (r.reach ?? 0), 0);
@@ -329,7 +344,110 @@ function PostCard({ post, onEdit, onDelete }) {
 }
 
 // ── Scheduled Card ─────────────────────────────────────────────────────────────
-function ScheduledCard({ post, cancellingId, onCancel }) {
+function ScheduledCard({ post, cancellingId, onCancel, onReschedule }) {
+  const platforms = parsePlatforms(post.platforms);
+  const accs      = parseAccountIds(post.targetAccountIds);
+  const hasMedia  = post.hasMedia;
+  const isImage   = ["Image","Carousel"].includes(post.postType);
+  const isVideo   = ["Video","Reel","Story"].includes(post.postType);
+
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [newDate, setNewDate]               = useState("");
+  const [rescheduling, setRescheduling]     = useState(false);
+  const [rescheduleErr, setRescheduleErr]   = useState("");
+
+  const minDateTime = (() => {
+    const d = new Date(Date.now() + 2 * 60000);
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
+
+  const handleReschedule = async () => {
+    if (!newDate) { setRescheduleErr("Pick a new date/time"); return; }
+    setRescheduling(true); setRescheduleErr("");
+    try {
+      await onReschedule(post.id, new Date(newDate).toISOString());
+      setShowReschedule(false); setNewDate("");
+    } catch (e) {
+      setRescheduleErr(e.message || "Failed to reschedule");
+    } finally {
+      setRescheduling(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden border-l-4 border-l-blue-400 hover:shadow-md transition-shadow">
+      <div className="flex">
+        <div className="shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
+          {hasMedia && (isImage || isVideo) ? (
+            <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-20 h-20" />
+          ) : (
+            <span className="text-2xl">
+              {post.postType === "Text" ? "📝" : post.postType === "Document" ? "📄" : "🖼️"}
+            </span>
+          )}
+        </div>
+        <div className="flex-1 py-3 pr-3 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{post.postType}</span>
+            {platforms.map(p => (
+              <span key={p} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PLATFORM_COLORS[p] ?? "bg-gray-100 text-gray-600"}`}>
+                <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p.slice(0,2)}
+              </span>
+            ))}
+            <span className="ml-auto text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">⏰ Scheduled</span>
+          </div>
+          <p className="text-sm text-gray-700 mt-1.5 line-clamp-2 leading-snug">
+            {post.content || <span className="italic text-gray-400">No caption</span>}
+          </p>
+          <div className="flex items-center justify-between mt-2 gap-2 flex-wrap">
+            <span className="text-[11px] text-gray-400">
+              📅 {fmtLocal(post.scheduledAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => { setShowReschedule(v => !v); setRescheduleErr(""); }}
+                className="px-2.5 py-1 text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                🕐 Reschedule
+              </button>
+              <button onClick={() => onCancel(post.id)} disabled={cancellingId === post.id}
+                className="px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
+                {cancellingId === post.id ? "Cancelling…" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Inline reschedule panel */}
+      {showReschedule && (
+        <div className="border-t border-blue-100 bg-blue-50 px-4 py-3">
+          <p className="text-xs font-semibold text-blue-700 mb-2">Pick a new date &amp; time</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="datetime-local"
+              min={minDateTime}
+              value={newDate}
+              onChange={e => setNewDate(e.target.value)}
+              className="px-3 py-1.5 border border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+            />
+            <button onClick={handleReschedule} disabled={rescheduling || !newDate}
+              className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 transition-colors">
+              {rescheduling ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => { setShowReschedule(false); setRescheduleErr(""); setNewDate(""); }}
+              className="px-3 py-1.5 text-xs text-gray-500 hover:bg-blue-100 rounded-lg transition-colors">
+              Cancel
+            </button>
+          </div>
+          {rescheduleErr && <p className="text-xs text-red-600 mt-1">⚠ {rescheduleErr}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Draft Card ─────────────────────────────────────────────────────────────────
+function DraftCard({ post, onDelete, onResume }) {
   const platforms = parsePlatforms(post.platforms);
   const accs      = parseAccountIds(post.targetAccountIds);
   const hasMedia  = post.hasMedia;
@@ -337,7 +455,7 @@ function ScheduledCard({ post, cancellingId, onCancel }) {
   const isVideo   = ["Video","Reel","Story"].includes(post.postType);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex overflow-hidden border-l-4 border-l-blue-400 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex overflow-hidden border-l-4 border-l-yellow-400 hover:shadow-md transition-shadow">
       <div className="shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
         {hasMedia && (isImage || isVideo) ? (
           <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-20 h-20" />
@@ -355,19 +473,25 @@ function ScheduledCard({ post, cancellingId, onCancel }) {
               <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p.slice(0,2)}
             </span>
           ))}
-          <span className="ml-auto text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">⏰ Scheduled</span>
+          <span className="ml-auto text-[10px] font-semibold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">✏️ Draft</span>
         </div>
         <p className="text-sm text-gray-700 mt-1.5 line-clamp-2 leading-snug">
-          {post.content || <span className="italic text-gray-400">No caption</span>}
+          {post.content || <span className="italic text-gray-400">No content yet…</span>}
         </p>
         <div className="flex items-center justify-between mt-2">
           <span className="text-[11px] text-gray-400">
-            📅 {fmtLocal(post.scheduledAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
+            💾 Saved {fmtLocal(post.createdAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
           </span>
-          <button onClick={() => onCancel(post.id)} disabled={cancellingId === post.id}
-            className="px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
-            {cancellingId === post.id ? "Cancelling…" : "Cancel"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => onResume(post)}
+              className="px-2.5 py-1 text-[11px] font-medium bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors">
+              Resume
+            </button>
+            <button onClick={() => onDelete(post.id)}
+              className="px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
+              Delete
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -515,8 +639,13 @@ function CalendarPostPopover({ post, onClose }) {
                 <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p}
               </span>
             ))}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${post.status === "Completed" ? "bg-green-100 text-green-700" : post.status === "Scheduled" ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-600"}`}>
-              {post.status === "Completed" ? "Published" : post.status === "Scheduled" ? "Scheduled" : "Failed"}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+              post.status === "Completed" ? "bg-green-100 text-green-700" :
+              post.status === "Scheduled" ? "bg-blue-100 text-blue-700" :
+              post.status === "Draft"     ? "bg-yellow-100 text-yellow-700" :
+              "bg-red-100 text-red-600"
+            }`}>
+              {post.status === "Completed" ? "Published" : post.status === "Scheduled" ? "Scheduled" : post.status === "Draft" ? "Draft" : "Failed"}
             </span>
           </div>
           <button onClick={onClose} className="p-0.5 hover:bg-gray-100 rounded shrink-0 text-gray-400">
@@ -554,9 +683,9 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
   const [yearDraft, setYearDraft]   = useState(String(year));
 
   const filtered = posts.filter(p => {
-    if (tab === "scheduled") return p.status !== "Completed" && p.status !== "Failed";
-    if (tab === "completed") return p.status === "Completed";
-    if (tab === "failed")    return p.status === "Failed";
+    if (tab === "scheduled") return p.status !== "Completed" && p.status !== "Failed" && p.status !== "Draft";
+    if (tab === "completed") return p.status === "Completed" || p.status === "Failed";
+    if (tab === "drafted")   return p.status === "Draft";
     return true;
   });
 
@@ -573,6 +702,7 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
   const chipColor = (status) =>
     status === "Completed" ? "bg-green-500 text-white" :
     status === "Failed"    ? "bg-red-400 text-white" :
+    status === "Draft"     ? "bg-yellow-400 text-white" :
     "bg-blue-500 text-white";
 
   return (
@@ -699,23 +829,29 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
         <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
           <span className="w-3 h-3 rounded-sm bg-red-400 inline-block"></span>Failed
         </span>
+        <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+          <span className="w-3 h-3 rounded-sm bg-yellow-400 inline-block"></span>Draft
+        </span>
       </div>
     </div>
   );
 }
 
 // ── Compose Modal (centered) ───────────────────────────────────────────────────
-function ComposeModal({ activeBrand, onClose, onPosted }) {
+function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
   const [accounts, setAccounts]           = useState([]);
   const [accountsLoading, setALoading]    = useState(true);
-  const [selected, setSelected]           = useState(new Set());
-  const [mode, setMode]                   = useState("Text");
-  const [content, setContent]             = useState("");
+  const [selected, setSelected]           = useState(new Set(
+    resumeDraft ? parseAccountIds(resumeDraft.targetAccountIds) : []
+  ));
+  const [mode, setMode]                   = useState(resumeDraft?.postType ?? "Text");
+  const [content, setContent]             = useState(resumeDraft?.content ?? "");
   const [files, setFiles]                 = useState([]);
-  const [documentTitle, setDocTitle]      = useState("");
+  const [documentTitle, setDocTitle]      = useState(resumeDraft?.documentTitle ?? "");
   const [scheduleEnabled, setSched]       = useState(false);
   const [scheduledAt, setScheduledAt]     = useState("");
   const [posting, setPosting]             = useState(false);
+  const [savingDraft, setSavingDraft]     = useState(false);
   const [results, setResults]             = useState(null);
   const [error, setError]                 = useState("");
   const [showPreview, setShowPreview]     = useState(false);
@@ -791,11 +927,34 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
       });
       setResults(res.data);
       if (!scheduleEnabled) { setContent(""); setFiles([]); setSelected(new Set()); }
-      onPosted?.({ scheduled: scheduleEnabled });
+      onPosted?.({ scheduled: scheduleEnabled, draftId: resumeDraft?.id });
     } catch (e) {
       setError(e.message || "Failed to post. Please try again.");
     } finally {
       setPosting(false);
+    }
+  };
+
+  const saveDraft = async () => {
+    if (!content.trim() && !files.length) { setError("Add some content before saving as draft."); return; }
+    setSavingDraft(true); setError("");
+    const form = new FormData();
+    form.append("Type", mode);
+    form.append("Content", content || "");
+    selectedAccounts.forEach(a => form.append("TargetAccountIds", a.pageIdentifier));
+    [...new Set(selectedAccounts.map(a => a.platform))].forEach(p => form.append("Platforms", p));
+    files.forEach(f => form.append("MediaFiles", f));
+    if (documentTitle) form.append("DocumentTitle", documentTitle);
+    try {
+      await api.post("/post/draft", form, {
+        headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
+      });
+      onPosted?.({ draftId: resumeDraft?.id });
+      onClose();
+    } catch (e) {
+      setError(e.message || "Failed to save draft.");
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -930,12 +1089,18 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
                     className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white min-w-0" />
                 )}
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <p className="text-xs text-gray-400">{selected.size > 0 ? `${selected.size} account${selected.size > 1 ? "s" : ""} selected` : "No accounts selected"}</p>
-                <button onClick={submit} disabled={posting || !selected.size}
-                  className="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm">
-                  {posting ? (<><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>{scheduleEnabled ? "Scheduling…" : "Posting…"}</>) : scheduleEnabled ? "📅 Schedule" : "🚀 Post Now"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={saveDraft} disabled={savingDraft || posting}
+                    className="px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-xl font-medium hover:bg-yellow-100 disabled:opacity-50 transition-all text-xs">
+                    {savingDraft ? "Saving…" : "💾 Save Draft"}
+                  </button>
+                  <button onClick={submit} disabled={posting || !selected.size}
+                    className="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm">
+                    {posting ? (<><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>{scheduleEnabled ? "Scheduling…" : "Posting…"}</>) : scheduleEnabled ? "📅 Schedule" : "🚀 Post Now"}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -994,12 +1159,12 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
 // ── Post Table (Meta Business Suite style tabular view) ───────────────────────
 function PostTableRow({ post, onEdit, onDelete }) {
   const platforms  = parsePlatforms(post.platforms);
-  const [results, setResults] = useState(() => parseResults(post.postResultsJson));
+  const [results, setResults] = useState(() => parseResults(post.postResultsJson).map(normResult));
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [insightsFetched, setInsightsFetched] = useState(false);
 
   // Re-sync if parent data changes
-  useEffect(() => { setResults(parseResults(post.postResultsJson)); }, [post.postResultsJson]);
+  useEffect(() => { setResults(parseResults(post.postResultsJson).map(normResult)); }, [post.postResultsJson]);
 
   const successResults = results.filter(r => r.success);
   const totalReach = results.reduce((s, r) => s + (r.reach ?? 0), 0);
@@ -1018,13 +1183,14 @@ function PostTableRow({ post, onEdit, onDelete }) {
       if (res.data?.insights) {
         setResults(prev => {
           const updated = [...prev];
-          for (const ins of res.data.insights) {
+          for (const rawIns of res.data.insights) {
+            const ins = normResult(rawIns);
             const idx = updated.findIndex(r => r.accountId === ins.accountId);
             if (idx >= 0) {
               updated[idx] = {
                 ...updated[idx],
                 reach:   ins.reach ?? updated[idx].reach,
-                viewUrl: ins.viewUrl || updated[idx].viewUrl || updated[idx].viewPostUrl,
+                viewUrl: ins.viewUrl || updated[idx].viewUrl,
               };
             }
           }
@@ -1133,15 +1299,13 @@ function PostTableRow({ post, onEdit, onDelete }) {
 
       {/* Actions */}
       <td className="px-4 py-3">
-        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {post.status === "Completed" && (
-            <button onClick={() => onEdit(post)} title="Edit post"
-              className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 hover:text-blue-700 transition-colors">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            </button>
-          )}
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => onEdit(post)} title="Edit caption"
+            className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </button>
           <button onClick={() => onDelete(post)} title="Delete post"
             className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1214,6 +1378,9 @@ export default function PostHistory() {
   const [historyPage, setHistoryPage]       = useState(1);
   const [historyTotal, setHistoryTotal]     = useState(0);
   const [cancellingId, setCancellingId]     = useState(null);
+  const [drafts, setDrafts]                 = useState([]);
+  const [draftsLoading, setDraftsLoad]      = useState(false);
+  const [resumingDraft, setResumingDraft]   = useState(null); // draft post to resume in ComposeModal
   const [error, setError]                   = useState("");
   const PAGE_SIZE = 20;
 
@@ -1241,9 +1408,19 @@ export default function PostHistory() {
     finally { setHistLoad(false); }
   }, [effectiveBrand?.slug]);
 
-  useEffect(() => { loadScheduled(); loadHistory(1); }, [loadScheduled, loadHistory]);
+  const loadDrafts = useCallback(async () => {
+    if (!effectiveBrand?.slug) return;
+    setDraftsLoad(true);
+    try {
+      const res = await api.get("/post/drafts");
+      setDrafts(Array.isArray(res.data) ? res.data : []);
+    } catch { /* silently fail */ }
+    finally { setDraftsLoad(false); }
+  }, [effectiveBrand?.slug]);
 
-  const refresh = () => { loadScheduled(); loadHistory(historyPage); };
+  useEffect(() => { loadScheduled(); loadHistory(1); loadDrafts(); }, [loadScheduled, loadHistory, loadDrafts]);
+
+  const refresh = () => { loadScheduled(); loadHistory(historyPage); loadDrafts(); };
 
   const cancelPost = async (id) => {
     if (!window.confirm("Cancel this scheduled post?")) return;
@@ -1251,6 +1428,17 @@ export default function PostHistory() {
     try { await api.delete(`/post/scheduled/${id}`); setScheduled(prev => prev.filter(p => p.id !== id)); }
     catch { setError("Failed to cancel post."); }
     finally { setCancellingId(null); }
+  };
+
+  const handleReschedule = async (id, scheduledAt) => {
+    await reschedulePost(id, scheduledAt);
+    setScheduled(prev => prev.map(p => p.id === id ? { ...p, scheduledAt } : p));
+  };
+
+  const deleteDraftById = async (id) => {
+    if (!window.confirm("Delete this draft?")) return;
+    try { await api.delete(`/post/draft/${id}`); setDrafts(prev => prev.filter(p => p.id !== id)); }
+    catch { setError("Failed to delete draft."); }
   };
 
   const confirmDelete = async () => {
@@ -1273,15 +1461,14 @@ export default function PostHistory() {
     return posts.filter(post => getPostPlatforms(post).includes(platformFilter));
   }, [platformFilter]);
 
-  const completed = history.filter(p => p.status === "Completed");
-  const failed    = history.filter(p => p.status === "Failed");
+  const completed = history.filter(p => p.status === "Completed" || p.status === "Failed");
   const allPosts  = [...scheduled, ...history];
   const filteredCompleted = filterByPlatform(completed);
-  const filteredFailed    = filterByPlatform(failed);
   const filteredScheduled = filterByPlatform(scheduled);
+  const filteredDrafts    = filterByPlatform(drafts);
   const filteredAllPosts  = filterByPlatform(allPosts);
 
-  const counts = { completed: completed.length, scheduled: scheduled.length, failed: failed.length };
+  const counts = { completed: completed.length, scheduled: scheduled.length, drafted: drafts.length };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1370,17 +1557,26 @@ export default function PostHistory() {
             posts={filteredAllPosts} tab={tab} />
         ) : (
           <>
-            {/* Published / Failed — table */}
-            {(tab === "completed" || tab === "failed") && (
+            {/* Published (includes failed) — table */}
+            {tab === "completed" && (
               historyLoading ? <LoadingCard /> :
-              (tab === "completed" ? filteredCompleted : filteredFailed).length === 0
-                ? <EmptyCard
-                    icon={tab === "completed" ? "✅" : "❌"}
-                    msg={tab === "completed"
-                      ? (platformFilter === "All" ? "No published posts yet." : `No published ${platformFilter} posts yet.`)
-                      : (platformFilter === "All" ? "No failed posts." : `No failed ${platformFilter} posts.`)}
-                  />
-                : <PostTable posts={tab === "completed" ? filteredCompleted : filteredFailed} onEdit={setEditing} onDelete={setDeleting} />
+              filteredCompleted.length === 0
+                ? <EmptyCard icon="✅" msg={platformFilter === "All" ? "No published posts yet." : `No published ${platformFilter} posts yet.`} />
+                : <PostTable posts={filteredCompleted} onEdit={setEditing} onDelete={setDeleting} />
+            )}
+
+            {/* Drafted — card list */}
+            {tab === "drafted" && (
+              draftsLoading ? <LoadingCard /> :
+              filteredDrafts.length === 0
+                ? <EmptyCard icon="✏️" msg={platformFilter === "All" ? "No drafts saved yet." : `No ${platformFilter} drafts.`} />
+                : <div className="space-y-2">
+                    {filteredDrafts.map(post => (
+                      <DraftCard key={post.id} post={post}
+                        onDelete={deleteDraftById}
+                        onResume={(p) => { setResumingDraft(p); setCompose(true); }} />
+                    ))}
+                  </div>
             )}
 
             {/* Scheduled — card list */}
@@ -1391,13 +1587,13 @@ export default function PostHistory() {
                 :
               <div className="space-y-2">
                 {filteredScheduled.map(post => (
-                  <ScheduledCard key={post.id} post={post} cancellingId={cancellingId} onCancel={cancelPost} />
+                  <ScheduledCard key={post.id} post={post} cancellingId={cancellingId} onCancel={cancelPost} onReschedule={handleReschedule} />
                 ))}
               </div>
             )}
 
             {/* Pagination */}
-            {(tab === "completed" || tab === "failed") && historyTotal > PAGE_SIZE && (
+            {tab === "completed" && historyTotal > PAGE_SIZE && (
               <div className="flex items-center justify-between text-xs text-gray-500 pt-1">
                 <span>{historyTotal} total posts</span>
                 <div className="flex gap-2">
@@ -1419,7 +1615,15 @@ export default function PostHistory() {
         </svg>
       </button>
 
-      {showCompose && <ComposeModal activeBrand={effectiveBrand} onClose={() => setCompose(false)} onPosted={({ scheduled } = {}) => { setTimeout(refresh, 500); if (scheduled) setTab("scheduled"); }} />}
+      {showCompose && <ComposeModal
+        activeBrand={effectiveBrand}
+        resumeDraft={resumingDraft}
+        onClose={() => { setCompose(false); setResumingDraft(null); }}
+        onPosted={({ scheduled, draftId } = {}) => {
+          if (draftId) setDrafts(prev => prev.filter(d => d.id !== draftId));
+          setTimeout(refresh, 500);
+          if (scheduled) setTab("scheduled");
+        }} />}
       {editingPost && <EditPostModal post={editingPost} onClose={() => setEditing(null)} onSaved={handleSaved} />}
 
       {/* Delete confirmation */}

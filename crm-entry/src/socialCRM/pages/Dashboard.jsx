@@ -4,6 +4,7 @@ import api from "../api/apiClient";
 import { connectPlatform } from "../api/auth.api";
 import { selectPage } from "../api/facebook.pages.api";
 import { activateInstagramAccount } from "../api/instagram.accounts.api";
+import { getChannelMetrics, syncAnalytics } from "../api/analytics.api";
 import { useBrand } from "../context/BrandContext";
 import { useNavigate } from "react-router-dom";
 import { FiEdit, FiUsers, FiFileText, FiSettings, FiActivity, FiInfo, FiZap, FiWifi, FiWifiOff, FiChevronDown } from "react-icons/fi";
@@ -44,10 +45,12 @@ export default function Dashboard() {
   const [accountsByPlatform, setAccountsByPlatform] = useState({});
   // Selected account per platform (for dropdown)
   const [selectedAccount, setSelectedAccount] = useState({});
-  // Analytics per platform
-  const [analytics, setAnalytics] = useState({});
+  // Channel metrics from /api/analytics/brand/channels
+  const [channelMetrics, setChannelMetrics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activating, setActivating] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState(null);
 
   const PLATFORMS = ["Facebook", "Instagram", "LinkedIn"];
   const normPlatform = (p) =>
@@ -57,17 +60,14 @@ export default function Dashboard() {
     if (!slug) { setLoading(false); return; }
     setLoading(true);
     try {
-      const [accsRes, fbRes, igRes, igAnalyticsRes] = await Promise.allSettled([
+      const [accsRes, igRes, channelsRes] = await Promise.allSettled([
         api.get(`/brands/${slug}/accounts`),
-        api.get("/analytics/facebook/page"),
         api.get("/instagram/accounts"),
-        api.get("/dashboard/brand-health/analytics", { params: { platform: "instagram", days: 7 } }),
+        getChannelMetrics(30),
       ]);
       const rawAccs = accsRes.status === "fulfilled" ? (accsRes.value.data.accounts ?? []) : [];
       const igList = igRes.status === "fulfilled" ? (igRes.value.data ?? []) : [];
       const igMap = new Map(igList.map(a => [a.instagramBusinessId, a]));
-      const fbData = fbRes.status === "fulfilled" ? fbRes.value?.data ?? null : null;
-      const igAnalytics = igAnalyticsRes.status === "fulfilled" ? igAnalyticsRes.value?.data ?? null : null;
 
       // Group by platform
       const grouped = {};
@@ -90,14 +90,28 @@ export default function Dashboard() {
       }
       setSelectedAccount(sel);
 
-      // Analytics: per-platform
-      setAnalytics({ Facebook: fbData, Instagram: igAnalytics });
+      // Channel metrics from analytics pipeline
+      setChannelMetrics(channelsRes.status === "fulfilled" ? (channelsRes.value ?? []) : []);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => { loadData(activeBrand?.slug); }, [activeBrand?.slug]);
+
+  const handleSync = async () => {
+    setSyncing(true); setSyncMsg(null);
+    try {
+      const result = await syncAnalytics();
+      setSyncMsg({ ok: true, text: `Synced ${result.postsSynced ?? 0} posts` });
+      await loadData(activeBrand?.slug);
+    } catch (e) {
+      setSyncMsg({ ok: false, text: e.message || "Sync failed" });
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(null), 4000);
+    }
+  };
 
   const activateAccount = async (platform, pageIdentifier) => {
     setActivating(pageIdentifier);
@@ -125,36 +139,22 @@ export default function Dashboard() {
     const accs = accountsByPlatform[platform] ?? [];
     const selId = selectedAccount[platform];
     const acc = accs.find(a => a.pageIdentifier === selId) ?? accs[0];
-    const fbData = analytics["Facebook"];
-
     if (!acc) return null;
 
-    if (platform === "Facebook" && fbData) {
-      return {
-        acc,
-        totalFollowers: fbData.fan_count ?? fbData.followers_count,
-        newFollowers: null,
-        reach: fbData.reach ?? null,
-        engagement: fbData.totalEngagement ?? null,
-        leads: stats.totalLeads ?? null,
-      };
-    }
+    // Look up from the analytics pipeline channel metrics
+    const ch = channelMetrics.find(
+      c => c.accountId === acc.pageIdentifier ||
+           c.platform?.toLowerCase() === platform.toLowerCase()
+    );
 
-    if (platform === "Instagram") {
-      const ig = analytics["Instagram"];
-      if (ig?.isConnected) {
-        return {
-          acc,
-          totalFollowers: ig.followers ?? null,
-          newFollowers: null,
-          reach: ig.reach ?? null,
-          engagement: ig.totalEngagement ?? null,
-          leads: ig.totalLeads ?? null,
-        };
-      }
-    }
-
-    return { acc, totalFollowers: null, newFollowers: null, reach: null, engagement: null, leads: null };
+    return {
+      acc,
+      totalFollowers: ch?.totalFollowers ?? null,
+      newFollowers:   ch?.newFollowers   ?? null,
+      reach:          ch?.totalReach     > 0 ? ch.totalReach     : null,
+      engagement:     ch?.totalEngagement > 0 ? ch.totalEngagement : null,
+      leads:          ch?.totalLeads     ?? null,
+    };
   };
 
   return (
@@ -215,10 +215,25 @@ export default function Dashboard() {
 
           {/* ── Section 2: Performance Metrics Table ───────────────────────── */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
                 <FiActivity className="text-blue-500" size={14} /> Performance Metrics
               </h3>
+              <div className="flex items-center gap-2">
+                {syncMsg && (
+                  <span className={`text-xs font-medium ${syncMsg.ok ? "text-green-600" : "text-red-500"}`}>
+                    {syncMsg.ok ? "✓" : "⚠"} {syncMsg.text}
+                  </span>
+                )}
+                <button onClick={handleSync} disabled={syncing}
+                  className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg transition-all disabled:opacity-50">
+                  {syncing
+                    ? <span className="w-3 h-3 border border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    : <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  }
+                  {syncing ? "Syncing…" : "Sync"}
+                </button>
+              </div>
             </div>
 
             {loading ? (
