@@ -539,6 +539,11 @@ export default function Leads() {
     }
   };
 
+  const handleDealConverted = useCallback(() => {
+    if (!detailsLead?.id) return;
+    mergeLead({ ...detailsLead, status: "Converted" });
+  }, [detailsLead, mergeLead]);
+
   return (
     <div className="page">
       <div className="stat-grid">{STAT_CARDS.map(({ label, key, detailKey, detailLabel, helper, icon, alert, c }, index) => <StatCard key={label} label={label} value={stats[key] ?? 0} detailValue={stats[detailKey] ?? 0} detailLabel={detailLabel} helper={helper} icon={icon} alert={alert} c={c} delay={`${index * 0.07}s`} />)}</div>
@@ -556,7 +561,7 @@ export default function Leads() {
       <DeletedLeadsPanel leads={deletedLeads} />
 
       {showColPanel && <ManageColumnsPanel visibleCols={visibleCols} setVisibleCols={setVisibleCols} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} wrapText={wrapText} setWrapText={setWrapText} onClose={() => setShowColPanel(false)} />}
-      {detailsLead && <LeadDetailsModal lead={detailsLead} onClose={() => setDetailsLead(null)} />}
+      {detailsLead && <LeadDetailsModal lead={detailsLead} onClose={() => setDetailsLead(null)} onDealConverted={handleDealConverted} />}
       {editLead && <EditModal lead={editLead} onClose={() => setEditLead(null)} onSave={handleSaveLead} onDelete={handleDeleteLead} salesUsers={salesUsers} saving={savingLead} deleting={deletingLead} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImportLeads} />}
       {showFilter && <FilterModal onClose={() => setShowFilter(false)} filters={filters} activeFilterCount={activeFilterCount} onApply={setFilters} assignees={salesUserOptions} />}

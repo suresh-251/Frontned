@@ -785,6 +785,7 @@ input[type="number"].filter-input::-webkit-inner-spin-button {
   border-radius: 10px;
   border: 1px solid #e5e7eb;
   font-family: inherit;
+  z-index: 50;
 }
 
 .react-datepicker__header {
@@ -825,7 +826,7 @@ input[type="number"].filter-input::-webkit-inner-spin-button {
 
 /* navigation arrows */
 .react-datepicker__navigation{
-  top:6px;
+  top: 6px;
 }
 
 /* weekday labels */

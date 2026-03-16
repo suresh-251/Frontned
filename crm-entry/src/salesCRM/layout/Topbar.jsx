@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 
 const NAV_LINKS = [
   { name: "Leads", path: "/crm/sales/leads" },
+  { name: "Deals", path: "/crm/sales/deals" },
 ];
 
 export default function Topbar() {

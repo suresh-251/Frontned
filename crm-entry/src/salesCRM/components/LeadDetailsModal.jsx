@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useState } from "react";
 import { Activity, Calendar, FileText, Mail, MapPin, Paperclip, Phone, RefreshCw, Trash2, UploadCloud, UserCheck, X } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
+import DatePicker from "react-datepicker";
 import leadsAPI from "../api/leads.api";
 import activitiesAPI from "../api/activities.api";
+import meetingsAPI from "../api/meetings.api";
 import { BASE_URL } from "../api/apiClient";
 import { formatLeadSource, formatStatus } from "../pages/leads/utils";
 import Toast from "../utils/toast";
@@ -26,13 +29,52 @@ const WHATSAPP_TEMPLATES = [
   { id: "intro", name: "Greeting", message: "Hi {{name}}, this is a quick introduction from our team. Happy to connect when convenient." },
   { id: "reminder", name: "Reminder", message: "Hi {{name}}, gentle reminder on our pending discussion. Please let me know a suitable time." },
 ];
+const CALL_PURPOSE_OPTIONS = [
+  "Follow-up",
+  "Introduction",
+  "Qualification",
+  "Demo",
+  "Negotiation",
+  "Support",
+  "Closing",
+];
+const DEAL_STAGE_OPTIONS = [
+  "New",
+  "Prospect",
+  "Qualification",
+  "Qualified",
+  "Proposal",
+  "ProposalSent",
+  "Negotiation",
+  "ClosedWon",
+  "ClosedLost",
+];
+const CONTACT_ROLE_OPTIONS = [
+  "Developer/Evaluator",
+  "Decision Maker",
+  "Purchasing",
+  "Executive Sponsor",
+  "Engineering Lead",
+  "Economic Decision Maker",
+  "Product Management",
+];
 
 const card = { border: "1px solid #e5e7eb", borderRadius: 14, background: "#fff", boxShadow: "none" };
 const input = { width: "100%", minHeight: 38, padding: "10px 12px", border: "1px solid #dbe4f0", borderRadius: 12, outline: "none", fontSize: 13, color: "#334155", background: "#fff", boxSizing: "border-box" };
+const floatingWrap = { position: "relative", width: "100%", paddingTop: 10 };
+const floatingInput = { ...input, minHeight: 48, padding: "14px 12px 8px" };
+const floatingLabel = { position: "absolute", top: -7, left: 12, padding: "0 5px 0 0", fontSize: 10.5, fontWeight: 700, color: "#475569", background: "#ffffff", pointerEvents: "none", letterSpacing: "0.01em", lineHeight: 1.1 };
+const floatingErrorText = { marginTop: 6, marginLeft: 4, fontSize: 11.5, color: "#dc2626", lineHeight: 1.3 };
+const datePickerInputBase = { ...floatingInput, width: "100%", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
 
 const hasValue = (v) => !(v === null || v === undefined || (typeof v !== "boolean" && String(v).trim() === ""));
 const leadName = (lead) => [lead?.firstName, lead?.lastName].filter(Boolean).join(" ").trim() || lead?.name || "Lead";
 const assignee = (lead) => lead?.assignee || lead?.assignedToUserName || lead?.assignedUserName || (lead?.assignedToUserId ? `User ${lead.assignedToUserId}` : "");
+const formatDisplayText = (value = "") => String(value)
+  .replace(/([a-z])([A-Z])/g, "$1 $2")
+  .replace(/_/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
 const fmtDate = (v, withTime = true) => {
   if (!v) return "-";
   const d = new Date(v);
@@ -112,8 +154,48 @@ const commKind = (type = "") => {
   if (raw.includes("meeting")) return "meetings";
   return "other";
 };
-const mapActivity = (x) => ({ id: x?.id, title: x?.title || x?.subject || x?.type || "Activity", type: x?.type || "Activity", description: x?.description || "", date: x?.activityDate || x?.dueDate || x?.createdAt, dueDate: x?.dueDate || x?.activityDate || x?.createdAt, status: x?.status || "", priority: x?.priority || "" });
-const mapComm = (x) => ({ id: x?.id || `${x?.type}-${x?.date || x?.description}`, kind: commKind(x?.type), title: x?.type || "Update", description: x?.description || "", date: x?.date || x?.createdAt });
+const mapActivity = (x) => ({
+  id: x?.id,
+  title: x?.title || x?.subject || x?.eventType || x?.type || "Activity",
+  type: x?.type || x?.eventType || "Activity",
+  description: x?.description || "",
+  date: x?.callStartTime || x?.activityDate || x?.dueDate || x?.createdAt,
+  dueDate: x?.dueDate || x?.activityDate || x?.callStartTime || x?.createdAt,
+  status: x?.status || x?.callStatus || "",
+  priority: x?.priority || ""
+});
+const mapComm = (x) => ({
+  id: x?.id || `${x?.eventType || x?.type}-${x?.date || x?.description}`,
+  kind: commKind(x?.type || x?.eventType),
+  title: formatDisplayText(x?.eventType || x?.type || "Update"),
+  description: x?.description || "",
+  date: x?.date || x?.createdAt
+});
+const mapMeetingRecord = (x) => ({
+  id: x?.id || `meeting-${x?.subject || x?.startTime}`,
+  kind: "meetings",
+  title: x?.subject || "Meeting",
+  description: x?.description || "",
+  date: x?.startTime,
+  provider: x?.provider || x?.location || "",
+  location: x?.location || "",
+  joinUrl: x?.joinUrl || "",
+  durationMinutes: x?.durationMinutes ?? 0,
+});
+const meetingMetaValue = (item) => {
+  const provider = formatDisplayText(item?.provider || "");
+  const location = String(item?.location || "").trim();
+  if (provider && location && provider.toLowerCase() !== location.toLowerCase()) {
+    return `${provider} / ${location}`;
+  }
+  return provider || location || "";
+};
+const compactMeetingDate = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+};
 const toIsoString = (v) => {
   if (!v) return "";
   const d = new Date(v);
@@ -126,7 +208,6 @@ const buildCallSummary = (x) => {
     x?.callResult ? `Result: ${x.callResult}` : "",
     hasValue(x?.durationMinutes) ? `Duration: ${x.durationMinutes} min` : "",
     x?.callPurpose ? `Purpose: ${x.callPurpose}` : "",
-    x?.callAgenda ? `Agenda: ${x.callAgenda}` : "",
     x?.reminder ? `Reminder: ${x.reminder}` : "",
     x?.voiceRecordingUrl ? `Recording: ${x.voiceRecordingUrl}` : "",
     x?.description || "",
@@ -152,7 +233,76 @@ function InfoRow({ icon: Icon, label, value }) {
   );
 }
 
-function LeftPanel({ lead }) {
+function FloatingInput({ label, as = "input", style, error, ...props }) {
+  const fieldStyle = {
+    ...floatingInput,
+    borderColor: error ? "#f87171" : "#cbd5e1",
+    boxShadow: error ? "0 0 0 3px rgba(248, 113, 113, 0.14)" : "none",
+    ...style
+  };
+  if (as === "textarea") {
+    return (
+      <div style={floatingWrap}>
+        <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
+        <textarea {...props} style={{ ...fieldStyle, minHeight: 120, resize: "vertical" }} />
+        {error ? <div style={floatingErrorText}>{error}</div> : null}
+      </div>
+    );
+  }
+
+  if (as === "select") {
+    return (
+      <div style={floatingWrap}>
+        <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
+        <select {...props} style={fieldStyle} />
+        {error ? <div style={floatingErrorText}>{error}</div> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div style={floatingWrap}>
+      <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
+      <input {...props} style={fieldStyle} />
+      {error ? <div style={floatingErrorText}>{error}</div> : null}
+    </div>
+  );
+}
+
+const DatePickerInput = forwardRef(function DatePickerInput({ value, onClick, style, label }, ref) {
+  return (
+    <input
+      ref={ref}
+      value={value}
+      onClick={onClick}
+      readOnly
+      style={{ ...datePickerInputBase, cursor: "pointer", ...style }}
+      aria-label={label}
+    />
+  );
+});
+
+function FloatingDateTimePicker({ label, selected, onChange, minDate, error, style }) {
+  return (
+    <div style={floatingWrap}>
+      <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
+      <DatePicker
+        selected={selected}
+        onChange={onChange}
+        showTimeSelect
+        timeIntervals={15}
+        dateFormat="MMM d, yyyy h:mm aa"
+        minDate={minDate}
+        calendarClassName="followup-datepicker"
+        popperPlacement="bottom-start"
+        customInput={<DatePickerInput label={label} style={{ borderColor: error ? "#f87171" : "#cbd5e1", boxShadow: error ? "0 0 0 3px rgba(248, 113, 113, 0.14)" : "none", ...style }} />}
+      />
+      {error ? <div style={floatingErrorText}>{error}</div> : null}
+    </div>
+  );
+}
+
+function LeftPanel({ lead, onConvert }) {
   const location = [lead?.address, lead?.city, lead?.state, lead?.country, lead?.zipCode || lead?.zip].filter(Boolean).join(", ");
   const initials = (leadName(lead).match(/\b\w/g) || []).join("").slice(0, 2).toUpperCase();
   return (
@@ -166,6 +316,24 @@ function LeftPanel({ lead }) {
             {hasValue(lead?.status) && <div style={{ display: "inline-flex", marginTop: 10, padding: "5px 10px", borderRadius: 999, background: "#eef2ff", color: "#4f46e5", fontSize: 12, fontWeight: 700 }}>{formatStatus(lead.status)}</div>}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={onConvert}
+          style={{
+            marginTop: 18,
+            width: "100%",
+            minHeight: 42,
+            border: "1px solid #d1d5db",
+            borderRadius: 12,
+            background: "#ffffff",
+            color: "#0f172a",
+            fontSize: 13.5,
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          Convert To Deal
+        </button>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 22px 18px" }}>
         <InfoRow icon={Mail} label="Email" value={lead?.email} />
@@ -183,6 +351,104 @@ function LeftPanel({ lead }) {
         <InfoRow icon={FileText} label="Description" value={lead?.description} />
       </div>
     </aside>
+  );
+}
+
+function ConvertToDealModal({ lead, onClose, onConverted }) {
+  const navigate = useNavigate();
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [form, setForm] = useState({
+    amount: "",
+    closingDate: "",
+    stage: "New",
+    contactRole: "Purchasing",
+  });
+
+  const setField = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setErrors((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const handleSubmit = async () => {
+    const nextErrors = {};
+    if (!String(form.amount).trim() || Number(form.amount) <= 0) nextErrors.amount = "Enter a valid deal amount.";
+    if (!String(form.closingDate).trim()) nextErrors.closingDate = "Closing date is required.";
+    if (!String(form.stage).trim()) nextErrors.stage = "Stage is required.";
+    if (!String(form.contactRole).trim()) nextErrors.contactRole = "Contact role is required.";
+    if (Object.keys(nextErrors).length) {
+      setErrors(nextErrors);
+      Toast.error("Please complete the deal details.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        amount: Number(form.amount),
+        closingDate: new Date(form.closingDate).toISOString(),
+        stage: form.stage,
+        contactRole: form.contactRole,
+      };
+      const createdDeal = await leadsAPI.convertToDeal(lead.id, payload);
+      Toast.success(createdDeal?.dealId ? `Lead converted to deal #${createdDeal.dealId}` : "Lead converted to deal");
+      onConverted?.(createdDeal);
+      onClose?.();
+      navigate("/crm/sales/deals");
+    } catch (error) {
+      Toast.error(getApiErrorMessage(error, "Unable to convert lead"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="overlay" onClick={onClose} style={{ padding: 24, zIndex: 750 }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(560px, calc(100vw - 48px))",
+          background: "#ffffff",
+          borderRadius: 24,
+          border: "1px solid #e5e7eb",
+          boxShadow: "0 28px 70px rgba(15, 23, 42, 0.18)",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "22px 24px 18px", borderBottom: "1px solid #eef2f7", display: "flex", alignItems: "start", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>Convert Lead To Deal</div>
+            <div style={{ marginTop: 6, fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>
+              Create a deal for {leadName(lead)} by adding the amount, closing date, stage, and contact role.
+            </div>
+          </div>
+          <button className="icon-btn" onClick={onClose} title="Close"><X size={18} /></button>
+        </div>
+
+        <div style={{ padding: 24, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 }}>
+          <FloatingInput type="number" min="0" label="Deal Amount" value={form.amount} error={errors.amount} onChange={(e) => setField("amount", e.target.value)} />
+          <FloatingInput type="date" label="Closing Date" value={form.closingDate} error={errors.closingDate} onChange={(e) => setField("closingDate", e.target.value)} />
+          <FloatingInput as="select" label="Deal Stage" value={form.stage} error={errors.stage} onChange={(e) => setField("stage", e.target.value)}>
+            {DEAL_STAGE_OPTIONS.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+          </FloatingInput>
+          <FloatingInput as="select" label="Contact Role" value={form.contactRole} error={errors.contactRole} onChange={(e) => setField("contactRole", e.target.value)}>
+            {CONTACT_ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role}</option>)}
+          </FloatingInput>
+        </div>
+
+        <div style={{ padding: "0 24px 24px", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn-primary" disabled={submitting} onClick={handleSubmit}>
+            {submitting ? "Converting..." : "Create Deal"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -294,6 +560,7 @@ function ActivitySection({ title, bg, items }) {
 function Composer({ tab, lead, onSaved }) {
   const [templateId, setTemplateId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
   const [v, setV] = useState({
     note: "",
     toEmail: lead?.email || "",
@@ -301,7 +568,6 @@ function Composer({ tab, lead, onSaved }) {
     emailBody: "",
     whatsappMessage: "",
     whatsappDirection: "Outgoing",
-    callSubject: "Follow-up call",
     callType: "Outgoing",
     callStatus: "Completed",
     callResult: "Connected",
@@ -309,18 +575,23 @@ function Composer({ tab, lead, onSaved }) {
     callStartTime: new Date().toISOString().slice(0, 16),
     callDurationMinutes: 0,
     callPurpose: "",
-    callAgenda: "",
-    callReminder: "",
     voiceRecordingUrl: "",
     callMode: "log",
-    meetingTitle: "Discovery Meeting",
+    meetingTitle: "",
     meetingDescription: "",
-    meetingStartTime: new Date().toISOString().slice(0, 16),
-    meetingEndTime: new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 16),
-    meetingProvider: "Offline",
-    meetingLocation: ""
+    meetingStartTime: new Date(),
+    meetingEndTime: new Date(Date.now() + 30 * 60 * 1000),
+    meetingProvider: "Zoom",
   });
-  const setField = (k, val) => setV((p) => ({ ...p, [k]: val }));
+  const setField = (k, val) => {
+    setV((p) => ({ ...p, [k]: val }));
+    setErrors((prev) => {
+      if (!prev[k]) return prev;
+      const next = { ...prev };
+      delete next[k];
+      return next;
+    });
+  };
   const applyTemplate = (id) => {
     setTemplateId(id);
     if (tab === "emails") {
@@ -334,6 +605,16 @@ function Composer({ tab, lead, onSaved }) {
   };
   const submit = async () => {
     if (!lead?.id) return;
+    if (tab === "calls") {
+      const nextErrors = {};
+      if (!String(v.callPurpose || "").trim()) nextErrors.callPurpose = "Call purpose is required.";
+      if (!String(v.callStartTime || "").trim()) nextErrors.callStartTime = "Call start time is required.";
+      if (Object.keys(nextErrors).length) {
+        setErrors(nextErrors);
+        Toast.error("Please fill the required call fields.");
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       if (tab === "notes") await leadsAPI.addCommunication({ leadId: lead.id, type: "Note", message: v.note, createdBy: lead.assignedToUserId || 0 });
@@ -341,20 +622,19 @@ function Composer({ tab, lead, onSaved }) {
       if (tab === "whatsapp") await leadsAPI.addCommunication({ leadId: lead.id, type: "WhatsApp", message: v.whatsappMessage, direction: v.whatsappDirection, createdBy: lead.assignedToUserId || 0 });
       if (tab === "calls") {
         const callStartTime = toIsoString(v.callStartTime);
+        const subject = String(v.callPurpose || "").trim();
         const basePayload = {
           leadId: lead.id,
-          subject: v.callSubject,
+          subject,
           callType: v.callType,
           callStatus: v.callMode === "schedule" ? (v.callStatus || "Scheduled") : (v.callStatus || "Completed"),
           callStartTime,
           ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
           ...(hasValue(v.callPurpose) ? { callPurpose: v.callPurpose } : {}),
-          ...(hasValue(v.callAgenda) ? { callAgenda: v.callAgenda } : {}),
         };
         if (v.callMode === "schedule") {
           await activitiesAPI.scheduleCall({
             ...basePayload,
-            ...(hasValue(v.callReminder) ? { reminder: v.callReminder } : {}),
           });
         } else {
           await activitiesAPI.logCall({
@@ -366,17 +646,18 @@ function Composer({ tab, lead, onSaved }) {
           });
         }
       }
-      if (tab === "meetings") await activitiesAPI.createMeeting({
+      if (tab === "meetings") await meetingsAPI.create({
         leadId: lead.id,
+        ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
         title: v.meetingTitle,
-        startTime: v.meetingStartTime,
-        endTime: v.meetingEndTime,
-        ...(lead.assignedToUserId ? { assignedToUserId: lead.assignedToUserId } : {}),
-        description: v.meetingProvider === "Offline" ? v.meetingDescription : `${v.meetingProvider} meeting requested${v.meetingDescription ? ` - ${v.meetingDescription}` : ""}`,
-        location: v.meetingLocation || v.meetingProvider
+        meetingVenue: v.meetingProvider,
+        startTime: toIsoString(v.meetingStartTime),
+        endTime: toIsoString(v.meetingEndTime),
+        description: v.meetingDescription,
+        provider: v.meetingProvider,
       });
       Toast.success("Saved successfully");
-      onSaved?.();
+      await onSaved?.();
     } catch (e) {
       Toast.error(getApiErrorMessage(e, "Unable to save"));
     } finally {
@@ -398,34 +679,82 @@ function Composer({ tab, lead, onSaved }) {
         <select style={input} value={v.whatsappDirection} onChange={(e) => setField("whatsappDirection", e.target.value)}><option value="Outgoing">Outgoing</option><option value="Incoming">Incoming</option></select>
         <textarea style={{ ...input, minHeight: 110, resize: "vertical", gridColumn: "1 / -1" }} value={v.whatsappMessage} onChange={(e) => setField("whatsappMessage", e.target.value)} placeholder="Write the WhatsApp message" />
       </div>}
-      {tab === "calls" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-        <select style={input} value={v.callMode} onChange={(e) => setField("callMode", e.target.value)}><option value="log">Completed Call</option><option value="schedule">Scheduled Call</option></select>
-        <select style={input} value={v.callType} onChange={(e) => setField("callType", e.target.value)}><option value="Outgoing">Outgoing</option><option value="Incoming">Incoming</option></select>
-        <select style={input} value={v.callStatus} onChange={(e) => setField("callStatus", e.target.value)}>
-          {v.callMode === "schedule"
-            ? [ "Scheduled", "Pending", "Rescheduled" ].map((status) => <option key={status} value={status}>{status}</option>)
-            : [ "Completed", "Connected", "No Answer", "Missed", "Cancelled" ].map((status) => <option key={status} value={status}>{status}</option>)}
-        </select>
-        <input style={input} value={v.callSubject} onChange={(e) => setField("callSubject", e.target.value)} placeholder="Call subject" />
-        {v.callMode === "log" && <input style={input} value={v.callResult} onChange={(e) => setField("callResult", e.target.value)} placeholder="Connected / No answer" />}
-        <input type="datetime-local" style={input} value={v.callStartTime} onChange={(e) => setField("callStartTime", e.target.value)} />
-        {v.callMode === "log" && <input type="number" min="0" style={input} value={v.callDurationMinutes} onChange={(e) => setField("callDurationMinutes", e.target.value)} placeholder="Duration in minutes" />}
-        <input style={input} value={v.callPurpose} onChange={(e) => setField("callPurpose", e.target.value)} placeholder="Call purpose" />
-        <input style={input} value={v.callAgenda} onChange={(e) => setField("callAgenda", e.target.value)} placeholder="Call agenda" />
-        {v.callMode === "schedule" && <input style={{ ...input, gridColumn: "1 / -1" }} value={v.callReminder} onChange={(e) => setField("callReminder", e.target.value)} placeholder="Reminder text or timing" />}
-        {v.callMode === "log" && <input style={{ ...input, gridColumn: "1 / -1" }} value={v.voiceRecordingUrl} onChange={(e) => setField("voiceRecordingUrl", e.target.value)} placeholder="Voice recording URL (optional)" />}
-        {v.callMode === "log" && <textarea style={{ ...input, minHeight: 96, resize: "vertical", gridColumn: "1 / -1" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} placeholder="Call notes" />}
+      {tab === "calls" && <>
+        <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", marginBottom: 14 }}>
+          {[["log", "Log Call"], ["schedule", "Schedule Call"]].map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setField("callMode", mode)}
+              style={{
+                border: "none",
+                borderRadius: 10,
+                padding: "9px 14px",
+                background: v.callMode === mode ? "#ffffff" : "transparent",
+                color: v.callMode === mode ? "#2563eb" : "#64748b",
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: v.callMode === mode ? "0 6px 16px rgba(148, 163, 184, 0.15)" : "none"
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(e) => setField("callType", e.target.value)}>
+            <option value="Outgoing">Outgoing</option>
+            <option value="Incoming">Incoming</option>
+          </FloatingInput>
+          <FloatingInput as="select" label="Call Status" value={v.callStatus} onChange={(e) => setField("callStatus", e.target.value)}>
+            {v.callMode === "schedule"
+              ? ["Scheduled", "Pending", "Rescheduled"].map((status) => <option key={status} value={status}>{status}</option>)
+              : ["Completed", "Connected", "No Answer", "Missed", "Cancelled"].map((status) => <option key={status} value={status}>{status}</option>)}
+          </FloatingInput>
+          <FloatingInput type="datetime-local" label={v.callMode === "schedule" ? "Scheduled Time" : "Call Start Time"} value={v.callStartTime} error={errors.callStartTime} onChange={(e) => setField("callStartTime", e.target.value)} />
+          {v.callMode === "log" && <FloatingInput label="Call Result" value={v.callResult} onChange={(e) => setField("callResult", e.target.value)} />}
+          {v.callMode === "log" && <FloatingInput type="number" min="0" label="Duration (Minutes)" value={v.callDurationMinutes} onChange={(e) => setField("callDurationMinutes", e.target.value)} />}
+          <div style={{ position: "relative" }}>
+            <FloatingInput
+              label="Call Purpose"
+              value={v.callPurpose}
+              list="call-purpose-options"
+              error={errors.callPurpose}
+              onChange={(e) => setField("callPurpose", e.target.value)}
+            />
+            <datalist id="call-purpose-options">
+              {CALL_PURPOSE_OPTIONS.map((option) => <option key={option} value={option} />)}
+            </datalist>
+          </div>
+          {v.callMode === "log" && <FloatingInput label="Voice Recording URL" style={{ gridColumn: "1 / -1" }} value={v.voiceRecordingUrl} onChange={(e) => setField("voiceRecordingUrl", e.target.value)} />}
+          {v.callMode === "log" && <FloatingInput as="textarea" label="Call Notes" style={{ gridColumn: "1 / -1" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} />}
+        </div>
+      </>}
+      {tab === "meetings" && <div style={{ ...card, padding: 18, borderRadius: 18, background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 180px", gap: 14, alignItems: "start" }}>
+            <FloatingInput label="Meeting Title" value={v.meetingTitle} onChange={(e) => setField("meetingTitle", e.target.value)} />
+            <FloatingInput as="select" label="Provider" value={v.meetingProvider} onChange={(e) => setField("meetingProvider", e.target.value)}>
+              <option value="Zoom">Zoom</option>
+              <option value="Teams">Teams</option>
+            </FloatingInput>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(220px, 1fr))", gap: 14, alignItems: "start", maxWidth: 700 }}>
+            <FloatingDateTimePicker label="Start Time" selected={v.meetingStartTime} onChange={(date) => setField("meetingStartTime", date)} />
+            <FloatingDateTimePicker label="End Time" selected={v.meetingEndTime} minDate={v.meetingStartTime || undefined} onChange={(date) => setField("meetingEndTime", date)} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 16, alignItems: "end" }}>
+            <FloatingInput as="textarea" label="Meeting Notes" style={{ minHeight: 120 }} value={v.meetingDescription} onChange={(e) => setField("meetingDescription", e.target.value)} />
+            <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 190 }}>
+              <button className="btn-primary" onClick={submit} disabled={submitting} style={{ minWidth: 170, minHeight: 44 }}>
+                {submitting ? "Saving..." : "Schedule Meeting"}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>}
-      {tab === "meetings" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-        <select style={input} value={v.meetingProvider} onChange={(e) => setField("meetingProvider", e.target.value)}><option value="Offline">Offline</option><option value="Zoom">Zoom</option><option value="Teams">Teams</option></select>
-        <input style={input} value={v.meetingTitle} onChange={(e) => setField("meetingTitle", e.target.value)} placeholder="Meeting title" />
-        <input type="datetime-local" style={input} value={v.meetingStartTime} onChange={(e) => setField("meetingStartTime", e.target.value)} />
-        <input type="datetime-local" style={input} value={v.meetingEndTime} onChange={(e) => setField("meetingEndTime", e.target.value)} />
-        <input style={{ ...input, gridColumn: "1 / -1" }} value={v.meetingLocation} onChange={(e) => setField("meetingLocation", e.target.value)} placeholder={v.meetingProvider === "Offline" ? "Office / branch / address" : "Preferred attendees or channel notes"} />
-        <textarea style={{ ...input, minHeight: 96, resize: "vertical", gridColumn: "1 / -1" }} value={v.meetingDescription} onChange={(e) => setField("meetingDescription", e.target.value)} placeholder="Meeting agenda or notes" />
-        {v.meetingProvider !== "Offline" && <div style={{ gridColumn: "1 / -1", padding: "10px 12px", borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12.5, color: "#475569" }}>{v.meetingProvider} integration UI is ready here. Backend still needs dedicated create and reschedule endpoints to return a real join link automatically.</div>}
-      </div>}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}><button className="btn-primary" onClick={submit} disabled={submitting}>{submitting ? "Saving..." : tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Send Message" : tab === "calls" ? "Save Call" : tab === "meetings" ? "Schedule Meeting" : "Save Note"}</button></div>
+      {tab !== "meetings" ? <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}><button className="btn-primary" onClick={submit} disabled={submitting}>{submitting ? "Saving..." : tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Send Message" : tab === "calls" ? "Save Call" : "Save Note"}</button></div> : null}
     </div>
   );
 }
@@ -448,16 +777,18 @@ function Attachments({ leadId }) {
   );
 }
 
-function Middle({ lead }) {
-  const [tab, setTab] = useState("activity"); const [activityView, setActivityView] = useState("open"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]); const [comms, setComms] = useState([]);
+function Middle({ lead, onActivitySaved }) {
+  const [tab, setTab] = useState("activity"); const [activityView, setActivityView] = useState("open"); const [meetingView, setMeetingView] = useState("create"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]); const [comms, setComms] = useState([]);
+  const [meetings, setMeetings] = useState([]);
   const load = async () => {
     if (!lead?.id) return;
     setLoading(true);
     try {
-      const [openData, closedData, commData] = await Promise.all([activitiesAPI.getOpen({ leadId: lead.id }), activitiesAPI.getClosed({ leadId: lead.id }), leadsAPI.getCommunications(lead.id)]);
+      const [openData, closedData, commData, meetingData] = await Promise.all([activitiesAPI.getOpen({ leadId: lead.id }), activitiesAPI.getClosed({ leadId: lead.id }), leadsAPI.getCommunications(lead.id), meetingsAPI.getAll()]);
       setOpen((Array.isArray(openData) ? openData : []).map(mapActivity));
       setClosed((Array.isArray(closedData) ? closedData : []).map(mapActivity));
       setComms((Array.isArray(commData) ? commData : []).map(mapComm));
+      setMeetings((Array.isArray(meetingData) ? meetingData : []).filter((item) => Number(item?.leadId) === Number(lead.id)).map(mapMeetingRecord));
     } catch (e) {
       Toast.error(e?.response?.data?.message || "Unable to load lead details");
     } finally {
@@ -466,14 +797,18 @@ function Middle({ lead }) {
   };
   useEffect(() => { load(); }, [lead?.id]);
   const callHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("call")).map(mapCallActivity), [open, closed]);
-  const filtered = useMemo(() => tab === "calls" ? callHistory : comms.filter((x) => x.kind === tab), [callHistory, comms, tab]);
+  const filtered = useMemo(() => {
+    if (tab === "calls") return callHistory;
+    if (tab === "meetings") return meetings;
+    return comms.filter((x) => x.kind === tab);
+  }, [callHistory, comms, meetings, tab]);
   const activityItems = activityView === "open" ? open : closed;
   return (
     <section style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 0", overflowX: "auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 0", overflowX: "auto", flexShrink: 0, background: "#ffffff", borderBottom: "1px solid #eef2f7" }}>
         {TABS.map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} style={{ border: "none", borderBottom: tab === id ? "2px solid #4f46e5" : "2px solid transparent", background: "transparent", color: tab === id ? "#4f46e5" : "#64748b", padding: "12px 4px 11px", marginRight: 12, display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{id === "whatsapp" ? <FaWhatsapp size={16} /> : <Icon size={16} />}{label}</button>)}
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
         {loading && <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading details...</div>}
         {tab === "activity" && <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -505,10 +840,72 @@ function Middle({ lead }) {
           <ActivitySection title={activityView === "open" ? "Open Activities" : "Closed Activities"} bg="#ffffff" items={activityItems} />
         </>}
         {tab !== "activity" && tab !== "attachments" && <>
-          <Composer tab={tab} lead={lead} onSaved={load} />
-          <div style={{ ...card, padding: 16, minHeight: 220, maxHeight: 420, overflowY: "auto" }}>
-            {!filtered.length ? <div style={{ minHeight: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>No {tab} history available.</div> : filtered.map((item) => <div key={item.id} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: "1px solid #eef2f7" }}><div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b" }}>{item.title}</div><div style={{ marginTop: 6, fontSize: 13, color: "#475569", lineHeight: 1.55 }}>{item.description || "No description"}</div><div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>{fmtDate(item.date)}</div></div>)}
-          </div>
+          {tab === "meetings" ? <>
+            <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", alignSelf: "flex-start" }}>
+              {[["create", "Create Meeting"], ["scheduled", "Scheduled Meetings"]].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setMeetingView(id)}
+                  style={{
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "9px 14px",
+                    background: meetingView === id ? "#ffffff" : "transparent",
+                    color: meetingView === id ? "#0f172a" : "#64748b",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: meetingView === id ? "0 6px 16px rgba(148, 163, 184, 0.15)" : "none"
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {meetingView === "create" ? <Composer tab={tab} lead={lead} onSaved={async () => {
+              await load();
+              await onActivitySaved?.();
+              setMeetingView("scheduled");
+            }} /> : null}
+            {meetingView === "scheduled" ? <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {!meetings.length ? <div style={{ ...card, padding: 26, color: "#94a3b8", fontSize: 13, textAlign: "center" }}>No scheduled meetings available.</div> : meetings.map((item) => (
+                <div key={item.id} style={{ ...card, padding: 14, borderRadius: 18, boxShadow: "0 16px 30px rgba(15, 23, 42, 0.05)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", flexShrink: 0 }}>
+                        <Calendar size={16} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
+                        <div style={{ marginTop: 2, fontSize: 12.5, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compactMeetingDate(item.date)}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      {meetingMetaValue(item) ? <div style={{ display: "inline-flex", alignItems: "center", padding: "7px 10px", borderRadius: 999, background: "#f8fafc", color: "#334155", fontSize: 12, fontWeight: 700, border: "1px solid #e2e8f0" }}>
+                        {meetingMetaValue(item)}
+                      </div> : null}
+                      <div style={{ display: "inline-flex", alignItems: "center", padding: "7px 10px", borderRadius: 999, background: "#f8fafc", color: "#334155", fontSize: 12, fontWeight: 700, border: "1px solid #e2e8f0" }}>
+                        {item.durationMinutes || 0} min
+                      </div>
+                      {item.joinUrl ? <a href={item.joinUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 38, padding: "0 14px", borderRadius: 999, background: "linear-gradient(180deg, #111827 0%, #0f172a 100%)", color: "#ffffff", fontSize: 12.5, fontWeight: 800, textDecoration: "none", boxShadow: "0 10px 22px rgba(15, 23, 42, 0.14)" }}>
+                        Join
+                      </a> : null}
+                    </div>
+                  </div>
+                  {item.description ? <div style={{ marginTop: 10, paddingLeft: 46, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>{item.description}</div> : null}
+                </div>
+              ))}
+            </div> : null}
+          </> : <>
+            <Composer tab={tab} lead={lead} onSaved={async () => {
+              await load();
+              await onActivitySaved?.();
+            }} />
+            <div style={{ ...card, padding: 16, minHeight: 220, maxHeight: 420, overflowY: "auto" }}>
+              {!filtered.length ? <div style={{ minHeight: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>No {tab} history available.</div> : filtered.map((item) => <div key={item.id} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: "1px solid #eef2f7" }}><div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b" }}>{item.title}</div><div style={{ marginTop: 6, fontSize: 13, color: "#475569", lineHeight: 1.55 }}>{item.description || "No description"}</div><div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>{fmtDate(item.date)}</div></div>)}
+            </div>
+          </>}
         </>}
         {tab === "attachments" && <Attachments leadId={lead?.id} />}
       </div>
@@ -516,21 +913,25 @@ function Middle({ lead }) {
   );
 }
 
-export default function LeadDetailsModal({ lead, onClose }) {
+export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
+  const [showConvertModal, setShowConvertModal] = useState(false);
   const [timeline, setTimeline] = useState([]); const [timelineLoading, setTimelineLoading] = useState(false);
   const loadTimeline = async () => { if (!lead?.id) return; setTimelineLoading(true); try { const data = await leadsAPI.getTimeline(lead.id); setTimeline(Array.isArray(data) ? data : []); } catch (e) { Toast.error(e?.response?.data?.message || "Unable to load timeline"); } finally { setTimelineLoading(false); } };
   useEffect(() => { loadTimeline(); }, [lead?.id]);
   useEffect(() => { const onKey = (e) => { if (e.key === "Escape") onClose?.(); }; document.addEventListener("keydown", onKey); return () => document.removeEventListener("keydown", onKey); }, [onClose]);
   return (
-    <div className="overlay" onClick={onClose} style={{ padding: 24, zIndex: 700 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1480px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "hidden", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
-        <button className="icon-btn" onClick={onClose} title="Close" style={{ position: "absolute", top: 14, right: 16, zIndex: 2, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(6px)" }}><X size={18} /></button>
-        <div style={{ minHeight: "100%", display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 360px" }}>
-          <LeftPanel lead={lead} />
-          <Middle lead={lead} />
-          <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} />
+    <>
+      <div className="overlay" onClick={onClose} style={{ padding: 24, zIndex: 700 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1480px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "hidden", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
+          <button className="icon-btn" onClick={onClose} title="Close" style={{ position: "absolute", top: 14, right: 16, zIndex: 2, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(6px)" }}><X size={18} /></button>
+          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 360px" }}>
+            <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} />
+            <Middle lead={lead} onActivitySaved={loadTimeline} />
+            <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} />
+          </div>
         </div>
       </div>
-    </div>
+      {showConvertModal ? <ConvertToDealModal lead={lead} onClose={() => setShowConvertModal(false)} onConverted={onDealConverted} /> : null}
+    </>
   );
 }

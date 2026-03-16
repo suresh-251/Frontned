@@ -18,7 +18,16 @@ export const getAdminUsers = async (params) => {
 // Returns users normalized to { userId, name } for consistent usage across components
 export const getUsers = async (params) => {
   const res = await api.get("/api/users", { params });
-  const raw = res.data?.users || res.data || [];
+  const rawPayload = res.data;
+  const raw = Array.isArray(rawPayload?.users)
+    ? rawPayload.users
+    : Array.isArray(rawPayload?.items)
+      ? rawPayload.items
+      : Array.isArray(rawPayload?.data)
+        ? rawPayload.data
+        : Array.isArray(rawPayload)
+          ? rawPayload
+          : [];
   return raw.map(u => ({
     userId: u.userId ?? u.id,
     name: u.name || u.userName || u.username || String(u.userId ?? u.id),

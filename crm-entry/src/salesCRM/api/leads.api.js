@@ -1,6 +1,24 @@
 // src/salesCRM/api/leads.api.js
 import apiClient from "./apiClient";
 import { getUsers } from "../../api/admin/users.api";
+
+const unwrapArrayPayload = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (Array.isArray(payload?.leads)) return payload.leads;
+  return [];
+};
+
+const unwrapObjectPayload = (payload) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+  if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) return payload.data;
+  if (payload.item && typeof payload.item === "object" && !Array.isArray(payload.item)) return payload.item;
+  if (payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)) return payload.result;
+  return payload;
+};
+
 const formatUserName = (user) => {
   const raw = String(
     user?.name || user?.username || user?.email || `User ${user?.userId || user?.id || ""}`
@@ -15,34 +33,34 @@ const formatUserName = (user) => {
 const leadsAPI = {
   getAll: async () => {
     const response = await apiClient.get("/Leads");
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 
   getDeleted: async () => {
     const response = await apiClient.get("/Leads/deleted");
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 
   getDashboard: async () => {
     const response = await apiClient.get("/Leads/dashboard");
-    return response.data;
+    return unwrapObjectPayload(response.data);
   },
 
   getById: async (id) => {
     const response = await apiClient.get(`/Leads/${id}`);
-    return response.data;
+    return unwrapObjectPayload(response.data);
   },
 
   getTimeline: async (id) => {
     const response = await apiClient.get(`/Leads/${id}/timeline`);
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 
   getCommunications: async (leadId, type) => {
     let url = `/Leads/${leadId}/communications`;
     if (type) url += `?type=${type}`;
     const response = await apiClient.get(url);
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 
   addCommunication: async (data) => {
@@ -107,11 +125,10 @@ const leadsAPI = {
       }));
   },
 
-  convertToDeal: async (id) => {
+  convertToDeal: async (id, data) => {
     const response = await apiClient.post(
       `/Leads/${id}/convert-to-deal`,
-      undefined,
-      { headers: { "Content-Type": undefined } }
+      data
     );
     return response.data;
   },
@@ -134,12 +151,12 @@ const leadsAPI = {
 
   getContactHistory: async (id) => {
     const response = await apiClient.get(`/Leads/${id}/contact-history`);
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 
   getAttachments: async (leadId) => {
     const response = await apiClient.get(`/Leads/${leadId}/attachments`);
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 
   uploadAttachment: async (leadId, file) => {
