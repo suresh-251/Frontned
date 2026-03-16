@@ -1,5 +1,6 @@
-import { forwardRef, useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Calendar, FileText, Mail, MapPin, Paperclip, Phone, RefreshCw, Trash2, UploadCloud, UserCheck, X } from "lucide-react";
+import { flip, offset } from "@floating-ui/react";
 import { FaWhatsapp } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import DatePicker from "react-datepicker";
@@ -241,7 +242,7 @@ function InfoRow({ icon: Icon, label, value }) {
   );
 }
 
-function FloatingInput({ label, as = "input", style, error, ...props }) {
+function FloatingInput({ label, as = "input", style, error, autoGrow = false, ...props }) {
   const fieldStyle = {
     ...floatingInput,
     borderColor: error ? "#f87171" : "#cbd5e1",
@@ -249,10 +250,21 @@ function FloatingInput({ label, as = "input", style, error, ...props }) {
     ...style
   };
   if (as === "textarea") {
+    const textareaMinHeight = style?.minHeight ?? 120;
     return (
       <div style={floatingWrap}>
         <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
-        <textarea {...props} style={{ ...fieldStyle, minHeight: 120, resize: "vertical" }} />
+        <textarea
+          {...props}
+          onInput={(event) => {
+            if (autoGrow) {
+              event.currentTarget.style.height = "auto";
+              event.currentTarget.style.height = `${Math.max(event.currentTarget.scrollHeight, Number(textareaMinHeight) || 120)}px`;
+            }
+            props.onInput?.(event);
+          }}
+          style={{ ...fieldStyle, minHeight: textareaMinHeight, resize: autoGrow ? "none" : "vertical", overflow: autoGrow ? "hidden" : undefined }}
+        />
         {error ? <div style={floatingErrorText}>{error}</div> : null}
       </div>
     );
@@ -290,7 +302,7 @@ const DatePickerInput = forwardRef(function DatePickerInput({ value, onClick, st
   );
 });
 
-function FloatingDateTimePicker({ label, selected, onChange, minDate, error, style, popperPlacement = "bottom-start", popperOffset = [0, 8] }) {
+function FloatingDateTimePicker({ label, selected, onChange, minDate, error, style, popperPlacement = "bottom-start", popperOffset = 8, popperModifiers }) {
   return (
     <div style={floatingWrap}>
       <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
@@ -305,13 +317,10 @@ function FloatingDateTimePicker({ label, selected, onChange, minDate, error, sty
         popperPlacement={popperPlacement}
         showPopperArrow={false}
         popperClassName="lead-details-datepicker-popper"
+        wrapperClassName="lead-details-datepicker-wrapper"
         popperModifiers={[
-          {
-            name: "offset",
-            options: {
-              offset: popperOffset,
-            },
-          },
+          offset(popperOffset),
+          ...(popperModifiers || []),
         ]}
         customInput={<DatePickerInput label={label} style={{ borderColor: error ? "#f87171" : "#cbd5e1", boxShadow: error ? "0 0 0 3px rgba(248, 113, 113, 0.14)" : "none", ...style }} />}
       />
@@ -404,6 +413,16 @@ function LeftPanel({ lead, onConvert, onOpenTab }) {
 
           .lead-details-datepicker-popper {
             z-index: 900 !important;
+          }
+
+          .lead-details-datepicker-wrapper {
+            display: block;
+            width: 100%;
+          }
+
+          .lead-details-datepicker-wrapper .react-datepicker__input-container {
+            display: block;
+            width: 100%;
           }
         `}</style>
         <button
@@ -790,7 +809,29 @@ function Composer({ tab, lead, onSaved }) {
         <textarea style={{ ...input, minHeight: 110, resize: "vertical", gridColumn: "1 / -1" }} value={v.whatsappMessage} onChange={(e) => setField("whatsappMessage", e.target.value)} placeholder="Write the WhatsApp message" />
       </div>}
       {tab === "calls" && <>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
+          <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+            {[["log", "Log Call"], ["schedule", "Schedule Call"]].map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setField("callMode", mode)}
+                style={{
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "9px 14px",
+                  background: v.callMode === mode ? "#ffffff" : "transparent",
+                  color: v.callMode === mode ? "#5b7fa6" : "#64748b",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: v.callMode === mode ? "0 6px 16px rgba(191, 219, 254, 0.22)" : "none"
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={handleCallNow}
@@ -807,32 +848,11 @@ function Composer({ tab, lead, onSaved }) {
               lineHeight: 1.1,
               opacity: callableNumber ? 1 : 0.7,
               cursor: callableNumber ? "pointer" : "not-allowed",
+              flexShrink: 0,
             }}
           >
             Call Now
           </button>
-        </div>
-        <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", marginBottom: 14 }}>
-          {[["log", "Log Call"], ["schedule", "Schedule Call"]].map(([mode, label]) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setField("callMode", mode)}
-              style={{
-                border: "none",
-                borderRadius: 10,
-                padding: "9px 14px",
-                background: v.callMode === mode ? "#ffffff" : "transparent",
-                color: v.callMode === mode ? "#5b7fa6" : "#64748b",
-                fontSize: 13,
-                fontWeight: 800,
-                cursor: "pointer",
-                boxShadow: v.callMode === mode ? "0 6px 16px rgba(191, 219, 254, 0.22)" : "none"
-              }}
-            >
-              {label}
-            </button>
-          ))}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
           <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(e) => setField("callType", e.target.value)}>
@@ -860,25 +880,28 @@ function Composer({ tab, lead, onSaved }) {
             </datalist>
           </div>
           {v.callMode === "log" && <FloatingInput label="Voice Recording URL" style={{ gridColumn: "1 / -1" }} value={v.voiceRecordingUrl} onChange={(e) => setField("voiceRecordingUrl", e.target.value)} />}
-          {v.callMode === "log" && <FloatingInput as="textarea" label="Call Notes" style={{ gridColumn: "1 / -1" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} />}
+          {v.callMode === "log" && <FloatingInput as="textarea" autoGrow label="Call Notes" style={{ gridColumn: "2 / 3", width: "100%", minHeight: 24, padding: "8px 12px 4px" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} />}
         </div>
       </>}
-      {tab === "meetings" && <div style={{ ...card, padding: 18, borderRadius: 18, background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)" }}>
+      {tab === "meetings" && <div style={{ padding: 0, borderRadius: 0, background: "transparent", border: "none", boxShadow: "none" }}>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 180px", gap: 14, alignItems: "start" }}>
-            <FloatingInput label="Meeting Title" value={v.meetingTitle} onChange={(e) => setField("meetingTitle", e.target.value)} />
-            <FloatingInput as="select" label="Provider" value={v.meetingProvider} onChange={(e) => setField("meetingProvider", e.target.value)}>
+          {(() => {
+            const roomyFieldStyle = { height: 56, minHeight: 56, padding: "18px 16px 10px" };
+            return <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
+            <FloatingInput label="Meeting Title" style={roomyFieldStyle} value={v.meetingTitle} onChange={(e) => setField("meetingTitle", e.target.value)} />
+            <FloatingInput as="select" style={roomyFieldStyle} label="Provider" value={v.meetingProvider} onChange={(e) => setField("meetingProvider", e.target.value)}>
               <option value="Zoom">Zoom</option>
               <option value="Teams">Teams</option>
             </FloatingInput>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 320px) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
-              <FloatingDateTimePicker label="Start Time" selected={v.meetingStartTime} onChange={(date) => setField("meetingStartTime", date)} popperPlacement="top-start" popperOffset={[0, 12]} />
-              <FloatingDateTimePicker label="End Time" selected={v.meetingEndTime} minDate={v.meetingStartTime || undefined} onChange={(date) => setField("meetingEndTime", date)} />
-            </div>
-            <FloatingInput as="textarea" label="Meeting Notes" style={{ minHeight: 156 }} value={v.meetingDescription} onChange={(e) => setField("meetingDescription", e.target.value)} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
+            <FloatingDateTimePicker label="Start Time" style={roomyFieldStyle} selected={v.meetingStartTime} onChange={(date) => setField("meetingStartTime", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
+            <FloatingDateTimePicker label="End Time" style={roomyFieldStyle} selected={v.meetingEndTime} minDate={v.meetingStartTime || undefined} onChange={(date) => setField("meetingEndTime", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
           </div>
+            </>;
+          })()}
+          <FloatingInput as="textarea" autoGrow label="Meeting Notes" style={{ minHeight: 72, padding: "10px 12px 6px" }} value={v.meetingDescription} onChange={(e) => setField("meetingDescription", e.target.value)} />
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <div style={{ minWidth: 190 }}>
               <button className="btn-primary" onClick={submit} disabled={submitting} style={{ minWidth: 170, minHeight: 44, border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>
@@ -914,6 +937,7 @@ function Attachments({ leadId }) {
 function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
   const [activityView, setActivityView] = useState("open"); const [meetingView, setMeetingView] = useState("create"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]); const [comms, setComms] = useState([]);
   const [meetings, setMeetings] = useState([]);
+  const allowMeetingPopups = activeTab === "meetings" && meetingView === "create";
   const load = async () => {
     if (!lead?.id) return;
     setLoading(true);
@@ -938,11 +962,11 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
   }, [activeTab, callHistory, comms, meetings]);
   const activityItems = activityView === "open" ? open : closed;
   return (
-    <section style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
+    <section style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: allowMeetingPopups ? "visible" : "hidden", background: "#ffffff" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 0", overflowX: "auto", flexShrink: 0, background: "#ffffff", borderBottom: "1px solid #eef2f7" }}>
         {TABS.map(([id, label, Icon]) => <button key={id} onClick={() => onTabChange?.(id)} style={{ border: "none", borderBottom: activeTab === id ? "2px solid #93c5fd" : "2px solid transparent", background: "transparent", color: activeTab === id ? "#5b7fa6" : "#64748b", padding: "12px 4px 11px", marginRight: 12, display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{id === "whatsapp" ? <FaWhatsapp size={16} /> : <Icon size={16} />}{label}</button>)}
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: allowMeetingPopups ? "visible" : "auto", overflowX: allowMeetingPopups ? "visible" : "hidden", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
         {loading && <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading details...</div>}
         {activeTab === "activity" && <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -1058,9 +1082,9 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
   return (
     <>
       <div className="overlay" onClick={onClose} style={{ padding: 24, zIndex: 700 }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1480px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "hidden", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1480px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "visible", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
           <button className="icon-btn" onClick={onClose} title="Close" style={{ position: "absolute", top: 14, right: 16, zIndex: 2, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(6px)" }}><X size={18} /></button>
-          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 360px" }}>
+          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 360px", borderRadius: 24, overflow: "hidden", background: "#fff" }}>
             <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} onOpenTab={setActiveTab} />
             <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} />
             <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} />
