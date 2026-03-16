@@ -1,13 +1,12 @@
-//THEME CHANGE  
-
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   Plus, X, Upload, CheckCircle2, UserCheck, 
-  MapPin, Loader2, Eye, Phone, Mail, Briefcase, Calendar, CreditCard
+  MapPin, Loader2, Eye, Phone, Mail, Briefcase, Calendar, CreditCard, Lock
 } from "lucide-react";
 import { onboardingApi } from "../api/onboarding.api";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
+import { jwtDecode } from "jwt-decode";
 
 export default function Onboarding() {
   const [showModal, setShowModal] = useState(false);
@@ -34,7 +33,24 @@ export default function Onboarding() {
   const [files, setFiles] = useState({});
   const [parentAadharFiles, setParentAadharFiles] = useState([null]);
 
-  useEffect(() => { fetchData(); }, []);
+  // --- 🔐 SUPERLOGIC AUTH PARSING ---
+  const token = localStorage.getItem("accessToken");
+  const auth = useMemo(() => {
+    if (!token) return { perms: [], isAdmin: false };
+    try {
+      const decoded = jwtDecode(token);
+      const perms = decoded.perm || [];
+      const role = decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"];
+      const isAdmin = role === "ADMIN" || perms.includes("CRM_FULL_ACCESS");
+      return { perms, isAdmin };
+    } catch (e) { return { perms: [], isAdmin: false }; }
+  }, [token]);
+
+  // --- 🛠️ PERMISSION FLAGS (SUPERLOGIC) ---
+  const canView   = auth.isAdmin || auth.perms.includes("ONBOARDING_VIEW");
+  const canCreate = auth.isAdmin || auth.perms.includes("ONBOARDING_CREATE");
+
+  useEffect(() => { if (canView) fetchData(); }, [canView]);
 
   const fetchData = async () => {
     try {
@@ -58,6 +74,8 @@ export default function Onboarding() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!canCreate) return toast.error("Action Restricted");
+
     const submissionData = new FormData();
     Object.keys(formData).forEach(key => submissionData.append(key, formData[key]));
     Object.keys(files).forEach(key => { if (files[key]) submissionData.append(key, files[key]); });
@@ -77,6 +95,21 @@ export default function Onboarding() {
     }
   };
 
+  // 🛑 PAGE GUARD
+  if (!canView) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center transition-colors duration-300">
+        <div className="bg-[var(--bg-card)] p-6 rounded-full mb-4 border border-[var(--border-color)] shadow-sm">
+          <Lock size={40} className="text-slate-400" />
+        </div>
+        <h2 className="text-lg font-black text-[var(--text-main)] uppercase tracking-tight">Access Restricted</h2>
+        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">
+          Permission 'ONBOARDING_VIEW' or Master Access required.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-4 p-2 font-sans text-[var(--text-main)] transition-colors duration-300">
       <Toaster position="top-right" />
@@ -87,16 +120,20 @@ export default function Onboarding() {
           <h2 className="text-xl font-extrabold text-[var(--text-main)] tracking-tight flex items-center gap-2">
             <UserCheck size={22} className="text-indigo-600" /> Onboarding
           </h2>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Employee Lifecycle & Docs</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
+            {auth.isAdmin ? "Master Employee Lifecycle (Full Access)" : "Employee Lifecycle & Docs"}
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button 
-            onClick={() => { setFormPage(1); setShowModal(true); }} 
-            className="bg-indigo-600 text-white py-2 px-4 rounded-lg text-xs font-bold shadow-sm hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95"
-          >
-            <Plus size={14} strokeWidth={3} /> Add New Hire
-          </button>
+          {canCreate && (
+            <button 
+              onClick={() => { setFormPage(1); setShowModal(true); }} 
+              className="bg-indigo-600 text-white py-2 px-4 rounded-lg text-xs font-bold shadow-sm hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95"
+            >
+              <Plus size={14} strokeWidth={3} /> Add New Hire
+            </button>
+          )}
         </div>
       </div>
 
@@ -190,7 +227,7 @@ export default function Onboarding() {
 
       {/* MULTI-STEP CREATION MODAL */}
       <AnimatePresence>
-        {showModal && (
+        {showModal && canCreate && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-[var(--bg-card)] w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-[var(--border-color)] flex flex-col max-h-[90vh] transition-colors">
               <div className="px-5 py-4 bg-[var(--bg-body)] border-b border-[var(--border-color)] flex justify-between items-center shrink-0">

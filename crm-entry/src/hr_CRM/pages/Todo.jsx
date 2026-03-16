@@ -2,18 +2,17 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { 
   Plus, Search, ListTodo, User, Calendar, 
   Trash2, Edit3, Eye, Loader2,
-  CheckCircle2, Clock, Check, ChevronRight
+  CheckCircle2, Clock, Check, ChevronRight, Lock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
-import { useRole } from "../hooks/useRole";
+import { jwtDecode } from "jwt-decode";
 
 // API IMPORTS
 import { getTodos, createTodo, updateTodo, deleteTodo } from "../api/todo.api";
 import { getAdminUsers } from "../../api/admin/users.api"; 
 
 export default function Todo() {
-  const { isManager } = useRole(); 
   const [data, setData] = useState([]);
   const [users, setUsers] = useState([]); 
   const [loading, setLoading] = useState(false);
@@ -30,7 +29,23 @@ export default function Todo() {
     title: "", description: "", assignedTo: "", dueDate: "", status: "Pending",
   });
 
+  const token = localStorage.getItem("accessToken");
+  const auth = useMemo(() => {
+    if (!token) return { perms: [], isAdmin: false };
+    try {
+      const decoded = jwtDecode(token);
+      const perms = decoded.perm || [];
+      const role = decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"];
+      const isAdmin = role === "ADMIN" || perms.includes("CRM_FULL_ACCESS");
+      return { perms, isAdmin };
+    } catch (e) { return { perms: [], isAdmin: false }; }
+  }, [token]);
+
+  const canView    = auth.isAdmin || auth.perms.includes("TODO_VIEW");
+  const isManager  = auth.isAdmin || auth.perms.includes("TODO_CREATE") || auth.perms.includes("TODO_MANAGE");
+
   const load = async () => {
+    if (!canView) return;
     setLoading(true);
     try {
       const [todoRes, userRes] = await Promise.all([
@@ -50,7 +65,7 @@ export default function Todo() {
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [canView]);
 
   const filteredUsers = useMemo(() => {
     const query = userQuery.toLowerCase();
@@ -73,8 +88,8 @@ export default function Todo() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isManager) return toast.error("Unauthorized Action");
     
-    // Ensure we have a valid assignedTo ID
     if (!form.assignedTo) {
       toast.error("Please search and select a user from the list");
       return;
@@ -134,12 +149,24 @@ export default function Todo() {
 
   const filteredTasks = data.filter(t => t.title.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  // Progress Bar Helper
+  if (!canView) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center transition-colors duration-300">
+        <div className="bg-[var(--bg-card)] p-6 rounded-full mb-4 border border-[var(--border-color)] shadow-sm">
+          <Lock size={40} className="text-slate-400" />
+        </div>
+        <h2 className="text-lg font-black text-[var(--text-main)] uppercase tracking-tight leading-none">Access Restricted</h2>
+        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em] mt-2 italic">TODO clearance required</p>
+      </div>
+    );
+  }
+
+  // --- 🎨 DYNAMIC STATUS COLOR LOGIC ---
   const StatusBar = ({ currentStatus }) => {
     const steps = [
-      { id: "Pending", color: "amber" },
-      { id: "InProgress", color: "indigo" },
-      { id: "Completed", color: "emerald" }
+      { id: "Pending", activeColor: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+      { id: "InProgress", activeColor: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20" },
+      { id: "Completed", activeColor: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" }
     ];
     const currentIndex = steps.findIndex(s => s.id === currentStatus);
     
@@ -149,9 +176,7 @@ export default function Todo() {
           <div key={step.id} className="flex items-center gap-1">
             <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border transition-all ${
               idx <= currentIndex 
-                ? idx === 0 ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
-                  idx === 1 ? 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20' :
-                  'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                ? step.activeColor
                 : 'text-slate-300 border-transparent opacity-40'
             }`}>
               {step.id}
@@ -171,12 +196,14 @@ export default function Todo() {
       <div className="w-64 border-r border-[var(--border-color)] flex flex-col shrink-0 bg-[var(--bg-card)]">
         <div className="p-4 border-b border-[var(--border-color)]">
           <div className="flex items-center justify-between mb-3">
-             <h2 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Tasks</h2>
-             {isManager && (
-                <button onClick={() => { resetForm(); setOpen(true); }} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition active:scale-95 shadow-md shadow-indigo-500/20">
-                  <Plus size={14} />
-                </button>
-             )}
+              <h2 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">
+                {auth.isAdmin ? "Master Tasks" : "Tasks"}
+              </h2>
+              {isManager && (
+                 <button onClick={() => { resetForm(); setOpen(true); }} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition active:scale-95 shadow-md shadow-indigo-500/20">
+                   <Plus size={14} />
+                 </button>
+              )}
           </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
@@ -241,10 +268,10 @@ export default function Todo() {
                          <div className="flex justify-end gap-2">
                            <button onClick={() => setViewTask(t)} className="p-1 text-slate-400 hover:text-indigo-500 transition-all"><Eye size={14}/></button>
                            {isManager && (
-                              <>
-                                <button onClick={() => handleEdit(t)} className="p-1 text-slate-400 hover:text-emerald-500 transition-all"><Edit3 size={14}/></button>
-                                <button onClick={() => { if(window.confirm("Remove Task?")) { deleteTodo(t.taskId).then(() => load()); } }} className="p-1 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={14}/></button>
-                              </>
+                             <>
+                               <button onClick={() => handleEdit(t)} className="p-1 text-slate-400 hover:text-emerald-500 transition-all"><Edit3 size={14}/></button>
+                               <button onClick={() => { if(window.confirm("Remove Task?")) { deleteTodo(t.taskId).then(() => load()); } }} className="p-1 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={14}/></button>
+                             </>
                            )}
                          </div>
                       </td>
@@ -257,16 +284,21 @@ export default function Todo() {
         </div>
       </div>
 
-      {/* MODAL */}
+      {/* MODAL (FORM) */}
       <AnimatePresence>
         {open && isManager && (
           <div className="fixed inset-0 flex items-center justify-center z-[110] backdrop-blur-sm bg-slate-900/60 p-4" onClick={() => setOpen(false)}>
             <motion.form initial={{scale:0.95}} animate={{scale:1}} exit={{scale:0.95}} onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-[var(--bg-card)] w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-[var(--border-color)]">
               <h3 className="text-xs font-black text-indigo-500 uppercase tracking-widest mb-5">{editTask ? "Revise Progress" : "New Task"}</h3>
               <div className="space-y-3">
+                
+                {/* Dynamic Status Display in Form */}
+                <div className="flex justify-center bg-[var(--bg-body)] p-3 rounded-xl border border-[var(--border-color)] mb-2">
+                   <StatusBar currentStatus={form.status} />
+                </div>
+
                 <input name="title" value={form.title} onChange={handleChange} placeholder="TASK TITLE" className="w-full text-[10px] font-bold uppercase bg-[var(--bg-body)] border border-[var(--border-color)] p-2 rounded-lg outline-none text-[var(--text-main)]" required />
                 
-                {/* Searchable User Selection */}
                 <div className="relative" ref={userDropdownRef}>
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Assign To (Search Name/ID)</label>
                   <div className="relative">
@@ -309,25 +341,27 @@ export default function Todo() {
           <div className="bg-[var(--bg-card)] w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-[var(--border-color)]" onClick={e => e.stopPropagation()}>
             <h3 className="text-xs font-black text-indigo-500 uppercase tracking-widest mb-4">Task Details</h3>
             <div className="space-y-4">
-               <StatusBar currentStatus={viewTask.status} />
-               <div className="pt-2">
-                 <p className="text-[8px] font-black text-slate-500 uppercase">Title</p>
-                 <p className="text-[10px] font-bold uppercase text-[var(--text-main)]">{viewTask.title}</p>
-               </div>
-               <div>
-                 <p className="text-[8px] font-black text-slate-500 uppercase">Description</p>
-                 <p className="text-[10px] text-[var(--text-main)] opacity-80">{viewTask.description || "No description provided."}</p>
-               </div>
-               <div className="grid grid-cols-2 gap-4">
-                 <div>
-                   <p className="text-[8px] font-black text-slate-500 uppercase">Assigned</p>
-                   <p className="text-[10px] font-bold uppercase text-indigo-600">{getUserName(viewTask.assignedTo)}</p>
-                 </div>
-                 <div>
-                   <p className="text-[8px] font-black text-slate-500 uppercase">Due Date</p>
-                   <p className="text-[10px] font-bold text-[var(--text-main)]">{new Date(viewTask.dueDate).toLocaleDateString()}</p>
-                 </div>
-               </div>
+                <div className="flex justify-center bg-[var(--bg-body)] p-3 rounded-xl border border-[var(--border-color)]">
+                  <StatusBar currentStatus={viewTask.status} />
+                </div>
+                <div className="pt-2">
+                  <p className="text-[8px] font-black text-slate-500 uppercase">Title</p>
+                  <p className="text-[10px] font-bold uppercase text-[var(--text-main)]">{viewTask.title}</p>
+                </div>
+                <div>
+                  <p className="text-[8px] font-black text-slate-500 uppercase">Description</p>
+                  <p className="text-[10px] text-[var(--text-main)] opacity-80">{viewTask.description || "No description provided."}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[8px] font-black text-slate-500 uppercase">Assigned</p>
+                    <p className="text-[10px] font-bold uppercase text-indigo-600">{getUserName(viewTask.assignedTo)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[8px] font-black text-slate-500 uppercase">Due Date</p>
+                    <p className="text-[10px] font-bold text-[var(--text-main)]">{new Date(viewTask.dueDate).toLocaleDateString()}</p>
+                  </div>
+                </div>
             </div>
             <button onClick={() => setViewTask(null)} className="w-full mt-6 py-2.5 bg-slate-100 text-slate-600 text-[10px] font-black uppercase rounded-xl">Close</button>
           </div>

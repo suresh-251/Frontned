@@ -15,10 +15,14 @@ export const getAdminUsers = async (params) => {
 // };
 
 
-// If you expect paginated structure
+// Returns users normalized to { userId, name } for consistent usage across components
 export const getUsers = async (params) => {
   const res = await api.get("/api/users", { params });
-  return res.data.users || [];
+  const raw = res.data?.users || res.data || [];
+  return raw.map(u => ({
+    userId: u.userId ?? u.id,
+    name: u.name || u.userName || u.username || String(u.userId ?? u.id),
+  }));
 };
 
 // USER DETAILS

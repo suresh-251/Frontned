@@ -107,6 +107,7 @@ import {
   getLeadUsers as getLeadUsersApi,
   assignLeadUsers as assignLeadUsersApi,
   removeLeadUser as removeLeadUserApi,
+  countFormLeads as countFormLeadsApi,
 } from "../api/facebook.leads.api";
  
 export default function useFacebookLeads() {
@@ -122,7 +123,6 @@ export default function useFacebookLeads() {
  
   const filtersRef = useRef(filters);
   const leadsRef = useRef([]);
-  const isMountedRef = useRef(false);
  
   useEffect(() => {
     filtersRef.current = filters;
@@ -161,14 +161,12 @@ export default function useFacebookLeads() {
   }, []);
  
   /* =========================
-     INITIAL LOAD (ONCE)
+     INITIAL LOAD
      ========================= */
   useEffect(() => {
-    if (!isMountedRef.current) {
-      isMountedRef.current = true;
-      loadLeads({}, false);
-    }
-  }, [loadLeads]);
+    loadLeads({}, false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
  
   /* =========================
      RELOAD (USED BY SIGNALR)
@@ -249,11 +247,20 @@ export default function useFacebookLeads() {
      ========================= */
   const assignByFormToDepartments = async (formId, departments, startDate = null, endDate = null) => {
     try {
-      await assignByFormMultiApi(formId, departments, startDate, endDate);
+      const result = await assignByFormMultiApi(formId, departments, startDate, endDate);
       await loadLeads({}, true);
+      return result; // { message, added }
     } catch (err) {
       console.error("Assign by form to departments failed:", err);
       throw err;
+    }
+  };
+
+  const countFormLeads = async (formId, startDate = null, endDate = null) => {
+    try {
+      return await countFormLeadsApi(formId, startDate, endDate);
+    } catch {
+      return null;
     }
   };
 
@@ -294,8 +301,8 @@ export default function useFacebookLeads() {
     return await getLeadUsersApi(leadId);
   };
 
-  const assignLeadUsers = async (leadId, userIds) => {
-    await assignLeadUsersApi(leadId, userIds);
+  const assignLeadUsers = async (leadId, users) => {
+    await assignLeadUsersApi(leadId, users);
     await loadLeads({}, true);
   };
 
@@ -316,6 +323,7 @@ export default function useFacebookLeads() {
     assignByFormToDepartment,
     assignByFormToDepartments,
     removeDepartmentFromForm,
+    countFormLeads,
     // per-lead departments
     getLeadDepartments,
     assignLeadDepartments,
