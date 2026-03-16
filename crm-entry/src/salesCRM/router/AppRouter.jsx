@@ -6,7 +6,8 @@ const AppRouter = () => {
   return (
     <Routes>
       <Route path="/" element={<DashboardLayout />}>
-         <Route path="leads" element={<Leads />} />
+        <Route index element={<Navigate to="leads" replace />} />
+        <Route path="leads" element={<Leads />} />
       </Route>
       <Route path="*" element={<Navigate to="/crm/sales" replace />} />
     </Routes>
