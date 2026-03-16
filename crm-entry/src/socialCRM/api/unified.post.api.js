@@ -31,3 +31,17 @@ export const deletePost = (id) => api.delete(`/post/history/${id}`);
 export const editPost = (id, content) => api.patch(`/post/history/${id}`, { content });
 
 export const getPostMediaUrl = (id) => `${BASE_URL}/post/${id}/media`;
+
+// ── Drafts ──────────────────────────────────────────────────────────────────
+export const getDrafts = () => api.get("/post/drafts");
+
+export const saveDraft = (formData) =>
+  api.post("/post/draft", formData, { headers: { "Content-Type": "multipart/form-data" } });
+
+export const deleteDraft = (id) => api.delete(`/post/draft/${id}`);
+
+export const publishDraft = (id, scheduledAt = null) =>
+  api.post(`/post/draft/${id}/publish`, { scheduledAt });
+
+export const reschedulePost = (id, scheduledAt) =>
+  api.patch(`/post/scheduled/${id}`, { scheduledAt }).then(r => r.data);

@@ -3,6 +3,7 @@ import api from "../api/apiClient";
 import { BASE_URL } from "../api/apiClient";
 import { useBrand } from "../context/BrandContext";
 import { connectPlatform } from "../api/auth.api";
+import { reschedulePost } from "../api/unified.post.api";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const POST_TYPES = [
@@ -21,11 +22,11 @@ const PLATFORM_META = {
   LinkedIn:  { color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-200", badge: "bg-indigo-100 text-indigo-700", icon: "LI", label: "LinkedIn Pages"    },
 };
 
-// Tabs: Published first, then Scheduled, then Drafts
+// Tabs: Published, Scheduled, Drafted  (Failed posts are visible inside Published with red highlight)
 const STATUS_TABS = [
-  { key: "completed", label: "Published", badge: "bg-green-100 text-green-700", icon: "published", iconColor: "text-green-600" },
-  { key: "scheduled", label: "Scheduled", badge: "bg-blue-100 text-blue-700",   icon: "scheduled", iconColor: "text-blue-600" },
-  { key: "draft",     label: "Drafts",    badge: "bg-amber-100 text-amber-700", icon: "draft", iconColor: "text-amber-600" },
+  { key: "completed", label: "Published", badge: "bg-green-100 text-green-700",  icon: "published", iconColor: "text-green-600" },
+  { key: "scheduled", label: "Scheduled", badge: "bg-blue-100 text-blue-700",    icon: "scheduled", iconColor: "text-blue-600" },
+  { key: "drafted",   label: "Drafted",   badge: "bg-yellow-100 text-yellow-700",icon: "drafted",   iconColor: "text-yellow-600" },
 ];
 
 const PLATFORM_COLORS = {
@@ -216,27 +217,21 @@ function compareDrafts(a, b, sortBy) {
 }
 
 function StatusTabIcon({ type, cls = "w-4 h-4" }) {
-  if (type === "published") {
-    return (
-      <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    );
-  }
-  if (type === "scheduled") {
-    return (
-      <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    );
-  }
-  if (type === "draft") {
-    return (
-      <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-5m-7-7h7m0 0v7m0-7L9 16" />
-      </svg>
-    );
-  }
+  if (type === "published") return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+  if (type === "scheduled") return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+  if (type === "drafted") return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  );
   return (
     <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01m8.99-4a9 9 0 11-17.98 0 9 9 0 0117.98 0z" />
@@ -294,19 +289,31 @@ function platformFromUrl(url = "") {
   return "";
 }
 
+// Normalise a StoredPostResult to always use camelCase keys.
+// Old records were serialised with PascalCase; new ones use camelCase.
+function normResult(r) {
+  return {
+    accountId:   r.accountId   ?? r.AccountId   ?? "",
+    accountName: r.accountName ?? r.AccountName ?? "",
+    platform:    r.platform    ?? r.Platform    ?? "",
+    postId:      r.postId      ?? r.PostId      ?? "",
+    viewUrl:     r.viewUrl     ?? r.ViewUrl     ?? r.viewPostUrl ?? r.ViewPostUrl ?? "",
+    success:     r.success     ?? r.Success     ?? false,
+    reach:       r.reach       ?? r.Reach       ?? 0,
+  };
+}
+
 // Build a best-effort platform URL when viewUrl is absent (older posts)
 function buildFallbackUrl(r) {
   const p  = (r.platform || "").toLowerCase();
-  const id = r.postId || r.platformPostId || "";
+  const id = r.postId || "";
   if (!id) return null;
   if (p === "facebook") {
-    // postId can be "{pageId}_{objectId}" or just "{objectId}"
     if (id.includes("_")) {
       const [pageId, objectId] = id.split("_");
       return `https://www.facebook.com/${pageId}/posts/${objectId}`;
     }
-    const acct = r.accountId || "";
-    return `https://www.facebook.com/${acct}/posts/${id}`;
+    return `https://www.facebook.com/${r.accountId || ""}/posts/${id}`;
   }
   if (p === "instagram") return `https://www.instagram.com/p/${id}/`;
   if (p === "linkedin")  return `https://www.linkedin.com/feed/update/${encodeURIComponent(id)}`;
@@ -314,19 +321,20 @@ function buildFallbackUrl(r) {
 }
 
 // Build a view link object from a StoredPostResult, always attempting a URL
-function buildViewLink(r) {
-  const url = r.viewUrl || r.viewPostUrl || buildFallbackUrl(r);
+function buildViewLink(raw) {
+  const r   = normResult(raw);
+  const url = r.viewUrl || buildFallbackUrl(r);
   if (!url) return null;
   return {
     url,
-    platform:    r.platform || platformFromUrl(url) || normPlatform((r.accountId || "").split("_")[0]),
+    platform:    r.platform || platformFromUrl(url) || normPlatform(r.accountId.split("_")[0]),
     accountName: r.accountName || r.accountId || "",
   };
 }
 
 function PostCard({ post, onEdit, onDelete }) {
   const platforms    = parsePlatforms(post.platforms);
-  const results      = parseResults(post.postResultsJson);
+  const results      = parseResults(post.postResultsJson).map(normResult);
   const successResults = results.filter(r => r.success);
   const successCount   = successResults.length;
   const totalReach     = results.reduce((s, r) => s + (r.reach ?? 0), 0);
@@ -463,7 +471,110 @@ function PostCard({ post, onEdit, onDelete }) {
 }
 
 // ── Scheduled Card ─────────────────────────────────────────────────────────────
-function ScheduledCard({ post, cancellingId, onCancel }) {
+function ScheduledCard({ post, cancellingId, onCancel, onReschedule }) {
+  const platforms = parsePlatforms(post.platforms);
+  const accs      = parseAccountIds(post.targetAccountIds);
+  const hasMedia  = post.hasMedia;
+  const isImage   = ["Image","Carousel"].includes(post.postType);
+  const isVideo   = ["Video","Reel","Story"].includes(post.postType);
+
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [newDate, setNewDate]               = useState("");
+  const [rescheduling, setRescheduling]     = useState(false);
+  const [rescheduleErr, setRescheduleErr]   = useState("");
+
+  const minDateTime = (() => {
+    const d = new Date(Date.now() + 2 * 60000);
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
+
+  const handleReschedule = async () => {
+    if (!newDate) { setRescheduleErr("Pick a new date/time"); return; }
+    setRescheduling(true); setRescheduleErr("");
+    try {
+      await onReschedule(post.id, new Date(newDate).toISOString());
+      setShowReschedule(false); setNewDate("");
+    } catch (e) {
+      setRescheduleErr(e.message || "Failed to reschedule");
+    } finally {
+      setRescheduling(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden border-l-4 border-l-blue-400 hover:shadow-md transition-shadow">
+      <div className="flex">
+        <div className="shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
+          {hasMedia && (isImage || isVideo) ? (
+            <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-20 h-20" />
+          ) : (
+            <span className="text-2xl">
+              {post.postType === "Text" ? "📝" : post.postType === "Document" ? "📄" : "🖼️"}
+            </span>
+          )}
+        </div>
+        <div className="flex-1 py-3 pr-3 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{post.postType}</span>
+            {platforms.map(p => (
+              <span key={p} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PLATFORM_COLORS[p] ?? "bg-gray-100 text-gray-600"}`}>
+                <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p.slice(0,2)}
+              </span>
+            ))}
+            <span className="ml-auto text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">⏰ Scheduled</span>
+          </div>
+          <p className="text-sm text-gray-700 mt-1.5 line-clamp-2 leading-snug">
+            {post.content || <span className="italic text-gray-400">No caption</span>}
+          </p>
+          <div className="flex items-center justify-between mt-2 gap-2 flex-wrap">
+            <span className="text-[11px] text-gray-400">
+              📅 {fmtLocal(post.scheduledAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => { setShowReschedule(v => !v); setRescheduleErr(""); }}
+                className="px-2.5 py-1 text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                🕐 Reschedule
+              </button>
+              <button onClick={() => onCancel(post.id)} disabled={cancellingId === post.id}
+                className="px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
+                {cancellingId === post.id ? "Cancelling…" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Inline reschedule panel */}
+      {showReschedule && (
+        <div className="border-t border-blue-100 bg-blue-50 px-4 py-3">
+          <p className="text-xs font-semibold text-blue-700 mb-2">Pick a new date &amp; time</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="datetime-local"
+              min={minDateTime}
+              value={newDate}
+              onChange={e => setNewDate(e.target.value)}
+              className="px-3 py-1.5 border border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+            />
+            <button onClick={handleReschedule} disabled={rescheduling || !newDate}
+              className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 transition-colors">
+              {rescheduling ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => { setShowReschedule(false); setRescheduleErr(""); setNewDate(""); }}
+              className="px-3 py-1.5 text-xs text-gray-500 hover:bg-blue-100 rounded-lg transition-colors">
+              Cancel
+            </button>
+          </div>
+          {rescheduleErr && <p className="text-xs text-red-600 mt-1">⚠ {rescheduleErr}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Draft Card ─────────────────────────────────────────────────────────────────
+function DraftCard({ post, onDelete, onResume }) {
   const platforms = parsePlatforms(post.platforms);
   const accs      = parseAccountIds(post.targetAccountIds);
   const hasMedia  = post.hasMedia;
@@ -471,7 +582,7 @@ function ScheduledCard({ post, cancellingId, onCancel }) {
   const isVideo   = ["Video","Reel","Story"].includes(post.postType);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex overflow-hidden border-l-4 border-l-blue-400 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex overflow-hidden border-l-4 border-l-yellow-400 hover:shadow-md transition-shadow">
       <div className="shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
         {hasMedia && (isImage || isVideo) ? (
           <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-20 h-20" />
@@ -489,19 +600,25 @@ function ScheduledCard({ post, cancellingId, onCancel }) {
               <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p.slice(0,2)}
             </span>
           ))}
-          <span className="ml-auto text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">⏰ Scheduled</span>
+          <span className="ml-auto text-[10px] font-semibold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">✏️ Draft</span>
         </div>
         <p className="text-sm text-gray-700 mt-1.5 line-clamp-2 leading-snug">
-          {post.content || <span className="italic text-gray-400">No caption</span>}
+          {post.content || <span className="italic text-gray-400">No content yet…</span>}
         </p>
         <div className="flex items-center justify-between mt-2">
           <span className="text-[11px] text-gray-400">
-            📅 {fmtLocal(post.scheduledAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
+            💾 Saved {fmtLocal(post.createdAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
           </span>
-          <button onClick={() => onCancel(post.id)} disabled={cancellingId === post.id}
-            className="px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
-            {cancellingId === post.id ? "Cancelling…" : "Cancel"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => onResume(post)}
+              className="px-2.5 py-1 text-[11px] font-medium bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors">
+              Resume
+            </button>
+            <button onClick={() => onDelete(post.id)}
+              className="px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
+              Delete
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -633,53 +750,53 @@ function CalendarPostPopover({ post, onClose }) {
   const hasMedia = post.hasMedia && (isImage || isVideo);
 
   return (
-    <div
-      className="absolute z-50 left-1/2 top-full mt-2 w-72 -translate-x-1/2"
-      style={{ maxWidth: "min(22rem, calc(100vw - 1rem))" }}
-      onClick={e => e.stopPropagation()}
-    >
-      <div className="absolute left-1/2 -top-2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t border-slate-200 bg-white" />
-      <div className="relative bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
-        {hasMedia && (
-          <div className="w-full h-28 bg-slate-100 overflow-hidden">
-            <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-full h-28" />
-          </div>
-        )}
-        <div className="p-3">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="flex flex-wrap gap-1">
-              {parsePlatforms(post.platforms).map(p => (
-                <span key={p} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PLATFORM_COLORS[p] ?? "bg-gray-100 text-gray-600"}`}>
-                  <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p}
-                </span>
-              ))}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${post.status === "Completed" ? "bg-green-100 text-green-700" : post.status === "Scheduled" ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-600"}`}>
-                {post.status === "Completed" ? "Published" : post.status === "Scheduled" ? "Scheduled" : "Failed"}
+    <div className="absolute z-50 left-full top-0 ml-2 w-72 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
+      style={{ maxWidth: "90vw" }}
+      onClick={e => e.stopPropagation()}>
+      {hasMedia && (
+        <div className="w-full h-32 bg-gray-100 overflow-hidden">
+          <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-full h-32" />
+        </div>
+      )}
+      <div className="p-3">
+        <div className="flex items-start justify-between gap-2 mb-1.5">
+          <div className="flex flex-wrap gap-1">
+            {parsePlatforms(post.platforms).map(p => (
+              <span key={p} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PLATFORM_COLORS[p] ?? "bg-gray-100 text-gray-600"}`}>
+                <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p}
               </span>
-            </div>
-            <button onClick={onClose} className="p-0.5 hover:bg-slate-100 rounded shrink-0 text-slate-400">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+            ))}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+              post.status === "Completed" ? "bg-green-100 text-green-700" :
+              post.status === "Scheduled" ? "bg-blue-100 text-blue-700" :
+              post.status === "Draft"     ? "bg-yellow-100 text-yellow-700" :
+              "bg-red-100 text-red-600"
+            }`}>
+              {post.status === "Completed" ? "Published" : post.status === "Scheduled" ? "Scheduled" : post.status === "Draft" ? "Draft" : "Failed"}
+            </span>
           </div>
-          <p className="text-xs text-slate-700 line-clamp-3 leading-snug mb-1.5">
-            {post.content || <span className="italic text-slate-400">No caption</span>}
-          </p>
-          <p className="text-[10px] text-slate-500 mb-2">📅 {fmtLocal(post.scheduledAt ?? post.processedAt)}</p>
-          {viewLinks.length > 0 && (
-            <div className="flex flex-col gap-1">
-              {viewLinks.map((link, i) => (
-                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
-                  className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg transition-colors ${PLATFORM_META[link.platform]?.bg ?? "bg-slate-50"} ${PLATFORM_META[link.platform]?.color ?? "text-slate-700"} hover:opacity-90`}>
-                  <PlatformSvg p={link.platform} cls="w-3 h-3" />
-                  View on {link.platform}{link.accountName ? ` · ${link.accountName}` : ""}
-                  <svg className="w-3 h-3 ml-auto opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-              ))}
+          <button onClick={onClose} className="p-0.5 hover:bg-gray-100 rounded shrink-0 text-gray-400">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <p className="text-xs text-gray-700 line-clamp-3 leading-snug mb-1.5">
+          {post.content || <span className="italic text-gray-400">No caption</span>}
+        </p>
+        <p className="text-[10px] text-gray-400 mb-2">📅 {fmtLocal(post.scheduledAt ?? post.processedAt)}</p>
+        {viewLinks.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {viewLinks.map((link, i) => (
+              <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg transition-colors ${PLATFORM_META[link.platform]?.bg ?? "bg-gray-50"} ${PLATFORM_META[link.platform]?.color ?? "text-gray-700"} hover:opacity-90`}>
+                <PlatformSvg p={link.platform} cls="w-3 h-3" />
+                View on {link.platform}{link.accountName ? ` · ${link.accountName}` : ""}
+                <svg className="w-3 h-3 ml-auto opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+            ))}
             </div>
           )}
-        </div>
       </div>
     </div>
   );
@@ -695,9 +812,9 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
   const [yearDraft, setYearDraft]   = useState(String(year));
 
   const filtered = posts.filter(p => {
-    if (tab === "scheduled") return p.status !== "Completed" && p.status !== "Failed";
-    if (tab === "completed") return p.status === "Completed";
-    if (tab === "draft")     return false;
+    if (tab === "scheduled") return p.status !== "Completed" && p.status !== "Failed" && p.status !== "Draft";
+    if (tab === "completed") return p.status === "Completed" || p.status === "Failed";
+    if (tab === "drafted")   return p.status === "Draft";
     return true;
   });
 
@@ -719,8 +836,9 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
   const goToday = () => { onSetYear(today.getFullYear()); };
 
   const chipColor = (status) =>
-    status === "Completed" ? "bg-emerald-500 text-white" :
-    status === "Failed"    ? "bg-rose-400 text-white" :
+    status === "Completed" ? "bg-green-500 text-white" :
+    status === "Failed"    ? "bg-red-400 text-white" :
+    status === "Draft"     ? "bg-yellow-400 text-white" :
     "bg-blue-500 text-white";
 
   return (
@@ -863,23 +981,29 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
         <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
           <span className="w-3 h-3 rounded-sm bg-amber-400 inline-block"></span>Drafts (table only)
         </span>
+        <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+          <span className="w-3 h-3 rounded-sm bg-yellow-400 inline-block"></span>Draft
+        </span>
       </div>
     </div>
   );
 }
 
 // ── Compose Modal (centered) ───────────────────────────────────────────────────
-function ComposeModal({ activeBrand, onClose, onPosted, initialDraft = null, onDraftsUpdated }) {
+function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
   const [accounts, setAccounts]           = useState([]);
   const [accountsLoading, setALoading]    = useState(true);
-  const [selected, setSelected]           = useState(new Set());
-  const [mode, setMode]                   = useState("Text");
-  const [content, setContent]             = useState("");
+  const [selected, setSelected]           = useState(new Set(
+    resumeDraft ? parseAccountIds(resumeDraft.targetAccountIds) : []
+  ));
+  const [mode, setMode]                   = useState(resumeDraft?.postType ?? "Text");
+  const [content, setContent]             = useState(resumeDraft?.content ?? "");
   const [files, setFiles]                 = useState([]);
-  const [documentTitle, setDocTitle]      = useState("");
+  const [documentTitle, setDocTitle]      = useState(resumeDraft?.documentTitle ?? "");
   const [scheduleEnabled, setSched]       = useState(false);
   const [scheduledAt, setScheduledAt]     = useState("");
   const [posting, setPosting]             = useState(false);
+  const [savingDraft, setSavingDraft]     = useState(false);
   const [results, setResults]             = useState(null);
   const [error, setError]                 = useState("");
   const [showPreview, setShowPreview]     = useState(false);
@@ -890,13 +1014,14 @@ function ComposeModal({ activeBrand, onClose, onPosted, initialDraft = null, onD
   const [draftNotice, setDraftNotice]     = useState("");
 
   const currentType = POST_TYPES.find(t => t.key === mode);
-  const refreshDrafts = useCallback(() => {
-    setDrafts(getDraftsForBrand(activeBrand?.slug));
+
+  const loadDraftsFromApi = useCallback(async () => {
+    if (!activeBrand?.slug) return;
+    try {
+      const res = await api.get("/post/drafts");
+      setDrafts(Array.isArray(res.data) ? res.data : []);
+    } catch { /* silently fail */ }
   }, [activeBrand?.slug]);
-  const refreshAllDrafts = useCallback(() => {
-    refreshDrafts();
-    onDraftsUpdated?.();
-  }, [refreshDrafts, onDraftsUpdated]);
 
   useEffect(() => {
     if (!activeBrand?.slug) { setALoading(false); return; }
@@ -913,10 +1038,10 @@ function ComposeModal({ activeBrand, onClose, onPosted, initialDraft = null, onD
   }, [activeBrand?.slug]);
 
   useEffect(() => {
-    refreshAllDrafts();
+    loadDraftsFromApi();
     setEditingDraftId(null);
     setDraftNotice("");
-  }, [refreshAllDrafts]);
+  }, [loadDraftsFromApi]);
 
   useEffect(() => { setFiles([]); setPreviewUrls([]); }, [mode]);
 
@@ -962,77 +1087,36 @@ function ComposeModal({ activeBrand, onClose, onPosted, initialDraft = null, onD
   };
 
   const loadDraftForEdit = useCallback((draft) => {
-    setMode(draft.mode || "Text");
+    setMode(draft.postType || draft.mode || "Text");
     setContent(draft.content || "");
     setDocTitle(draft.documentTitle || "");
-    setSched(Boolean(draft.scheduleEnabled));
-    setScheduledAt(draft.scheduleEnabled ? (draft.scheduledAt || "") : "");
+    setSched(Boolean(draft.scheduledAt));
+    setScheduledAt(draft.scheduledAt || "");
     setSelected(new Set(parseAccountIds(draft.targetAccountIds)));
     setFiles([]);
     setResults(null);
     setError("");
     setEditingDraftId(draft.id);
-    setDraftNotice(
-      draft.mediaFileNames?.length
-        ? "Draft loaded. Re-upload media files before posting."
-        : "Draft loaded."
-    );
+    setDraftNotice("Draft loaded. Re-upload media files if needed.");
   }, []);
 
   useEffect(() => {
-    if (!initialDraft) return;
-    if (initialDraft.brandSlug && activeBrand?.slug && initialDraft.brandSlug !== activeBrand.slug) return;
-    loadDraftForEdit(initialDraft);
-  }, [initialDraft, activeBrand?.slug, loadDraftForEdit]);
+    if (!resumeDraft) return;
+    loadDraftForEdit(resumeDraft);
+  }, [resumeDraft, loadDraftForEdit]);
 
-  const removeDraft = (draftId) => {
-    if (!activeBrand?.slug) return;
-    removeDraftFromStorage(activeBrand.slug, draftId);
-    refreshAllDrafts();
-    if (editingDraftId === draftId) {
-      setEditingDraftId(null);
+  const removeDraft = async (draftId) => {
+    try {
+      await api.delete(`/post/draft/${draftId}`);
+      setDrafts(prev => prev.filter(d => d.id !== draftId));
+      if (editingDraftId === draftId) {
+        setEditingDraftId(null);
+        resetComposer();
+      }
+      setDraftNotice("Draft deleted.");
+    } catch {
+      setError("Failed to delete draft.");
     }
-    setDraftNotice("Draft deleted.");
-  };
-
-  const saveDraft = () => {
-    if (!activeBrand?.slug) {
-      setError("Select an active brand first.");
-      return;
-    }
-    if (!content.trim() && !documentTitle.trim() && !selected.size && !scheduleEnabled && !files.length) {
-      setError("Write something or choose settings before saving draft.");
-      return;
-    }
-
-    const nowIso = new Date().toISOString();
-    const existing = drafts.find(d => d.id === editingDraftId);
-    const draftId = existing?.id || `draft_${Date.now()}`;
-
-    const draft = {
-      id: draftId,
-      brandSlug: activeBrand.slug,
-      mode,
-      content: content || "",
-      documentTitle: documentTitle || "",
-      scheduleEnabled,
-      scheduledAt: scheduleEnabled ? (scheduledAt || "") : "",
-      targetAccountIds: [...selected],
-      mediaFileNames: files.map(file => file.name),
-      createdAt: existing?.createdAt || nowIso,
-      updatedAt: nowIso,
-    };
-
-    upsertDraftInStorage(draft);
-    refreshAllDrafts();
-    setEditingDraftId(draftId);
-    setResults(null);
-    setError("");
-    setDraftNotice(
-      files.length
-        ? "Draft saved. Media files are not stored in draft, re-upload before posting."
-        : "Draft saved successfully."
-    );
   };
 
   const submit = async () => {
@@ -1058,17 +1142,41 @@ function ComposeModal({ activeBrand, onClose, onPosted, initialDraft = null, onD
         headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
       });
       setResults(res.data);
-      if (editingDraftId && activeBrand?.slug) {
-        removeDraftFromStorage(activeBrand.slug, editingDraftId);
+      if (editingDraftId) {
+        try { await api.delete(`/post/draft/${editingDraftId}`); } catch { /* ok */ }
+        setDrafts(prev => prev.filter(d => d.id !== editingDraftId));
         setEditingDraftId(null);
-        refreshAllDrafts();
       }
       if (!scheduleEnabled) { setContent(""); setFiles([]); setSelected(new Set()); }
-      onPosted?.({ scheduled: scheduleEnabled });
+      onPosted?.({ scheduled: scheduleEnabled, draftId: resumeDraft?.id });
     } catch (e) {
       setError(e.message || "Failed to post. Please try again.");
     } finally {
       setPosting(false);
+    }
+  };
+
+  const saveDraft = async () => {
+    if (!content.trim() && !files.length) { setError("Add some content before saving as draft."); return; }
+    setSavingDraft(true); setError("");
+    const form = new FormData();
+    form.append("Type", mode);
+    form.append("Content", content || "");
+    selectedAccounts.forEach(a => form.append("TargetAccountIds", a.pageIdentifier));
+    [...new Set(selectedAccounts.map(a => a.platform))].forEach(p => form.append("Platforms", p));
+    files.forEach(f => form.append("MediaFiles", f));
+    if (documentTitle) form.append("DocumentTitle", documentTitle);
+    try {
+      const res = await api.post("/post/draft", form, {
+        headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
+      });
+      await loadDraftsFromApi();
+      setDraftNotice("Draft saved successfully.");
+      if (res.data?.id) setEditingDraftId(res.data.id);
+    } catch (e) {
+      setError(e.message || "Failed to save draft.");
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -1167,7 +1275,7 @@ function ComposeModal({ activeBrand, onClose, onPosted, initialDraft = null, onD
                   {drafts.map(draft => {
                     const title = draft.content?.trim()
                       ? draft.content.trim().slice(0, 56)
-                      : (draft.documentTitle?.trim() ? draft.documentTitle.trim().slice(0, 56) : `${draft.mode} draft`);
+                      : (draft.documentTitle?.trim() ? draft.documentTitle.trim().slice(0, 56) : `${draft.postType || draft.mode || "Text"} draft`);
                     const isEditing = draft.id === editingDraftId;
                     return (
                       <div key={draft.id}
@@ -1175,7 +1283,7 @@ function ComposeModal({ activeBrand, onClose, onPosted, initialDraft = null, onD
                         <div className="min-w-0 flex-1">
                           <p className="text-[11px] font-semibold text-gray-700 truncate">{title}</p>
                           <p className="text-[10px] text-gray-400">
-                            {draft.mode} · {fmtLocal(draft.updatedAt)}{draft.mediaFileNames?.length ? " · media re-upload needed" : ""}
+                            {draft.postType || draft.mode || "Text"} · {fmtLocal(draft.updatedAt || draft.createdAt)}
                           </p>
                         </div>
 
@@ -1250,12 +1358,12 @@ function ComposeModal({ activeBrand, onClose, onPosted, initialDraft = null, onD
                     className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white min-w-0" />
                 )}
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <p className="text-xs text-gray-400">{selected.size > 0 ? `${selected.size} account${selected.size > 1 ? "s" : ""} selected` : "No accounts selected"}</p>
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={saveDraft} disabled={posting}
-                    className="px-3.5 py-2 bg-white text-gray-700 rounded-xl font-semibold border border-gray-200 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-xs shadow-sm">
-                    {editingDraftId ? "Update Draft" : "Save as Draft"}
+                  <button onClick={saveDraft} disabled={savingDraft || posting}
+                    className="px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-xl font-medium hover:bg-yellow-100 disabled:opacity-50 transition-all text-xs">
+                    {savingDraft ? "Saving…" : "💾 Save Draft"}
                   </button>
                   <button onClick={submit} disabled={posting || !selected.size}
                     className="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm">
@@ -1320,12 +1428,12 @@ function ComposeModal({ activeBrand, onClose, onPosted, initialDraft = null, onD
 // ── Post Table (Meta Business Suite style tabular view) ───────────────────────
 function PostTableRow({ post, onEdit, onDelete }) {
   const platforms  = parsePlatforms(post.platforms);
-  const [results, setResults] = useState(() => parseResults(post.postResultsJson));
+  const [results, setResults] = useState(() => parseResults(post.postResultsJson).map(normResult));
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [insightsFetched, setInsightsFetched] = useState(false);
 
   // Re-sync if parent data changes
-  useEffect(() => { setResults(parseResults(post.postResultsJson)); }, [post.postResultsJson]);
+  useEffect(() => { setResults(parseResults(post.postResultsJson).map(normResult)); }, [post.postResultsJson]);
 
   const successResults = results.filter(r => r.success);
   const totalReach = results.reduce((s, r) => s + (r.reach ?? 0), 0);
@@ -1344,13 +1452,14 @@ function PostTableRow({ post, onEdit, onDelete }) {
       if (res.data?.insights) {
         setResults(prev => {
           const updated = [...prev];
-          for (const ins of res.data.insights) {
+          for (const rawIns of res.data.insights) {
+            const ins = normResult(rawIns);
             const idx = updated.findIndex(r => r.accountId === ins.accountId);
             if (idx >= 0) {
               updated[idx] = {
                 ...updated[idx],
                 reach:   ins.reach ?? updated[idx].reach,
-                viewUrl: ins.viewUrl || updated[idx].viewUrl || updated[idx].viewPostUrl,
+                viewUrl: ins.viewUrl || updated[idx].viewUrl,
               };
             }
           }
@@ -1459,15 +1568,13 @@ function PostTableRow({ post, onEdit, onDelete }) {
 
       {/* Actions */}
       <td className="px-4 py-3">
-        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {post.status === "Completed" && (
-            <button onClick={() => onEdit(post)} title="Edit post"
-              className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 hover:text-blue-700 transition-colors">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            </button>
-          )}
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => onEdit(post)} title="Edit caption"
+            className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </button>
           <button onClick={() => onDelete(post)} title="Delete post"
             className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1620,8 +1727,17 @@ export default function PostHistory() {
   const [historyPage, setHistoryPage]       = useState(1);
   const [historyTotal, setHistoryTotal]     = useState(0);
   const [cancellingId, setCancellingId]     = useState(null);
+  const [drafts, setDrafts]                 = useState([]);
+  const [draftsLoading, setDraftsLoad]      = useState(false);
+  const [resumingDraft, setResumingDraft]   = useState(null); // draft post to resume in ComposeModal
   const [error, setError]                   = useState("");
   const PAGE_SIZE = 20;
+
+  const openComposeForNew = () => {
+    setComposeInitialDraft(null);
+    setResumingDraft(null);
+    setCompose(true);
+  };
 
   const loadScheduled = useCallback(async () => {
     if (!effectiveBrand?.slug) return;
@@ -1647,54 +1763,19 @@ export default function PostHistory() {
     finally { setHistLoad(false); }
   }, [effectiveBrand?.slug]);
 
-  const loadDrafts = useCallback(() => {
-    setDraftPosts(getDraftsForBrand(effectiveBrand?.slug));
+  const loadDrafts = useCallback(async () => {
+    if (!effectiveBrand?.slug) return;
+    setDraftsLoad(true);
+    try {
+      const res = await api.get("/post/drafts");
+      setDrafts(Array.isArray(res.data) ? res.data : []);
+    } catch { /* silently fail */ }
+    finally { setDraftsLoad(false); }
   }, [effectiveBrand?.slug]);
 
   useEffect(() => { loadScheduled(); loadHistory(1); loadDrafts(); }, [loadScheduled, loadHistory, loadDrafts]);
 
-  useEffect(() => {
-    const handleOutsideClick = (e) => {
-      if (!sortMenuRef.current) return;
-      if (!sortMenuRef.current.contains(e.target)) {
-        setSortMenuOpen(false);
-      }
-    };
-    const handleEscape = (e) => {
-      if (e.key === "Escape") setSortMenuOpen(false);
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("touchstart", handleOutsideClick);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("touchstart", handleOutsideClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, []);
-
   const refresh = () => { loadScheduled(); loadHistory(historyPage); loadDrafts(); };
-
-  const openComposeForNew = () => {
-    setComposeInitialDraft(null);
-    setCompose(true);
-  };
-
-  const openComposeForDraft = (draft) => {
-    setComposeInitialDraft(draft);
-    setCompose(true);
-  };
-
-  const deleteDraft = (draftId) => {
-    if (!effectiveBrand?.slug) return;
-    if (!window.confirm("Delete this draft?")) return;
-    removeDraftFromStorage(effectiveBrand.slug, draftId);
-    if (composeInitialDraft?.id === draftId) {
-      setComposeInitialDraft(null);
-    }
-    loadDrafts();
-  };
 
   const cancelPost = async (id) => {
     if (!window.confirm("Cancel this scheduled post?")) return;
@@ -1702,6 +1783,17 @@ export default function PostHistory() {
     try { await api.delete(`/post/scheduled/${id}`); setScheduled(prev => prev.filter(p => p.id !== id)); }
     catch { setError("Failed to cancel post."); }
     finally { setCancellingId(null); }
+  };
+
+  const handleReschedule = async (id, scheduledAt) => {
+    await reschedulePost(id, scheduledAt);
+    setScheduled(prev => prev.map(p => p.id === id ? { ...p, scheduledAt } : p));
+  };
+
+  const deleteDraftById = async (id) => {
+    if (!window.confirm("Delete this draft?")) return;
+    try { await api.delete(`/post/draft/${id}`); setDrafts(prev => prev.filter(p => p.id !== id)); }
+    catch { setError("Failed to delete draft."); }
   };
 
   const confirmDelete = async () => {
@@ -1724,32 +1816,14 @@ export default function PostHistory() {
     return posts.filter(post => getPostPlatforms(post).includes(platformFilter));
   }, [platformFilter]);
 
-  const filterDraftsByPlatform = useCallback((drafts) => {
-    if (platformFilter === "All") return drafts;
-    return drafts.filter(draft => getDraftPlatforms(draft).includes(platformFilter));
-  }, [platformFilter]);
-
-  const sortPosts = useCallback((posts) => {
-    const sorted = [...posts];
-    sorted.sort((a, b) => comparePosts(a, b, sortBy));
-    return sorted;
-  }, [sortBy]);
-
-  const sortDrafts = useCallback((drafts) => {
-    const sorted = [...drafts];
-    sorted.sort((a, b) => compareDrafts(a, b, sortBy));
-    return sorted;
-  }, [sortBy]);
-
-  const completed = history.filter(p => p.status === "Completed");
+  const completed = history.filter(p => p.status === "Completed" || p.status === "Failed");
   const allPosts  = [...scheduled, ...history];
-  const filteredCompleted = sortPosts(filterByPlatform(completed));
-  const filteredScheduled = sortPosts(filterByPlatform(scheduled));
-  const filteredAllPosts  = sortPosts(filterByPlatform(allPosts));
-  const filteredDrafts    = sortDrafts(filterDraftsByPlatform(draftPosts));
-  const activeSortOption = POST_SORT_OPTIONS.find(option => option.key === sortBy) ?? POST_SORT_OPTIONS[0];
+  const filteredCompleted = filterByPlatform(completed);
+  const filteredScheduled = filterByPlatform(scheduled);
+  const filteredDrafts    = filterByPlatform(drafts);
+  const filteredAllPosts  = filterByPlatform(allPosts);
 
-  const counts = { completed: completed.length, scheduled: scheduled.length, draft: draftPosts.length };
+  const counts = { completed: completed.length, scheduled: scheduled.length, drafted: drafts.length };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1837,7 +1911,7 @@ export default function PostHistory() {
               className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 shadow-sm"
             >
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Sort by</span>
-              <span className="text-xs font-semibold text-gray-700">{activeSortOption.label}</span>
+              <span className="text-xs font-semibold text-gray-700">{(POST_SORT_OPTIONS.find(o => o.key === sortBy) || POST_SORT_OPTIONS[0]).label}</span>
               <svg className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-300 ${sortMenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -1885,22 +1959,26 @@ export default function PostHistory() {
           )
         ) : (
           <>
-            {/* Published — table */}
+            {/* Published (includes failed) — table */}
             {tab === "completed" && (
               historyLoading ? <LoadingCard /> :
               filteredCompleted.length === 0
-                ? <EmptyCard
-                    icon="✅"
-                    msg={platformFilter === "All" ? "No published posts yet." : `No published ${platformFilter} posts yet.`}
-                  />
+                ? <EmptyCard icon="✅" msg={platformFilter === "All" ? "No published posts yet." : `No published ${platformFilter} posts yet.`} />
                 : <PostTable posts={filteredCompleted} onEdit={setEditing} onDelete={setDeleting} />
             )}
 
-            {/* Drafts — from Compose drafts */}
-            {tab === "draft" && (
+            {/* Drafted — card list */}
+            {tab === "drafted" && (
+              draftsLoading ? <LoadingCard /> :
               filteredDrafts.length === 0
-                ? <EmptyCard icon="📝" msg={platformFilter === "All" ? "No drafts yet. Save one from Compose." : `No ${platformFilter} drafts yet.`} />
-                : <DraftList drafts={filteredDrafts} onEdit={openComposeForDraft} onDelete={deleteDraft} />
+                ? <EmptyCard icon="✏️" msg={platformFilter === "All" ? "No drafts saved yet." : `No ${platformFilter} drafts.`} />
+                : <div className="space-y-2">
+                    {filteredDrafts.map(post => (
+                      <DraftCard key={post.id} post={post}
+                        onDelete={deleteDraftById}
+                        onResume={(p) => { setResumingDraft(p); setCompose(true); }} />
+                    ))}
+                  </div>
             )}
 
             {/* Scheduled — card list */}
@@ -1911,7 +1989,7 @@ export default function PostHistory() {
                 :
               <div className="space-y-2">
                 {filteredScheduled.map(post => (
-                  <ScheduledCard key={post.id} post={post} cancellingId={cancellingId} onCancel={cancelPost} />
+                  <ScheduledCard key={post.id} post={post} cancellingId={cancellingId} onCancel={cancelPost} onReschedule={handleReschedule} />
                 ))}
               </div>
             )}
@@ -1939,21 +2017,15 @@ export default function PostHistory() {
         </svg>
       </button>
 
-      {showCompose && (
-        <ComposeModal
-          activeBrand={effectiveBrand}
-          initialDraft={composeInitialDraft}
-          onDraftsUpdated={loadDrafts}
-          onClose={() => {
-            setCompose(false);
-            setComposeInitialDraft(null);
-          }}
-          onPosted={({ scheduled } = {}) => {
-            setTimeout(refresh, 500);
-            if (scheduled) setTab("scheduled");
-          }}
-        />
-      )}
+      {showCompose && <ComposeModal
+        activeBrand={effectiveBrand}
+        resumeDraft={resumingDraft}
+        onClose={() => { setCompose(false); setResumingDraft(null); }}
+        onPosted={({ scheduled, draftId } = {}) => {
+          if (draftId) setDrafts(prev => prev.filter(d => d.id !== draftId));
+          setTimeout(refresh, 500);
+          if (scheduled) setTab("scheduled");
+        }} />}
       {editingPost && <EditPostModal post={editingPost} onClose={() => setEditing(null)} onSaved={handleSaved} />}
 
       {/* Delete confirmation */}
