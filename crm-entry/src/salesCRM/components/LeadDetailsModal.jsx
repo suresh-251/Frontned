@@ -114,6 +114,33 @@ const commKind = (type = "") => {
 };
 const mapActivity = (x) => ({ id: x?.id, title: x?.title || x?.subject || x?.type || "Activity", type: x?.type || "Activity", description: x?.description || "", date: x?.activityDate || x?.dueDate || x?.createdAt, dueDate: x?.dueDate || x?.activityDate || x?.createdAt, status: x?.status || "", priority: x?.priority || "" });
 const mapComm = (x) => ({ id: x?.id || `${x?.type}-${x?.date || x?.description}`, kind: commKind(x?.type), title: x?.type || "Update", description: x?.description || "", date: x?.date || x?.createdAt });
+const toIsoString = (v) => {
+  if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString();
+};
+const buildCallSummary = (x) => {
+  const parts = [
+    x?.callStatus ? `Status: ${x.callStatus}` : "",
+    x?.callResult ? `Result: ${x.callResult}` : "",
+    hasValue(x?.durationMinutes) ? `Duration: ${x.durationMinutes} min` : "",
+    x?.callPurpose ? `Purpose: ${x.callPurpose}` : "",
+    x?.callAgenda ? `Agenda: ${x.callAgenda}` : "",
+    x?.reminder ? `Reminder: ${x.reminder}` : "",
+    x?.voiceRecordingUrl ? `Recording: ${x.voiceRecordingUrl}` : "",
+    x?.description || "",
+  ].filter(Boolean);
+  return parts.join(" | ");
+};
+const mapCallActivity = (x) => ({
+  id: x?.id || `call-${x?.subject || x?.callStartTime || x?.createdAt}`,
+  kind: "calls",
+  title: x?.subject || x?.title || "Call",
+  description: buildCallSummary(x),
+  date: x?.callStartTime || x?.activityDate || x?.dueDate || x?.createdAt,
+  status: x?.callStatus || x?.status || "",
+});
 
 function InfoRow({ icon: Icon, label, value }) {
   if (!hasValue(value)) return null;
@@ -255,9 +282,6 @@ function ActivitySection({ title, bg, items }) {
   const hasAnyItems = tasks.length || meetings.length || calls.length;
   return (
     <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "#ffffff", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid #e5e7eb", background: "#ffffff" }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>{title}</div>
-      </div>
       <div style={{ display: "flex", gap: 0, height: hasAnyItems ? 260 : "auto", overflowX: "auto", overflowY: "hidden", padding: 0, alignItems: "stretch" }}>
         <Lane title="Tasks" Icon={FileText} items={tasks} />
         <Lane title="Meetings" Icon={Calendar} items={meetings} />
@@ -270,7 +294,32 @@ function ActivitySection({ title, bg, items }) {
 function Composer({ tab, lead, onSaved }) {
   const [templateId, setTemplateId] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [v, setV] = useState({ note: "", toEmail: lead?.email || "", emailSubject: "", emailBody: "", whatsappMessage: "", whatsappDirection: "Outgoing", callSubject: "Follow-up call", callType: "Outgoing", callResult: "Connected", callDescription: "", callStartTime: new Date().toISOString().slice(0, 16), callMode: "log", meetingTitle: "Discovery Meeting", meetingDescription: "", meetingStartTime: new Date().toISOString().slice(0, 16), meetingEndTime: new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 16), meetingProvider: "Offline", meetingLocation: "" });
+  const [v, setV] = useState({
+    note: "",
+    toEmail: lead?.email || "",
+    emailSubject: "",
+    emailBody: "",
+    whatsappMessage: "",
+    whatsappDirection: "Outgoing",
+    callSubject: "Follow-up call",
+    callType: "Outgoing",
+    callStatus: "Completed",
+    callResult: "Connected",
+    callDescription: "",
+    callStartTime: new Date().toISOString().slice(0, 16),
+    callDurationMinutes: 0,
+    callPurpose: "",
+    callAgenda: "",
+    callReminder: "",
+    voiceRecordingUrl: "",
+    callMode: "log",
+    meetingTitle: "Discovery Meeting",
+    meetingDescription: "",
+    meetingStartTime: new Date().toISOString().slice(0, 16),
+    meetingEndTime: new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 16),
+    meetingProvider: "Offline",
+    meetingLocation: ""
+  });
   const setField = (k, val) => setV((p) => ({ ...p, [k]: val }));
   const applyTemplate = (id) => {
     setTemplateId(id);
@@ -291,16 +340,31 @@ function Composer({ tab, lead, onSaved }) {
       if (tab === "emails") await leadsAPI.addCommunication({ leadId: lead.id, type: "Email", subject: v.emailSubject, body: v.emailBody, toEmail: v.toEmail || lead.email, createdBy: lead.assignedToUserId || 0 });
       if (tab === "whatsapp") await leadsAPI.addCommunication({ leadId: lead.id, type: "WhatsApp", message: v.whatsappMessage, direction: v.whatsappDirection, createdBy: lead.assignedToUserId || 0 });
       if (tab === "calls") {
-        const payload = {
+        const callStartTime = toIsoString(v.callStartTime);
+        const basePayload = {
           leadId: lead.id,
           subject: v.callSubject,
           callType: v.callType,
-          callResult: v.callResult,
-          description: v.callDescription,
-          callStartTime: v.callStartTime,
-          ...(lead.assignedToUserId ? { assignedToUserId: lead.assignedToUserId } : {}),
+          callStatus: v.callMode === "schedule" ? (v.callStatus || "Scheduled") : (v.callStatus || "Completed"),
+          callStartTime,
+          ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
+          ...(hasValue(v.callPurpose) ? { callPurpose: v.callPurpose } : {}),
+          ...(hasValue(v.callAgenda) ? { callAgenda: v.callAgenda } : {}),
         };
-        if (v.callMode === "schedule") await activitiesAPI.scheduleCall(payload); else await activitiesAPI.logCall(payload);
+        if (v.callMode === "schedule") {
+          await activitiesAPI.scheduleCall({
+            ...basePayload,
+            ...(hasValue(v.callReminder) ? { reminder: v.callReminder } : {}),
+          });
+        } else {
+          await activitiesAPI.logCall({
+            ...basePayload,
+            ...(hasValue(v.callResult) ? { callResult: v.callResult } : {}),
+            ...(hasValue(v.callDescription) ? { description: v.callDescription } : {}),
+            ...(hasValue(v.voiceRecordingUrl) ? { voiceRecordingUrl: v.voiceRecordingUrl } : {}),
+            ...(Number(v.callDurationMinutes) > 0 ? { durationMinutes: Number(v.callDurationMinutes) } : {}),
+          });
+        }
       }
       if (tab === "meetings") await activitiesAPI.createMeeting({
         leadId: lead.id,
@@ -337,10 +401,20 @@ function Composer({ tab, lead, onSaved }) {
       {tab === "calls" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
         <select style={input} value={v.callMode} onChange={(e) => setField("callMode", e.target.value)}><option value="log">Completed Call</option><option value="schedule">Scheduled Call</option></select>
         <select style={input} value={v.callType} onChange={(e) => setField("callType", e.target.value)}><option value="Outgoing">Outgoing</option><option value="Incoming">Incoming</option></select>
+        <select style={input} value={v.callStatus} onChange={(e) => setField("callStatus", e.target.value)}>
+          {v.callMode === "schedule"
+            ? [ "Scheduled", "Pending", "Rescheduled" ].map((status) => <option key={status} value={status}>{status}</option>)
+            : [ "Completed", "Connected", "No Answer", "Missed", "Cancelled" ].map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
         <input style={input} value={v.callSubject} onChange={(e) => setField("callSubject", e.target.value)} placeholder="Call subject" />
-        <input style={input} value={v.callResult} onChange={(e) => setField("callResult", e.target.value)} placeholder="Connected / No answer" />
-        <input type="datetime-local" style={{ ...input, gridColumn: "1 / -1" }} value={v.callStartTime} onChange={(e) => setField("callStartTime", e.target.value)} />
-        <textarea style={{ ...input, minHeight: 96, resize: "vertical", gridColumn: "1 / -1" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} placeholder="Call notes" />
+        {v.callMode === "log" && <input style={input} value={v.callResult} onChange={(e) => setField("callResult", e.target.value)} placeholder="Connected / No answer" />}
+        <input type="datetime-local" style={input} value={v.callStartTime} onChange={(e) => setField("callStartTime", e.target.value)} />
+        {v.callMode === "log" && <input type="number" min="0" style={input} value={v.callDurationMinutes} onChange={(e) => setField("callDurationMinutes", e.target.value)} placeholder="Duration in minutes" />}
+        <input style={input} value={v.callPurpose} onChange={(e) => setField("callPurpose", e.target.value)} placeholder="Call purpose" />
+        <input style={input} value={v.callAgenda} onChange={(e) => setField("callAgenda", e.target.value)} placeholder="Call agenda" />
+        {v.callMode === "schedule" && <input style={{ ...input, gridColumn: "1 / -1" }} value={v.callReminder} onChange={(e) => setField("callReminder", e.target.value)} placeholder="Reminder text or timing" />}
+        {v.callMode === "log" && <input style={{ ...input, gridColumn: "1 / -1" }} value={v.voiceRecordingUrl} onChange={(e) => setField("voiceRecordingUrl", e.target.value)} placeholder="Voice recording URL (optional)" />}
+        {v.callMode === "log" && <textarea style={{ ...input, minHeight: 96, resize: "vertical", gridColumn: "1 / -1" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} placeholder="Call notes" />}
       </div>}
       {tab === "meetings" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
         <select style={input} value={v.meetingProvider} onChange={(e) => setField("meetingProvider", e.target.value)}><option value="Offline">Offline</option><option value="Zoom">Zoom</option><option value="Teams">Teams</option></select>
@@ -391,7 +465,8 @@ function Middle({ lead }) {
     }
   };
   useEffect(() => { load(); }, [lead?.id]);
-  const filtered = useMemo(() => comms.filter((x) => x.kind === tab), [comms, tab]);
+  const callHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("call")).map(mapCallActivity), [open, closed]);
+  const filtered = useMemo(() => tab === "calls" ? callHistory : comms.filter((x) => x.kind === tab), [callHistory, comms, tab]);
   const activityItems = activityView === "open" ? open : closed;
   return (
     <section style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
