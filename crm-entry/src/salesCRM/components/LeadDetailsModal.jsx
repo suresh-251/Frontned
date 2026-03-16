@@ -21,13 +21,20 @@ const TABS = [
 ];
 
 const EMAIL_TEMPLATES = [
-  { id: "intro", name: "Introduction", subject: "Intro from our team", body: "Hi {{name}},\n\nThank you for your interest. I would love to understand your requirements and help you with the next steps.\n\nRegards," },
-  { id: "followup", name: "Follow Up", subject: "Following up on our conversation", body: "Hi {{name}},\n\nJust checking in on our pending discussion. Please let me know a suitable time to connect.\n\nRegards," },
+  { id: "intro", name: "Warm Introduction", subject: "A quick introduction for {{name}}", body: "Hi {{name}},\n\nI hope you're doing well. I wanted to personally reach out and introduce myself. Based on your interest, I believe we can help you move faster and with more clarity.\n\nIf you're open to it, I would be happy to understand your current requirement and suggest the most suitable next step.\n\nPlease let me know a convenient time to connect.\n\nBest regards," },
+  { id: "followup", name: "Professional Follow-Up", subject: "Following up on our discussion, {{name}}", body: "Hi {{name}},\n\nI wanted to follow up regarding our previous conversation. I understand priorities can shift, so I just wanted to check whether this is still something you would like to explore.\n\nIf it helps, I can share a concise overview, answer any questions, or schedule a quick call at your convenience.\n\nLooking forward to your response.\n\nBest regards," },
 ];
 
 const WHATSAPP_TEMPLATES = [
-  { id: "intro", name: "Greeting", message: "Hi {{name}}, this is a quick introduction from our team. Happy to connect when convenient." },
-  { id: "reminder", name: "Reminder", message: "Hi {{name}}, gentle reminder on our pending discussion. Please let me know a suitable time." },
+  { id: "intro", name: "Warm Introduction", message: "Hi {{name}}, this is a quick introduction from our team. I wanted to personally connect and understand your requirement better. If you're available, I would be happy to guide you with the next best step." },
+  { id: "followup", name: "Polite Follow-Up", message: "Hi {{name}}, just following up on our earlier discussion. I understand you may be busy, so I wanted to check whether you would like to continue the conversation. Happy to help whenever convenient for you." },
+  { id: "proposal", name: "Value Pitch", message: "Hi {{name}}, based on what we discussed, I believe we can offer a solution that saves time and gives you a smoother process overall. If you'd like, I can share a quick summary and walk you through the best option." },
+];
+
+const CONTACT_SHORTCUTS = [
+  { id: "calls", label: "Call", icon: Phone },
+  { id: "whatsapp", label: "WhatsApp", icon: FaWhatsapp },
+  { id: "emails", label: "Email", icon: Mail },
 ];
 const CALL_PURPOSE_OPTIONS = [
   "Follow-up",
@@ -70,6 +77,7 @@ const datePickerInputBase = { ...floatingInput, width: "100%", minWidth: 0, whit
 const hasValue = (v) => !(v === null || v === undefined || (typeof v !== "boolean" && String(v).trim() === ""));
 const leadName = (lead) => [lead?.firstName, lead?.lastName].filter(Boolean).join(" ").trim() || lead?.name || "Lead";
 const assignee = (lead) => lead?.assignee || lead?.assignedToUserName || lead?.assignedUserName || (lead?.assignedToUserId ? `User ${lead.assignedToUserId}` : "");
+const sanitizePhoneNumber = (value = "") => String(value).replace(/[^\d+]/g, "");
 const formatDisplayText = (value = "") => String(value)
   .replace(/([a-z])([A-Z])/g, "$1 $2")
   .replace(/_/g, " ")
@@ -282,7 +290,7 @@ const DatePickerInput = forwardRef(function DatePickerInput({ value, onClick, st
   );
 });
 
-function FloatingDateTimePicker({ label, selected, onChange, minDate, error, style }) {
+function FloatingDateTimePicker({ label, selected, onChange, minDate, error, style, popperPlacement = "bottom-start", popperOffset = [0, 8] }) {
   return (
     <div style={floatingWrap}>
       <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
@@ -294,7 +302,17 @@ function FloatingDateTimePicker({ label, selected, onChange, minDate, error, sty
         dateFormat="MMM d, yyyy h:mm aa"
         minDate={minDate}
         calendarClassName="followup-datepicker"
-        popperPlacement="bottom-start"
+        popperPlacement={popperPlacement}
+        showPopperArrow={false}
+        popperClassName="lead-details-datepicker-popper"
+        popperModifiers={[
+          {
+            name: "offset",
+            options: {
+              offset: popperOffset,
+            },
+          },
+        ]}
         customInput={<DatePickerInput label={label} style={{ borderColor: error ? "#f87171" : "#cbd5e1", boxShadow: error ? "0 0 0 3px rgba(248, 113, 113, 0.14)" : "none", ...style }} />}
       />
       {error ? <div style={floatingErrorText}>{error}</div> : null}
@@ -302,9 +320,17 @@ function FloatingDateTimePicker({ label, selected, onChange, minDate, error, sty
   );
 }
 
-function LeftPanel({ lead, onConvert }) {
+function LeftPanel({ lead, onConvert, onOpenTab }) {
   const location = [lead?.address, lead?.city, lead?.state, lead?.country, lead?.zipCode || lead?.zip].filter(Boolean).join(", ");
   const initials = (leadName(lead).match(/\b\w/g) || []).join("").slice(0, 2).toUpperCase();
+  const canCall = hasValue(lead?.phone) || hasValue(lead?.mobile) || hasValue(lead?.secondaryPhone);
+  const canWhatsapp = canCall;
+  const canEmail = hasValue(lead?.email) || hasValue(lead?.secondaryEmail);
+  const shortcutEnabled = {
+    calls: canCall,
+    whatsapp: canWhatsapp,
+    emails: canEmail,
+  };
   return (
     <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderRight: "1px solid #e5e7eb", background: "#fff" }}>
       <div style={{ padding: 22, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(180deg, #f8faff 0%, #f3f6ff 100%)" }}>
@@ -316,20 +342,88 @@ function LeftPanel({ lead, onConvert }) {
             {hasValue(lead?.status) && <div style={{ display: "inline-flex", marginTop: 10, padding: "5px 10px", borderRadius: 999, background: "#eef2ff", color: "#4f46e5", fontSize: 12, fontWeight: 700 }}>{formatStatus(lead.status)}</div>}
           </div>
         </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 18 }}>
+          {CONTACT_SHORTCUTS.map(({ id, label, icon: Icon }) => {
+            const enabled = shortcutEnabled[id];
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => enabled && onOpenTab?.(id)}
+                disabled={!enabled}
+                title={label}
+                aria-label={label}
+                style={{
+                  width: 34,
+                  height: 34,
+                  border: enabled ? "1px solid #dbe4f0" : "1px solid #e2e8f0",
+                  borderRadius: "50%",
+                  background: "#ffffff",
+                  color: enabled ? "#2563eb" : "#94a3b8",
+                  cursor: enabled ? "pointer" : "not-allowed",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                  outline: "none",
+                  boxShadow: "none",
+                  transition: "transform 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease",
+                  animation: enabled ? "leadShortcutPop 320ms ease" : "none",
+                }}
+                onMouseEnter={(event) => {
+                  if (!enabled) return;
+                  event.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
+                  event.currentTarget.style.backgroundColor = "#f8fafc";
+                  event.currentTarget.style.borderColor = "#cbd5e1";
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.transform = "translateY(0) scale(1)";
+                  event.currentTarget.style.backgroundColor = "#ffffff";
+                  event.currentTarget.style.borderColor = enabled ? "#dbe4f0" : "#e2e8f0";
+                }}
+                onMouseDown={(event) => {
+                  if (!enabled) return;
+                  event.currentTarget.style.transform = "scale(0.96)";
+                }}
+                onMouseUp={(event) => {
+                  if (!enabled) return;
+                  event.currentTarget.style.transform = "translateY(-2px) scale(1.04)";
+                }}
+              >
+                <Icon size={14} color={enabled ? "#64748b" : "#94a3b8"} />
+              </button>
+            );
+          })}
+        </div>
+        <style>{`
+          @keyframes leadShortcutPop {
+            0% { transform: scale(0.88); opacity: 0; }
+            70% { transform: scale(1.06); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+
+          .lead-details-datepicker-popper {
+            z-index: 900 !important;
+          }
+        `}</style>
         <button
           type="button"
           onClick={onConvert}
           style={{
             marginTop: 18,
-            width: "100%",
-            minHeight: 42,
-            border: "1px solid #d1d5db",
+            display: "block",
+            width: 130,
+            marginLeft: "auto",
+            marginRight: "auto",
+            padding: "10px 0",
+            border: "1px solid #bbf7d0",
             borderRadius: 12,
-            background: "#ffffff",
-            color: "#0f172a",
-            fontSize: 13.5,
+            background: "#f0fdf4",
+            color: "#166534",
+            fontSize: 13,
             fontWeight: 800,
             cursor: "pointer",
+            lineHeight: 1.1,
           }}
         >
           Convert To Deal
@@ -561,13 +655,14 @@ function Composer({ tab, lead, onSaved }) {
   const [templateId, setTemplateId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const callableNumber = lead?.phone || lead?.mobile || lead?.secondaryPhone || "";
+  const whatsappNumber = sanitizePhoneNumber(lead?.mobile || lead?.phone || lead?.secondaryPhone || "");
   const [v, setV] = useState({
     note: "",
     toEmail: lead?.email || "",
     emailSubject: "",
     emailBody: "",
     whatsappMessage: "",
-    whatsappDirection: "Outgoing",
     callType: "Outgoing",
     callStatus: "Completed",
     callResult: "Connected",
@@ -596,7 +691,7 @@ function Composer({ tab, lead, onSaved }) {
     setTemplateId(id);
     if (tab === "emails") {
       const t = EMAIL_TEMPLATES.find((x) => x.id === id);
-      if (t) setV((p) => ({ ...p, emailSubject: t.subject.replace("{{name}}", leadName(lead)), emailBody: t.body.replaceAll("{{name}}", leadName(lead)) }));
+      if (t) setV((p) => ({ ...p, emailSubject: t.subject.replaceAll("{{name}}", leadName(lead)), emailBody: t.body.replaceAll("{{name}}", leadName(lead)) }));
     }
     if (tab === "whatsapp") {
       const t = WHATSAPP_TEMPLATES.find((x) => x.id === id);
@@ -619,7 +714,16 @@ function Composer({ tab, lead, onSaved }) {
     try {
       if (tab === "notes") await leadsAPI.addCommunication({ leadId: lead.id, type: "Note", message: v.note, createdBy: lead.assignedToUserId || 0 });
       if (tab === "emails") await leadsAPI.addCommunication({ leadId: lead.id, type: "Email", subject: v.emailSubject, body: v.emailBody, toEmail: v.toEmail || lead.email, createdBy: lead.assignedToUserId || 0 });
-      if (tab === "whatsapp") await leadsAPI.addCommunication({ leadId: lead.id, type: "WhatsApp", message: v.whatsappMessage, direction: v.whatsappDirection, createdBy: lead.assignedToUserId || 0 });
+      if (tab === "whatsapp") {
+        if (!whatsappNumber) {
+          Toast.error("No WhatsApp number available for this lead");
+          return;
+        }
+        await leadsAPI.addCommunication({ leadId: lead.id, type: "WhatsApp", message: v.whatsappMessage, createdBy: lead.assignedToUserId || 0 });
+        const whatsappUrl = `https://wa.me/${encodeURIComponent(whatsappNumber)}?text=${encodeURIComponent(v.whatsappMessage || "")}`;
+        const popup = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+        if (!popup) window.location.href = whatsappUrl;
+      }
       if (tab === "calls") {
         const callStartTime = toIsoString(v.callStartTime);
         const subject = String(v.callPurpose || "").trim();
@@ -656,7 +760,7 @@ function Composer({ tab, lead, onSaved }) {
         description: v.meetingDescription,
         provider: v.meetingProvider,
       });
-      Toast.success("Saved successfully");
+      Toast.success(tab === "whatsapp" ? "WhatsApp chat opened successfully" : "Saved successfully");
       await onSaved?.();
     } catch (e) {
       Toast.error(getApiErrorMessage(e, "Unable to save"));
@@ -664,22 +768,50 @@ function Composer({ tab, lead, onSaved }) {
       setSubmitting(false);
     }
   };
+  const handleCallNow = () => {
+    if (!callableNumber) {
+      Toast.error("No phone number available for this lead");
+      return;
+    }
+    window.location.href = `tel:${String(callableNumber).trim()}`;
+  };
   if (tab === "activity" || tab === "attachments") return null;
   return (
     <div style={{ ...card, padding: 16 }}>
       {tab === "notes" && <textarea style={{ ...input, minHeight: 110, resize: "vertical" }} value={v.note} onChange={(e) => setField("note", e.target.value)} placeholder="Add a note for the sales team" />}
-      {tab === "emails" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+      {tab === "emails" && <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 0.9fr) minmax(0, 1.1fr)", gap: 12, alignItems: "start" }}>
         <select style={input} value={templateId} onChange={(e) => applyTemplate(e.target.value)}><option value="">Select template</option>{EMAIL_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
         <input style={input} value={v.toEmail} onChange={(e) => setField("toEmail", e.target.value)} placeholder="recipient@email.com" />
         <input style={{ ...input, gridColumn: "1 / -1" }} value={v.emailSubject} onChange={(e) => setField("emailSubject", e.target.value)} placeholder="Email subject" />
-        <textarea style={{ ...input, minHeight: 120, resize: "vertical", gridColumn: "1 / -1" }} value={v.emailBody} onChange={(e) => setField("emailBody", e.target.value)} placeholder="Compose your email" />
+        <textarea style={{ ...input, minHeight: 140, resize: "vertical", gridColumn: "1 / -1", width: "100%" }} value={v.emailBody} onChange={(e) => setField("emailBody", e.target.value)} placeholder="Compose your email" />
       </div>}
       {tab === "whatsapp" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
         <select style={input} value={templateId} onChange={(e) => applyTemplate(e.target.value)}><option value="">Select template</option>{WHATSAPP_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-        <select style={input} value={v.whatsappDirection} onChange={(e) => setField("whatsappDirection", e.target.value)}><option value="Outgoing">Outgoing</option><option value="Incoming">Incoming</option></select>
         <textarea style={{ ...input, minHeight: 110, resize: "vertical", gridColumn: "1 / -1" }} value={v.whatsappMessage} onChange={(e) => setField("whatsappMessage", e.target.value)} placeholder="Write the WhatsApp message" />
       </div>}
       {tab === "calls" && <>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+          <button
+            type="button"
+            onClick={handleCallNow}
+            disabled={!callableNumber}
+            style={{
+              minHeight: 40,
+              padding: "10px 14px",
+              border: "1px solid #bbf7d0",
+              borderRadius: 12,
+              background: callableNumber ? "#f0fdf4" : "#f8fafc",
+              color: callableNumber ? "#166534" : "#94a3b8",
+              fontSize: 13,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              opacity: callableNumber ? 1 : 0.7,
+              cursor: callableNumber ? "pointer" : "not-allowed",
+            }}
+          >
+            Call Now
+          </button>
+        </div>
         <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", marginBottom: 14 }}>
           {[["log", "Log Call"], ["schedule", "Schedule Call"]].map(([mode, label]) => (
             <button
@@ -691,11 +823,11 @@ function Composer({ tab, lead, onSaved }) {
                 borderRadius: 10,
                 padding: "9px 14px",
                 background: v.callMode === mode ? "#ffffff" : "transparent",
-                color: v.callMode === mode ? "#2563eb" : "#64748b",
+                color: v.callMode === mode ? "#5b7fa6" : "#64748b",
                 fontSize: 13,
                 fontWeight: 800,
                 cursor: "pointer",
-                boxShadow: v.callMode === mode ? "0 6px 16px rgba(148, 163, 184, 0.15)" : "none"
+                boxShadow: v.callMode === mode ? "0 6px 16px rgba(191, 219, 254, 0.22)" : "none"
               }}
             >
               {label}
@@ -740,21 +872,23 @@ function Composer({ tab, lead, onSaved }) {
               <option value="Teams">Teams</option>
             </FloatingInput>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(220px, 1fr))", gap: 14, alignItems: "start", maxWidth: 700 }}>
-            <FloatingDateTimePicker label="Start Time" selected={v.meetingStartTime} onChange={(date) => setField("meetingStartTime", date)} />
-            <FloatingDateTimePicker label="End Time" selected={v.meetingEndTime} minDate={v.meetingStartTime || undefined} onChange={(date) => setField("meetingEndTime", date)} />
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 320px) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
+              <FloatingDateTimePicker label="Start Time" selected={v.meetingStartTime} onChange={(date) => setField("meetingStartTime", date)} popperPlacement="top-start" popperOffset={[0, 12]} />
+              <FloatingDateTimePicker label="End Time" selected={v.meetingEndTime} minDate={v.meetingStartTime || undefined} onChange={(date) => setField("meetingEndTime", date)} />
+            </div>
+            <FloatingInput as="textarea" label="Meeting Notes" style={{ minHeight: 156 }} value={v.meetingDescription} onChange={(e) => setField("meetingDescription", e.target.value)} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 16, alignItems: "end" }}>
-            <FloatingInput as="textarea" label="Meeting Notes" style={{ minHeight: 120 }} value={v.meetingDescription} onChange={(e) => setField("meetingDescription", e.target.value)} />
-            <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 190 }}>
-              <button className="btn-primary" onClick={submit} disabled={submitting} style={{ minWidth: 170, minHeight: 44 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ minWidth: 190 }}>
+              <button className="btn-primary" onClick={submit} disabled={submitting} style={{ minWidth: 170, minHeight: 44, border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>
                 {submitting ? "Saving..." : "Schedule Meeting"}
               </button>
             </div>
           </div>
         </div>
       </div>}
-      {tab !== "meetings" ? <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}><button className="btn-primary" onClick={submit} disabled={submitting}>{submitting ? "Saving..." : tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Send Message" : tab === "calls" ? "Save Call" : "Save Note"}</button></div> : null}
+      {tab !== "meetings" ? <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}><button className="btn-primary" onClick={submit} disabled={submitting} style={{ border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>{submitting ? "Saving..." : tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Open WhatsApp" : tab === "calls" ? "Save Call" : "Save Note"}</button></div> : null}
     </div>
   );
 }
@@ -767,7 +901,7 @@ function Attachments({ leadId }) {
   const remove = async (id) => { try { await leadsAPI.deleteAttachment(id); Toast.success("Attachment deleted"); await load(); } catch (err) { Toast.error(err?.response?.data?.message || "Unable to delete attachment"); } };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ ...card, padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><div><div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Lead Attachments</div><div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b" }}>Upload and review files saved against this lead.</div></div><label className="btn-primary" style={{ cursor: uploading ? "progress" : "pointer" }}><UploadCloud size={15} />{uploading ? "Uploading..." : "Add File"}<input type="file" hidden onChange={upload} /></label></div>
+      <div style={{ ...card, padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><div><div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Lead Attachments</div><div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b" }}>Upload and review files saved against this lead.</div></div><label className="btn-primary" style={{ cursor: uploading ? "progress" : "pointer", border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}><UploadCloud size={15} />{uploading ? "Uploading..." : "Add File"}<input type="file" hidden onChange={upload} /></label></div>
       <div style={{ ...card, padding: 16, minHeight: 260 }}>
         {loading ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading attachments...</div> : null}
         {!loading && !items.length ? <div style={{ color: "#94a3b8", fontSize: 13 }}>No attachments found.</div> : null}
@@ -777,8 +911,8 @@ function Attachments({ leadId }) {
   );
 }
 
-function Middle({ lead, onActivitySaved }) {
-  const [tab, setTab] = useState("activity"); const [activityView, setActivityView] = useState("open"); const [meetingView, setMeetingView] = useState("create"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]); const [comms, setComms] = useState([]);
+function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
+  const [activityView, setActivityView] = useState("open"); const [meetingView, setMeetingView] = useState("create"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]); const [comms, setComms] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const load = async () => {
     if (!lead?.id) return;
@@ -798,19 +932,19 @@ function Middle({ lead, onActivitySaved }) {
   useEffect(() => { load(); }, [lead?.id]);
   const callHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("call")).map(mapCallActivity), [open, closed]);
   const filtered = useMemo(() => {
-    if (tab === "calls") return callHistory;
-    if (tab === "meetings") return meetings;
-    return comms.filter((x) => x.kind === tab);
-  }, [callHistory, comms, meetings, tab]);
+    if (activeTab === "calls") return callHistory;
+    if (activeTab === "meetings") return meetings;
+    return comms.filter((x) => x.kind === activeTab);
+  }, [activeTab, callHistory, comms, meetings]);
   const activityItems = activityView === "open" ? open : closed;
   return (
     <section style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 0", overflowX: "auto", flexShrink: 0, background: "#ffffff", borderBottom: "1px solid #eef2f7" }}>
-        {TABS.map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} style={{ border: "none", borderBottom: tab === id ? "2px solid #4f46e5" : "2px solid transparent", background: "transparent", color: tab === id ? "#4f46e5" : "#64748b", padding: "12px 4px 11px", marginRight: 12, display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{id === "whatsapp" ? <FaWhatsapp size={16} /> : <Icon size={16} />}{label}</button>)}
+        {TABS.map(([id, label, Icon]) => <button key={id} onClick={() => onTabChange?.(id)} style={{ border: "none", borderBottom: activeTab === id ? "2px solid #93c5fd" : "2px solid transparent", background: "transparent", color: activeTab === id ? "#5b7fa6" : "#64748b", padding: "12px 4px 11px", marginRight: 12, display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{id === "whatsapp" ? <FaWhatsapp size={16} /> : <Icon size={16} />}{label}</button>)}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
         {loading && <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading details...</div>}
-        {tab === "activity" && <>
+        {activeTab === "activity" && <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#ffffff" }}>
             {[
@@ -824,8 +958,8 @@ function Middle({ lead, onActivitySaved }) {
                   border: "none",
                   borderRight: id === "open" ? "1px solid #e5e7eb" : "none",
                   padding: "7px 12px",
-                  background: activityView === id ? "#eef2ff" : "transparent",
-                  color: activityView === id ? "#4f46e5" : "#6b7280",
+                  background: activityView === id ? "#eff6ff" : "transparent",
+                  color: activityView === id ? "#5b7fa6" : "#6b7280",
                   fontSize: 13,
                   fontWeight: 700,
                   cursor: "pointer",
@@ -839,8 +973,8 @@ function Middle({ lead, onActivitySaved }) {
           </div>
           <ActivitySection title={activityView === "open" ? "Open Activities" : "Closed Activities"} bg="#ffffff" items={activityItems} />
         </>}
-        {tab !== "activity" && tab !== "attachments" && <>
-          {tab === "meetings" ? <>
+        {activeTab !== "activity" && activeTab !== "attachments" && <>
+          {activeTab === "meetings" ? <>
             <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", alignSelf: "flex-start" }}>
               {[["create", "Create Meeting"], ["scheduled", "Scheduled Meetings"]].map(([id, label]) => (
                 <button
@@ -856,14 +990,14 @@ function Middle({ lead, onActivitySaved }) {
                     fontSize: 13,
                     fontWeight: 800,
                     cursor: "pointer",
-                    boxShadow: meetingView === id ? "0 6px 16px rgba(148, 163, 184, 0.15)" : "none"
+                    boxShadow: meetingView === id ? "0 6px 16px rgba(191, 219, 254, 0.22)" : "none"
                   }}
                 >
                   {label}
                 </button>
               ))}
             </div>
-            {meetingView === "create" ? <Composer tab={tab} lead={lead} onSaved={async () => {
+            {meetingView === "create" ? <Composer tab={activeTab} lead={lead} onSaved={async () => {
               await load();
               await onActivitySaved?.();
               setMeetingView("scheduled");
@@ -898,16 +1032,16 @@ function Middle({ lead, onActivitySaved }) {
               ))}
             </div> : null}
           </> : <>
-            <Composer tab={tab} lead={lead} onSaved={async () => {
+            <Composer tab={activeTab} lead={lead} onSaved={async () => {
               await load();
               await onActivitySaved?.();
             }} />
             <div style={{ ...card, padding: 16, minHeight: 220, maxHeight: 420, overflowY: "auto" }}>
-              {!filtered.length ? <div style={{ minHeight: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>No {tab} history available.</div> : filtered.map((item) => <div key={item.id} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: "1px solid #eef2f7" }}><div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b" }}>{item.title}</div><div style={{ marginTop: 6, fontSize: 13, color: "#475569", lineHeight: 1.55 }}>{item.description || "No description"}</div><div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>{fmtDate(item.date)}</div></div>)}
+              {!filtered.length ? <div style={{ minHeight: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>No {activeTab} history available.</div> : filtered.map((item) => <div key={item.id} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: "1px solid #eef2f7" }}><div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b" }}>{item.title}</div><div style={{ marginTop: 6, fontSize: 13, color: "#475569", lineHeight: 1.55 }}>{item.description || "No description"}</div><div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>{fmtDate(item.date)}</div></div>)}
             </div>
           </>}
         </>}
-        {tab === "attachments" && <Attachments leadId={lead?.id} />}
+        {activeTab === "attachments" && <Attachments leadId={lead?.id} />}
       </div>
     </section>
   );
@@ -915,9 +1049,11 @@ function Middle({ lead, onActivitySaved }) {
 
 export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
   const [showConvertModal, setShowConvertModal] = useState(false);
+  const [activeTab, setActiveTab] = useState("activity");
   const [timeline, setTimeline] = useState([]); const [timelineLoading, setTimelineLoading] = useState(false);
   const loadTimeline = async () => { if (!lead?.id) return; setTimelineLoading(true); try { const data = await leadsAPI.getTimeline(lead.id); setTimeline(Array.isArray(data) ? data : []); } catch (e) { Toast.error(e?.response?.data?.message || "Unable to load timeline"); } finally { setTimelineLoading(false); } };
   useEffect(() => { loadTimeline(); }, [lead?.id]);
+  useEffect(() => { setActiveTab("activity"); }, [lead?.id]);
   useEffect(() => { const onKey = (e) => { if (e.key === "Escape") onClose?.(); }; document.addEventListener("keydown", onKey); return () => document.removeEventListener("keydown", onKey); }, [onClose]);
   return (
     <>
@@ -925,8 +1061,8 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
         <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1480px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "hidden", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
           <button className="icon-btn" onClick={onClose} title="Close" style={{ position: "absolute", top: 14, right: 16, zIndex: 2, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(6px)" }}><X size={18} /></button>
           <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 360px" }}>
-            <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} />
-            <Middle lead={lead} onActivitySaved={loadTimeline} />
+            <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} onOpenTab={setActiveTab} />
+            <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} />
             <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} />
           </div>
         </div>

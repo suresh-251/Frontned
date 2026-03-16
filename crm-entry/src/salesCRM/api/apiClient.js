@@ -1,9 +1,6 @@
 // src/api/apiClient.js
 import axios from "axios";
-const BASE_URL = window.location.hostname === "localhost"
-  ? "http://89.116.20.215:9096/api"
-  : "http://89.116.20.215:9090/api";
-
+const BASE_URL = "http://89.116.20.215:9096/api";
 // Create Axios instance
 const apiClient = axios.create({
   baseURL: BASE_URL,
