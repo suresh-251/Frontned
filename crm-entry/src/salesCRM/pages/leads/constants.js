@@ -47,6 +47,7 @@ export const DEFAULT_FILTERS = {
   followUpDateTo: "",
   lastContactedDays: "",
   respondedTo: "All",
+  address: "",
   city: "",
   state: "",
   country: "",
@@ -64,6 +65,7 @@ export const CLEARED_FILTERS = {
   followUpDateTo: "",
   lastContactedDays: "",
   respondedTo: "All",
+  address: "",
   city: "",
   state: "",
   country: "",
@@ -125,7 +127,7 @@ export const STATUS_LIST = [
   "NotInterested",
   "UnableToContact",
   "JunkLead",
-  "Need Review",
+  "NeedReview",
 ];
 
 export const STATUS_META = {
@@ -140,7 +142,7 @@ export const STATUS_META = {
   NotInterested: { color: "#ef4444", bg: "#fee2e2" },
   UnableToContact: { color: "#6b7280", bg: "#f3f4f6" },
   JunkLead: { color: "#374151", bg: "#e5e7eb" },
-  "Need Review": { color: "#9333ea", bg: "#f3e8ff" },
+  NeedReview: { color: "#9333ea", bg: "#f3e8ff" },
 };
 
 export const RESPONSE_TYPES = ["All", "Email", "Call", "Message"];
@@ -173,14 +175,14 @@ export const LEAD_SOURCE_OPTIONS = [
 ];
 
 export const ALL_COLUMNS = [
-  { key: "id", label: "Lead ID", always: true },
+  { key: "id", label: "ID", always: true },
   { key: "name", label: "Lead Name", always: true },
   { key: "company", label: "Company", always: false },
   { key: "phone", label: "Phone", always: false },
   { key: "email", label: "Email", always: false },
   { key: "status", label: "Status", always: false },
   { key: "followUp", label: "Follow-Up", always: false },
-  { key: "assignee", label: "Owner", always: false },
+  { key: "assignee", label: "Assignee", always: false },
   { key: "source", label: "Source", always: false },
   { key: "score", label: "Score", always: false },
   { key: "deposits", label: "Deposits", always: false },
@@ -224,7 +226,7 @@ export const LEAD_FIELDS = [
   { key: "status", label: "Status" },
   { key: "source", label: "Source" },
   { key: "score", label: "Score" },
-  { key: "assignee", label: "Owner" },
+  { key: "assignee", label: "Assignee" },
   { key: "createdDate", label: "Created Date" },
   { key: "followUpDate", label: "Follow-Up Date" },
 ];

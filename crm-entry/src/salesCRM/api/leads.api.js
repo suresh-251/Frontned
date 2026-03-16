@@ -1,5 +1,16 @@
 // src/salesCRM/api/leads.api.js
 import apiClient from "./apiClient";
+import { getUsers } from "../../api/admin/users.api";
+const formatUserName = (user) => {
+  const raw = String(
+    user?.name || user?.username || user?.email || `User ${user?.userId || user?.id || ""}`
+  )
+    .trim()
+    .replace(/\s+/g, " ");
+
+  return raw.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 
 const leadsAPI = {
   getAll: async () => {
@@ -56,11 +67,6 @@ const leadsAPI = {
     return response.data;
   },
 
-  updateStatus: async (leadId, status) => {
-    const response = await apiClient.put(`/Leads/${leadId}/status`, { status });
-    return response.data;
-  },
-
   assignLead: async (leadId, userId) => {
     const response = await apiClient.put(`/Leads/assign/${leadId}`, null, {
       params: { userId },
@@ -68,13 +74,37 @@ const leadsAPI = {
     return response.data;
   },
 
-  getSalesUsers: async () => {
-    const response = await apiClient.get("/users");
-    const users = Array.isArray(response.data?.users) ? response.data.users : Array.isArray(response.data) ? response.data : [];
-    return users.filter((user) => {
-      const roles = Array.isArray(user.roles) ? user.roles : user.role ? [user.role] : [];
-      return roles.some((role) => String(role).toLowerCase() === "sales user");
+  bulkUpdateStatus: async (ids, status) => {
+    const response = await apiClient.put("/Leads/bulk/status", {
+      ids,
+      status,
     });
+    return response.data;
+  },
+
+  bulkDelete: async (ids) => {
+    const response = await apiClient.delete("/Leads/bulk", {
+      data: { ids },
+    });
+    return response.data;
+  },
+
+  getSalesUsers: async () => {
+    const data = await getUsers({ page: 1, pageSize: 200 });
+    const users = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.users)
+        ? data.users
+        : [];
+    return users
+      .filter((user) => {
+        const roles = Array.isArray(user.roles) ? user.roles : user.role ? [user.role] : [];
+        return roles.some((role) => String(role).trim().toLowerCase() === "sales user");
+      })
+      .map((user) => ({
+        ...user,
+        name: formatUserName(user),
+      }));
   },
 
   convertToDeal: async (id) => {
@@ -128,3 +158,4 @@ const leadsAPI = {
 };
 
 export default leadsAPI;
+
