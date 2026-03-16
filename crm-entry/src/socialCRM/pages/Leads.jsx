@@ -411,6 +411,7 @@ useEffect(() => {
     const rows = exportLeads.map(l => {
       const row = {
         Name: l.name || "",
+        Platform: l.platform || "Facebook",
         Email: l.email || "",
         Phone: l.phone || "",
         Status: l.status || "",
@@ -879,7 +880,7 @@ useEffect(() => {
                         />
                       </th>
                     )}
-                    {["Name", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map((h) => (
+                    {["Name", "Platform", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -888,14 +889,14 @@ useEffect(() => {
                   {loading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i} className="animate-pulse">
-                        <td colSpan={isSelectMode ? 9 : 8} className="px-4 py-4">
+                        <td colSpan={isSelectMode ? 10 : 9} className="px-4 py-4">
                           <div className="h-4 bg-gray-100 rounded w-full" />
                         </td>
                       </tr>
                     ))
                   ) : paginatedLeads.length === 0 ? (
                     <tr>
-                      <td colSpan={isSelectMode ? 9 : 8} className="text-center py-16 text-gray-400">
+                      <td colSpan={isSelectMode ? 10 : 9} className="text-center py-16 text-gray-400">
                         <FaUsers className="w-8 h-8 mx-auto mb-3 opacity-30" />
                         <p className="text-sm">No leads found</p>
                         <p className="text-xs mt-1">Adjust your filters or search query.</p>
@@ -925,7 +926,33 @@ useEffect(() => {
                             </div>
                           </div>
                         </td>
-                        
+
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border w-fit
+                              ${l.platform === "Instagram" ? "bg-pink-50 text-pink-600 border-pink-200" :
+                                l.platform === "LinkedIn" ? "bg-sky-50 text-sky-700 border-sky-200" :
+                                "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                              {l.platform || "Facebook"}
+                            </span>
+                            {l.leadSource && (
+                              <span className="text-[9px] text-gray-400 px-1">
+                                {l.leadSource === "WebhookRealtime" ? "⚡ Webhook" :
+                                 l.leadSource === "ManualSync" ? "🔄 Synced" :
+                                 l.leadSource}
+                              </span>
+                            )}
+                            {l.qualityScore > 0 && (
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded w-fit
+                                ${l.qualityScore >= 70 ? "bg-green-100 text-green-700" :
+                                  l.qualityScore >= 40 ? "bg-yellow-100 text-yellow-700" :
+                                  "bg-red-100 text-red-600"}`}>
+                                {l.qualityGrade || (l.qualityScore >= 70 ? "A" : l.qualityScore >= 40 ? "B" : "C")} ({l.qualityScore})
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
                         <td className="px-4 py-3">
                           {l.email && <p className="text-xs text-indigo-600 font-medium truncate max-w-[150px]">{l.email}</p>}
                           {l.phone && <p className="text-xs text-gray-500">{l.phone}</p>}
@@ -1032,9 +1059,26 @@ useEffect(() => {
                       )}
                       <div className="flex items-center gap-3 mb-3">
                          <Avatar name={l.name || "?"} />
-                         <div className={isSelectMode ? "pr-6" : ""}>
+                         <div className={`flex-1 min-w-0 ${isSelectMode ? "pr-6" : ""}`}>
                             <p className="text-sm font-semibold text-gray-800 truncate">{l.name || "—"}</p>
-                            <p className="text-xs text-gray-400">ID #{l.id}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-xs text-gray-400">ID #{l.id}</p>
+                              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border
+                                ${l.platform === "Instagram" ? "bg-pink-50 text-pink-600 border-pink-200" :
+                                  l.platform === "LinkedIn" ? "bg-sky-50 text-sky-700 border-sky-200" :
+                                  "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                                {l.platform || "Facebook"}
+                              </span>
+                              {l.qualityScore > 0 && (
+                                <span className={`text-[8px] font-bold px-1 py-0.5 rounded
+                                  ${l.qualityScore >= 70 ? "bg-green-100 text-green-700" :
+                                    l.qualityScore >= 40 ? "bg-yellow-100 text-yellow-700" :
+                                    "bg-red-100 text-red-600"}`}>
+                                  {l.qualityGrade || "?"} ({l.qualityScore})
+                                </span>
+                              )}
+                              </span>
+                            </div>
                          </div>
                       </div>
                       {l.email && <p className="text-xs text-indigo-600 font-medium truncate mb-1">{l.email}</p>}

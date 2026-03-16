@@ -152,10 +152,10 @@ export default function Dashboard() {
     if (!acc) return null;
 
     // Look up from the analytics pipeline channel metrics
-    const ch = channelMetrics.find(
-      c => c.accountId === acc.pageIdentifier ||
-           c.platform?.toLowerCase() === platform.toLowerCase()
-    );
+    // Priority: exact accountId match, then platform match as fallback
+    const ch =
+      channelMetrics.find(c => c.accountId === acc.pageIdentifier) ??
+      channelMetrics.find(c => c.platform?.toLowerCase() === platform.toLowerCase());
 
     return {
       acc,

@@ -7,8 +7,9 @@ export const getLeadForms = async (pageId) => {
   return res.data || [];
 };
 
-export const syncLeadsByForm = async (formId) => {
-  const res = await api.post(`/facebook/leads/forms/${formId}/sync`);
+export const syncLeadsByForm = async (formId, platform) => {
+  const params = platform ? { platform } : {};
+  const res = await api.post(`/facebook/leads/forms/${formId}/sync`, null, { params });
   return res.data;
 };
 
