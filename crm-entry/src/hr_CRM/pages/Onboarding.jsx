@@ -729,11 +729,12 @@
 
 
 import React, { useState, useEffect, useMemo } from "react";
-import { 
-  Plus, X, Upload, UserCheck, Trash2, Loader2, Eye, 
-  Briefcase, Calendar, Fingerprint, Home, Landmark, AlertTriangle, Search, CheckCircle2, Users
+import {
+  Plus, X, Upload, UserCheck, Trash2, Loader2, Eye,
+  Briefcase, Calendar, Fingerprint, Home, Landmark, AlertTriangle, Search, CheckCircle2, Users, Link2, Copy
 } from "lucide-react";
 import { onboardingApi } from "../api/onboarding.api";
+import { onboardingInviteApi } from "../api/onboardingInvite.api";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 
@@ -746,6 +747,12 @@ export default function Onboarding() {
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [confirm, setConfirm] = useState({ show: false, title: "", message: "", onConfirm: null });
+
+  // --- INVITE MODAL STATE ---
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ employeeName: "", employeeEmail: "" });
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteResult, setInviteResult] = useState(null);
 
   // --- 📝 STATE: ALL SWAGGER FIELDS INCLUDED ---
   const [formData, setFormData] = useState({
@@ -810,7 +817,26 @@ export default function Onboarding() {
     finally { setSubmitting(false); }
   };
 
-  const filteredData = data.filter(emp => 
+  const handleGenerateInvite = async () => {
+    if (!inviteForm.employeeName.trim() || !inviteForm.employeeEmail.trim()) {
+      toast.error("Please fill both fields");
+      return;
+    }
+    try {
+      setInviteLoading(true);
+      const res = await onboardingInviteApi.generate({
+        employeeName: inviteForm.employeeName,
+        employeeEmail: inviteForm.employeeEmail,
+      });
+      setInviteResult(res);
+    } catch {
+      toast.error("Failed to generate invite link");
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const filteredData = data.filter(emp =>
     emp.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     emp.employeeOnboardingId?.toString().includes(searchTerm)
   );
@@ -847,9 +873,14 @@ export default function Onboarding() {
             <input type="text" placeholder="SEARCH EMPLOYEE..." onChange={(e) => setSearchTerm(e.target.value)} className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-md pl-6 pr-2 py-1 text-[9px] font-black outline-none w-48 uppercase text-[var(--text-main)] focus:border-indigo-500 transition-all" />
           </div>
         </div>
-        <button onClick={() => { setFormPage(1); setShowModal(true); }} className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-[10px] font-black uppercase shadow-md active:scale-95 flex items-center gap-2">
-          <Plus size={14} strokeWidth={3} /> Add New Hire
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setInviteForm({ employeeName: "", employeeEmail: "" }); setInviteResult(null); setShowInviteModal(true); }} className="bg-[var(--bg-card)] border border-indigo-500/40 text-indigo-500 px-5 py-2 rounded-lg text-[10px] font-black uppercase shadow-sm active:scale-95 flex items-center gap-2 hover:bg-indigo-500/10 transition-all">
+            <Link2 size={14} strokeWidth={3} /> Invite
+          </button>
+          <button onClick={() => { setFormPage(1); setShowModal(true); }} className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-[10px] font-black uppercase shadow-md active:scale-95 flex items-center gap-2">
+            <Plus size={14} strokeWidth={3} /> Add New Hire
+          </button>
+        </div>
       </div>
 
       {/* MAIN TABLE */}
@@ -926,6 +957,96 @@ export default function Onboarding() {
 
               <div className="px-4 py-2 border-t border-[var(--border-color)] bg-[var(--bg-body)] flex justify-end">
                 <button onClick={() => setSelectedRecord(null)} className="px-6 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-lg shadow-md active:scale-95 transition-all">Close Dossier</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* INVITE MODAL */}
+      <AnimatePresence>
+        {showInviteModal && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-[var(--bg-card)] w-full max-w-sm rounded-2xl border border-[var(--border-color)] shadow-2xl overflow-hidden">
+              <div className="px-5 py-4 bg-[var(--bg-body)] border-b border-[var(--border-color)] flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Link2 size={14} className="text-indigo-500" />
+                  <h2 className="text-[11px] font-black uppercase tracking-widest text-[var(--text-main)]">Generate Invite Link</h2>
+                </div>
+                <button onClick={() => setShowInviteModal(false)}><X size={16} className="text-slate-400 hover:text-rose-500" /></button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {!inviteResult ? (
+                  <>
+                    <div className="space-y-3">
+                      <div className="flex flex-col gap-0.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Employee Name</label>
+                        <input
+                          type="text"
+                          value={inviteForm.employeeName}
+                          onChange={e => setInviteForm(p => ({ ...p, employeeName: e.target.value }))}
+                          placeholder="Enter name..."
+                          className="w-full px-3 py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-bold outline-none text-[var(--text-main)] focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-600"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Employee Email</label>
+                        <input
+                          type="text"
+                          value={inviteForm.employeeEmail}
+                          onChange={e => setInviteForm(p => ({ ...p, employeeEmail: e.target.value }))}
+                          placeholder="Enter email..."
+                          className="w-full px-3 py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-bold outline-none text-[var(--text-main)] focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-600"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleGenerateInvite}
+                      disabled={inviteLoading}
+                      className="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-md disabled:opacity-50 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      {inviteLoading ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />}
+                      {inviteLoading ? "Generating..." : "Generate Link"}
+                    </button>
+                  </>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+                      <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1">Link Generated!</p>
+                      <p className="text-[9px] font-bold text-slate-500 uppercase">{inviteResult.message}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Shareable Link</label>
+                      <div className="flex items-center gap-2 p-2 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl">
+                        <p className="flex-1 text-[9px] font-bold text-indigo-500 truncate">{inviteResult.shareableLink}</p>
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(inviteResult.shareableLink); toast.success("Link copied!"); }}
+                          className="p-1 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-500 hover:bg-indigo-500/20 transition-all"
+                        >
+                          <Copy size={12} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-lg">
+                        <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Employee</p>
+                        <p className="text-[9px] font-black text-[var(--text-main)] truncate">{inviteResult.employeeName}</p>
+                      </div>
+                      <div className="p-2 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-lg">
+                        <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Expires</p>
+                        <p className="text-[9px] font-black text-[var(--text-main)] truncate">{inviteResult.expiresAt?.split('T')[0]}</p>
+                      </div>
+                    </div>
+                    <p className="text-[8px] font-bold text-slate-400 text-center uppercase tracking-widest">{inviteResult.note}</p>
+                    <button
+                      onClick={() => { setInviteResult(null); setInviteForm({ employeeName: "", employeeEmail: "" }); }}
+                      className="w-full py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] text-slate-400 text-[9px] font-black uppercase rounded-xl hover:border-indigo-500/30 transition-all"
+                    >
+                      Generate Another
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
