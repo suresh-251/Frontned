@@ -1,3 +1,13 @@
+/* Animated indicator for collapsed sidebar nav */
+.social-sidebar-shell.sidebar-collapsed .animated-nav-indicator {
+  transition: top var(--sidebar-indicator-duration) var(--sidebar-indicator-easing);
+}
+
+.social-sidebar-shell.sidebar-expanded .animated-nav-indicator-expanded {
+  transition:
+    top var(--sidebar-indicator-duration) var(--sidebar-indicator-easing),
+    height var(--sidebar-indicator-duration) var(--sidebar-indicator-easing);
+}
 /* ============================================
    SOCIAL CRM - MINIMAL CUSTOM STYLES
    Using Tailwind for most styling
@@ -5,6 +15,68 @@
 
 .social-crm-root {
   min-height: 100vh;
+}
+
+.social-shell-header {
+  height: 60px;
+}
+
+.social-sidebar-shell {
+  --sidebar-indicator-duration: 400ms;
+  --sidebar-indicator-easing: cubic-bezier(0.16, 1, 0.3, 1);
+  contain: layout paint;
+  will-change: width;
+  transition:
+    width 560ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 180ms ease;
+}
+
+.social-sidebar-copy,
+.social-sidebar-label {
+  overflow: hidden;
+  white-space: nowrap;
+  will-change: max-width, opacity, transform;
+  transform-origin: left center;
+  transition:
+    max-width 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 260ms ease,
+    transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.social-sidebar-shell.sidebar-expanded .social-sidebar-copy,
+.social-sidebar-shell.sidebar-expanded .social-sidebar-label {
+  transition-delay: 80ms, 120ms, 120ms;
+}
+
+.social-sidebar-shell.sidebar-collapsed .social-sidebar-copy,
+.social-sidebar-shell.sidebar-collapsed .social-sidebar-label {
+  transition-delay: 0ms, 0ms, 0ms;
+}
+
+.social-sidebar-copy.is-expanded {
+  max-width: 140px;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.social-sidebar-copy.is-collapsed {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+}
+
+.social-sidebar-label.is-expanded {
+  max-width: 120px;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.social-sidebar-label.is-collapsed {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  pointer-events: none;
 }
 
 /* Any additional custom styles specific to social CRM can go here */
