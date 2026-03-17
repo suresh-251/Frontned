@@ -92,6 +92,15 @@
   }
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes shimmer {
   0% {
     background-position: -1000px 0;
@@ -214,3 +223,8 @@ button, a, input, select {
   animation: slideInRight 0.3s ease-out;
 }
 
+
+.sales-crm-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}

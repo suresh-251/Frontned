@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import api from "../api/apiClient";
 import { BASE_URL } from "../api/apiClient";
 import { useBrand } from "../context/BrandContext";
 import { connectPlatform } from "../api/auth.api";
+import { reschedulePost } from "../api/unified.post.api";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const POST_TYPES = [
@@ -21,11 +22,11 @@ const PLATFORM_META = {
   LinkedIn:  { color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-200", badge: "bg-indigo-100 text-indigo-700", icon: "LI", label: "LinkedIn Pages"    },
 };
 
-// Tabs: Published first, then Scheduled, then Failed
+// Tabs: Published, Scheduled, Drafted  (Failed posts are visible inside Published with red highlight)
 const STATUS_TABS = [
-  { key: "completed", label: "Published", badge: "bg-green-100 text-green-700" },
-  { key: "scheduled", label: "Scheduled", badge: "bg-blue-100 text-blue-700"   },
-  { key: "failed",    label: "Failed",    badge: "bg-red-100 text-red-700"     },
+  { key: "completed", label: "Published", badge: "bg-green-100 text-green-700",  icon: "published", iconColor: "text-green-600" },
+  { key: "scheduled", label: "Scheduled", badge: "bg-blue-100 text-blue-700",    icon: "scheduled", iconColor: "text-blue-600" },
+  { key: "drafted",   label: "Drafted",   badge: "bg-yellow-100 text-yellow-700",icon: "drafted",   iconColor: "text-yellow-600" },
 ];
 
 const PLATFORM_COLORS = {
@@ -34,8 +35,38 @@ const PLATFORM_COLORS = {
   LinkedIn:  "bg-indigo-100 text-indigo-700",
 };
 
+const PLATFORM_FILTER_OPTIONS = [
+  { key: "All",       label: "All",       text: "text-slate-600",  border: "border-slate-300",  fill: "bg-slate-600" },
+  { key: "Instagram", label: "Instagram", text: "text-pink-600",   border: "border-pink-300",   fill: "bg-gradient-to-r from-orange-500 to-pink-500" },
+  { key: "Facebook",  label: "Facebook",  text: "text-blue-600",   border: "border-blue-300",   fill: "bg-blue-600" },
+  { key: "LinkedIn",  label: "LinkedIn",  text: "text-purple-600", border: "border-purple-300", fill: "bg-purple-600" },
+];
+
+const POST_SORT_OPTIONS = [
+  { key: "newest", label: "Newest First" },
+  { key: "oldest", label: "Oldest First" },
+  { key: "reach_desc", label: "Reach: High to Low" },
+  { key: "reach_asc", label: "Reach: Low to High" },
+  { key: "platform", label: "Platform (A-Z)" },
+  { key: "type", label: "Post Type (A-Z)" },
+];
+
+const SCHEDULED_SORT_OPTIONS = [
+  { key: "newest", label: "Latest Scheduled" },
+  { key: "oldest", label: "Earliest Scheduled" },
+  { key: "platform", label: "Platform (A-Z)" },
+  { key: "type", label: "Post Type (A-Z)" },
+];
+
+const DRAFT_SORT_OPTIONS = [
+  { key: "newest", label: "Recently Saved" },
+  { key: "oldest", label: "Oldest Saved" },
+  { key: "platform", label: "Platform (A-Z)" },
+  { key: "type", label: "Post Type (A-Z)" },
+];
+
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const DAY_NAMES   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DAY_NAMES   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const normPlatform = (p) => { const m = { facebook:"Facebook", instagram:"Instagram", linkedin:"LinkedIn" }; return m[(p??"").toLowerCase()] ?? p; };
@@ -52,6 +83,51 @@ function parseResults(raw) {
   if (!raw) return [];
   try { return JSON.parse(raw) ?? []; } catch { return []; }
 }
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function parseDraftList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+
+  const candidates = [
+    payload.items,
+    payload.posts,
+    payload.drafts,
+    payload.data,
+    payload.result,
+    payload.data?.items,
+    payload.data?.posts,
+    payload.data?.drafts,
+    payload.result?.items,
+    payload.result?.posts,
+    payload.result?.drafts,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+}
+
+function getPostPlatforms(post = {}) {
+  const fromExplicit = parsePlatforms(post.platforms).map(normPlatform).filter(Boolean);
+  const fromResults = parseResults(post.postResultsJson)
+    .map(r => normPlatform(r.platform || (r.accountId || "").split("_")[0]))
+    .filter(Boolean);
+  const fromTargets = parseAccountIds(post.targetAccountIds)
+    .map(id => normPlatform((id || "").split("_")[0]))
+    .filter(Boolean);
+  return [...new Set([...fromExplicit, ...fromResults, ...fromTargets])];
+}
+function getDraftPlatforms(draft = {}) {
+  const accountIds = parseAccountIds(draft.targetAccountIds);
+  return [...new Set(
+    accountIds
+      .map(id => normPlatform((id || "").split("_")[0]))
+      .filter(Boolean)
+  )];
+}
 function fmtLocal(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("en-IN", {
@@ -62,13 +138,99 @@ function fmtLocal(iso) {
 function getPostDate(post) { return post.scheduledAt || post.processedAt || post.createdAt; }
 
 function getCalendarDays(year, month) {
-  const firstDay    = new Date(year, month, 1).getDay();
+  // Monday-first grid to match the schedule view style.
+  const firstDay    = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const days = [];
   for (let i = 0; i < firstDay; i++) days.push(null);
   for (let i = 1; i <= daysInMonth; i++) days.push(i);
   while (days.length % 7 !== 0) days.push(null);
   return days;
+}
+
+function getISOWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+function getPostReach(post = {}) {
+  return parseResults(post.postResultsJson).reduce((sum, result) => sum + Number(result?.reach ?? result?.Reach ?? 0), 0);
+}
+
+function getPostTimeValue(post) {
+  const ts = new Date(getPostDate(post)).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function getDraftTimeValue(draft) {
+  const ts = new Date(draft.updatedAt || draft.createdAt || 0).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function sortPosts(posts, sortKey) {
+  return [...posts].sort((a, b) => {
+    if (sortKey === "oldest") {
+      return getPostTimeValue(a) - getPostTimeValue(b);
+    }
+    if (sortKey === "reach_desc") {
+      return getPostReach(b) - getPostReach(a);
+    }
+    if (sortKey === "reach_asc") {
+      return getPostReach(a) - getPostReach(b);
+    }
+    if (sortKey === "platform") {
+      const aPlatform = getPostPlatforms(a)[0] || "";
+      const bPlatform = getPostPlatforms(b)[0] || "";
+      return aPlatform.localeCompare(bPlatform) || (getPostTimeValue(b) - getPostTimeValue(a));
+    }
+    if (sortKey === "type") {
+      return (a.postType || "").localeCompare(b.postType || "") || (getPostTimeValue(b) - getPostTimeValue(a));
+    }
+    return getPostTimeValue(b) - getPostTimeValue(a);
+  });
+}
+
+function sortDrafts(drafts, sortKey) {
+  return [...drafts].sort((a, b) => {
+    if (sortKey === "oldest") {
+      return getDraftTimeValue(a) - getDraftTimeValue(b);
+    }
+    if (sortKey === "platform") {
+      const aPlatform = getDraftPlatforms(a)[0] || "";
+      const bPlatform = getDraftPlatforms(b)[0] || "";
+      return aPlatform.localeCompare(bPlatform) || (getDraftTimeValue(b) - getDraftTimeValue(a));
+    }
+    if (sortKey === "type") {
+      return (a.postType || a.mode || "").localeCompare(b.postType || b.mode || "") || (getDraftTimeValue(b) - getDraftTimeValue(a));
+    }
+    return getDraftTimeValue(b) - getDraftTimeValue(a);
+  });
+}
+
+function StatusTabIcon({ type, cls = "w-4 h-4" }) {
+  if (type === "published") return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+  if (type === "scheduled") return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+  if (type === "drafted") return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  );
+  return (
+    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01m8.99-4a9 9 0 11-17.98 0 9 9 0 0117.98 0z" />
+    </svg>
+  );
 }
 
 // ── Platform SVG ───────────────────────────────────────────────────────────────
@@ -121,19 +283,31 @@ function platformFromUrl(url = "") {
   return "";
 }
 
+// Normalise a StoredPostResult to always use camelCase keys.
+// Old records were serialised with PascalCase; new ones use camelCase.
+function normResult(r) {
+  return {
+    accountId:   r.accountId   ?? r.AccountId   ?? "",
+    accountName: r.accountName ?? r.AccountName ?? "",
+    platform:    r.platform    ?? r.Platform    ?? "",
+    postId:      r.postId      ?? r.PostId      ?? "",
+    viewUrl:     r.viewUrl     ?? r.ViewUrl     ?? r.viewPostUrl ?? r.ViewPostUrl ?? "",
+    success:     r.success     ?? r.Success     ?? false,
+    reach:       r.reach       ?? r.Reach       ?? 0,
+  };
+}
+
 // Build a best-effort platform URL when viewUrl is absent (older posts)
 function buildFallbackUrl(r) {
   const p  = (r.platform || "").toLowerCase();
-  const id = r.postId || r.platformPostId || "";
+  const id = r.postId || "";
   if (!id) return null;
   if (p === "facebook") {
-    // postId can be "{pageId}_{objectId}" or just "{objectId}"
     if (id.includes("_")) {
       const [pageId, objectId] = id.split("_");
       return `https://www.facebook.com/${pageId}/posts/${objectId}`;
     }
-    const acct = r.accountId || "";
-    return `https://www.facebook.com/${acct}/posts/${id}`;
+    return `https://www.facebook.com/${r.accountId || ""}/posts/${id}`;
   }
   if (p === "instagram") return `https://www.instagram.com/p/${id}/`;
   if (p === "linkedin")  return `https://www.linkedin.com/feed/update/${encodeURIComponent(id)}`;
@@ -141,26 +315,26 @@ function buildFallbackUrl(r) {
 }
 
 // Build a view link object from a StoredPostResult, always attempting a URL
-function buildViewLink(r) {
-  const url = r.viewUrl || r.viewPostUrl || buildFallbackUrl(r);
+function buildViewLink(raw) {
+  const r   = normResult(raw);
+  const url = r.viewUrl || buildFallbackUrl(r);
   if (!url) return null;
   return {
     url,
-    platform:    r.platform || platformFromUrl(url) || normPlatform((r.accountId || "").split("_")[0]),
+    platform:    r.platform || platformFromUrl(url) || normPlatform(r.accountId.split("_")[0]),
     accountName: r.accountName || r.accountId || "",
   };
 }
 
 function PostCard({ post, onEdit, onDelete }) {
   const platforms    = parsePlatforms(post.platforms);
-  const results      = parseResults(post.postResultsJson);
+  const results      = parseResults(post.postResultsJson).map(normResult);
   const successResults = results.filter(r => r.success);
   const successCount   = successResults.length;
   const totalReach     = results.reduce((s, r) => s + (r.reach ?? 0), 0);
 
   // Build view links for ALL success results — always try to construct a URL
   const viewLinks = successResults.map(buildViewLink).filter(Boolean);
-
   const isImage = ["Image","Carousel"].includes(post.postType);
   const isVideo = ["Video","Reel","Story"].includes(post.postType);
   const hasMedia = post.hasMedia && (isImage || isVideo);
@@ -170,7 +344,7 @@ function PostCard({ post, onEdit, onDelete }) {
   return (
     <div className={`bg-white rounded-xl border border-gray-200 shadow-sm flex overflow-hidden border-l-4 ${statusColor} hover:shadow-md transition-shadow`}>
       {/* Thumbnail */}
-      <div className="flex-shrink-0 w-24 h-24 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
+      <div className="shrink-0 w-24 h-24 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
         {hasMedia ? (
           <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-24 h-24" />
         ) : (
@@ -247,7 +421,7 @@ function PostCard({ post, onEdit, onDelete }) {
                   )}
                 </div>
                 <a href={link.url} target="_blank" rel="noopener noreferrer"
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors">
+                  className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors">
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
@@ -290,7 +464,110 @@ function PostCard({ post, onEdit, onDelete }) {
 }
 
 // ── Scheduled Card ─────────────────────────────────────────────────────────────
-function ScheduledCard({ post, cancellingId, onCancel }) {
+function ScheduledCard({ post, cancellingId, onCancel, onReschedule }) {
+  const platforms = parsePlatforms(post.platforms);
+  const accs      = parseAccountIds(post.targetAccountIds);
+  const hasMedia  = post.hasMedia;
+  const isImage   = ["Image","Carousel"].includes(post.postType);
+  const isVideo   = ["Video","Reel","Story"].includes(post.postType);
+
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [newDate, setNewDate]               = useState("");
+  const [rescheduling, setRescheduling]     = useState(false);
+  const [rescheduleErr, setRescheduleErr]   = useState("");
+
+  const minDateTime = (() => {
+    const d = new Date(Date.now() + 2 * 60000);
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
+
+  const handleReschedule = async () => {
+    if (!newDate) { setRescheduleErr("Pick a new date/time"); return; }
+    setRescheduling(true); setRescheduleErr("");
+    try {
+      await onReschedule(post.id, new Date(newDate).toISOString());
+      setShowReschedule(false); setNewDate("");
+    } catch (e) {
+      setRescheduleErr(e.message || "Failed to reschedule");
+    } finally {
+      setRescheduling(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden border-l-4 border-l-blue-400 hover:shadow-md transition-shadow">
+      <div className="flex">
+        <div className="shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
+          {hasMedia && (isImage || isVideo) ? (
+            <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-20 h-20" />
+          ) : (
+            <span className="text-2xl">
+              {post.postType === "Text" ? "📝" : post.postType === "Document" ? "📄" : "🖼️"}
+            </span>
+          )}
+        </div>
+        <div className="flex-1 py-3 pr-3 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{post.postType}</span>
+            {platforms.map(p => (
+              <span key={p} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PLATFORM_COLORS[p] ?? "bg-gray-100 text-gray-600"}`}>
+                <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p.slice(0,2)}
+              </span>
+            ))}
+            <span className="ml-auto text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">⏰ Scheduled</span>
+          </div>
+          <p className="text-sm text-gray-700 mt-1.5 line-clamp-2 leading-snug">
+            {post.content || <span className="italic text-gray-400">No caption</span>}
+          </p>
+          <div className="flex items-center justify-between mt-2 gap-2 flex-wrap">
+            <span className="text-[11px] text-gray-400">
+              📅 {fmtLocal(post.scheduledAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => { setShowReschedule(v => !v); setRescheduleErr(""); }}
+                className="px-2.5 py-1 text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                🕐 Reschedule
+              </button>
+              <button onClick={() => onCancel(post.id)} disabled={cancellingId === post.id}
+                className="px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
+                {cancellingId === post.id ? "Cancelling…" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Inline reschedule panel */}
+      {showReschedule && (
+        <div className="border-t border-blue-100 bg-blue-50 px-4 py-3">
+          <p className="text-xs font-semibold text-blue-700 mb-2">Pick a new date &amp; time</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="datetime-local"
+              min={minDateTime}
+              value={newDate}
+              onChange={e => setNewDate(e.target.value)}
+              className="px-3 py-1.5 border border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+            />
+            <button onClick={handleReschedule} disabled={rescheduling || !newDate}
+              className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 transition-colors">
+              {rescheduling ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => { setShowReschedule(false); setRescheduleErr(""); setNewDate(""); }}
+              className="px-3 py-1.5 text-xs text-gray-500 hover:bg-blue-100 rounded-lg transition-colors">
+              Cancel
+            </button>
+          </div>
+          {rescheduleErr && <p className="text-xs text-red-600 mt-1">⚠ {rescheduleErr}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Draft Card ─────────────────────────────────────────────────────────────────
+function DraftCard({ post, onDelete, onEdit, isDeleteConfirmOpen, onCancelDelete, onConfirmDelete, deleteLoading }) {
   const platforms = parsePlatforms(post.platforms);
   const accs      = parseAccountIds(post.targetAccountIds);
   const hasMedia  = post.hasMedia;
@@ -298,8 +575,8 @@ function ScheduledCard({ post, cancellingId, onCancel }) {
   const isVideo   = ["Video","Reel","Story"].includes(post.postType);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex overflow-hidden border-l-4 border-l-blue-400 hover:shadow-md transition-shadow">
-      <div className="flex-shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
+    <div className="relative flex h-full overflow-visible rounded-xl border border-gray-200 border-l-4 border-l-yellow-400 bg-white shadow-sm transition-shadow hover:shadow-md">
+      <div className="shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
         {hasMedia && (isImage || isVideo) ? (
           <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-20 h-20" />
         ) : (
@@ -308,7 +585,7 @@ function ScheduledCard({ post, cancellingId, onCancel }) {
           </span>
         )}
       </div>
-      <div className="flex-1 py-3 pr-3 min-w-0">
+      <div className="flex-1 py-2.5 pr-3 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{post.postType}</span>
           {platforms.map(p => (
@@ -316,19 +593,61 @@ function ScheduledCard({ post, cancellingId, onCancel }) {
               <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p.slice(0,2)}
             </span>
           ))}
-          <span className="ml-auto text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">⏰ Scheduled</span>
+          <span className="text-[10px] font-semibold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">✏️ Draft</span>
         </div>
-        <p className="text-sm text-gray-700 mt-1.5 line-clamp-2 leading-snug">
-          {post.content || <span className="italic text-gray-400">No caption</span>}
+        <p className="text-sm text-gray-700 mt-1 line-clamp-2 leading-snug">
+          {post.content || <span className="italic text-gray-400">No content yet…</span>}
         </p>
-        <div className="flex items-center justify-between mt-2">
+        <div className="mt-1.5 flex items-end justify-between gap-2">
           <span className="text-[11px] text-gray-400">
-            📅 {fmtLocal(post.scheduledAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
+            💾 Saved {fmtLocal(post.createdAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
           </span>
-          <button onClick={() => onCancel(post.id)} disabled={cancellingId === post.id}
-            className="px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
-            {cancellingId === post.id ? "Cancelling…" : "Cancel"}
-          </button>
+          <div className="relative ml-auto flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              title="Edit draft"
+              onClick={() => onEdit(post)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              title="Delete draft"
+              onClick={() => onDelete(post)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-500 transition-colors hover:bg-red-100 hover:text-red-600"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+
+            {isDeleteConfirmOpen && (
+              <div className="absolute right-0 bottom-9 z-30 w-56 rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_14px_30px_rgba(15,23,42,0.16)]">
+                <p className="text-sm font-bold text-gray-900">Delete draft?</p>
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={onCancelDelete}
+                    disabled={deleteLoading}
+                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    No
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onConfirmDelete}
+                    disabled={deleteLoading}
+                    className="rounded-xl border border-rose-500 bg-linear-to-b from-rose-500 to-red-600 px-3 py-2 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_6px_14px_rgba(239,68,68,0.28)] transition-all hover:brightness-105 disabled:opacity-60"
+                  >
+                    {deleteLoading ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -400,7 +719,7 @@ function PostPreview({ platform, content, mode, brandName, filePreviewUrls }) {
       </div>
       <div className="p-2.5">
         <div className="flex items-center gap-1.5 mb-1.5">
-          <div className="w-5 h-5 bg-gradient-to-br from-pink-500 to-purple-600 rounded-full" />
+          <div className="w-5 h-5 bg-linear-to-br from-pink-500 to-purple-600 rounded-full" />
           <span className="font-semibold text-gray-900 text-[10px]">{brandName || "your_brand"}</span>
         </div>
         <p className="text-gray-700 leading-relaxed line-clamp-3 text-[10px]">{content || <span className="text-gray-300">Caption will appear here…</span>}</p>
@@ -451,7 +770,7 @@ function PostPreview({ platform, content, mode, brandName, filePreviewUrls }) {
   );
 }
 
-// ── Calendar View (Meta Business Suite style) ──────────────────────────────────
+// ── Calendar View (schedule-style layout) ──────────────────────────────────────
 function CalendarPostPopover({ post, onClose }) {
   const results  = parseResults(post.postResultsJson);
   const viewLinks = results.filter(r => r.success).map(buildViewLink).filter(Boolean);
@@ -476,11 +795,16 @@ function CalendarPostPopover({ post, onClose }) {
                 <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p}
               </span>
             ))}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${post.status === "Completed" ? "bg-green-100 text-green-700" : post.status === "Scheduled" ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-600"}`}>
-              {post.status === "Completed" ? "Published" : post.status === "Scheduled" ? "Scheduled" : "Failed"}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+              post.status === "Completed" ? "bg-green-100 text-green-700" :
+              post.status === "Scheduled" ? "bg-blue-100 text-blue-700" :
+              post.status === "Draft"     ? "bg-yellow-100 text-yellow-700" :
+              "bg-red-100 text-red-600"
+            }`}>
+              {post.status === "Completed" ? "Published" : post.status === "Scheduled" ? "Scheduled" : post.status === "Draft" ? "Draft" : "Failed"}
             </span>
           </div>
-          <button onClick={onClose} className="p-0.5 hover:bg-gray-100 rounded flex-shrink-0 text-gray-400">
+          <button onClick={onClose} className="p-0.5 hover:bg-gray-100 rounded shrink-0 text-gray-400">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -500,8 +824,8 @@ function CalendarPostPopover({ post, onClose }) {
                 </svg>
               </a>
             ))}
-          </div>
-        )}
+            </div>
+          )}
       </div>
     </div>
   );
@@ -509,15 +833,17 @@ function CalendarPostPopover({ post, onClose }) {
 
 function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onSetYear, posts, tab }) {
   const days  = getCalendarDays(year, month);
+  const weeks = [];
+  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
   const today = new Date();
   const [activePost, setActivePost] = useState(null); // { postId, dayIdx }
   const [yearInput, setYearInput]   = useState(false);
   const [yearDraft, setYearDraft]   = useState(String(year));
 
   const filtered = posts.filter(p => {
-    if (tab === "scheduled") return p.status !== "Completed" && p.status !== "Failed";
-    if (tab === "completed") return p.status === "Completed";
-    if (tab === "failed")    return p.status === "Failed";
+    if (tab === "scheduled") return p.status !== "Completed" && p.status !== "Failed" && p.status !== "Draft";
+    if (tab === "completed") return p.status === "Completed" || p.status === "Failed";
+    if (tab === "drafted")   return p.status === "Draft";
     return true;
   });
 
@@ -528,137 +854,164 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
       (byDay[d.getDate()] = byDay[d.getDate()] || []).push(post);
   });
 
+  const getWeekLabel = (weekDays, weekIndex) => {
+    const firstRealDay = weekDays.find(Boolean);
+    const fallbackDay = Math.min(new Date(year, month + 1, 0).getDate(), (weekIndex * 7) + 1);
+    const labelDay = firstRealDay ?? fallbackDay;
+    return `W${getISOWeekNumber(new Date(year, month, labelDay))}`;
+  };
+
   const isToday = (day) => day && day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
   const goToday = () => { onSetYear(today.getFullYear()); };
 
   const chipColor = (status) =>
     status === "Completed" ? "bg-green-500 text-white" :
     status === "Failed"    ? "bg-red-400 text-white" :
+    status === "Draft"     ? "bg-yellow-400 text-white" :
     "bg-blue-500 text-white";
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      {/* Calendar header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white">
-        {/* Year nav */}
-        <button onClick={onPrevYear} title="Previous year" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
-          </svg>
-        </button>
-        {/* Month nav */}
-        <button onClick={onPrev} title="Previous month" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-
-        {/* Month + Year (click year to edit inline) */}
-        <div className="flex-1 flex items-center justify-center gap-2">
-          <span className="text-sm font-bold text-gray-900">{MONTH_NAMES[month]}</span>
-          {yearInput ? (
-            <form onSubmit={e => { e.preventDefault(); const y = parseInt(yearDraft); if (y >= 2000 && y <= 2100) { onSetYear(y); } setYearInput(false); }}>
-              <input autoFocus type="number" min="2000" max="2100" value={yearDraft}
-                onChange={e => setYearDraft(e.target.value)}
-                onBlur={() => setYearInput(false)}
-                className="w-20 text-center text-sm font-bold text-blue-600 border-b-2 border-blue-400 outline-none bg-transparent" />
-            </form>
-          ) : (
-            <button onClick={() => { setYearDraft(String(year)); setYearInput(true); }}
-              className="text-sm font-bold text-blue-600 hover:text-blue-800 underline-offset-2 hover:underline transition-colors">
-              {year}
-            </button>
-          )}
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-[0_18px_44px_-32px_rgba(15,23,42,0.65)] overflow-hidden">
+      <div className="border-b border-slate-200 bg-slate-50/60">
+        <div className="px-4 pt-3">
+          <span className="inline-flex items-center pb-2 text-xs font-semibold text-blue-600 border-b-2 border-blue-500">
+            Work schedules
+          </span>
         </div>
 
-        <button onClick={onNext} title="Next month" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-        <button onClick={onNextYear} title="Next year" className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M6 5l7 7-7 7" />
-          </svg>
-        </button>
+        <div className="px-4 pb-3 pt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <button onClick={onPrevYear} title="Previous year" className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button onClick={onPrev} title="Previous month" className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button onClick={goToday} className="h-8 px-3 text-xs font-semibold text-slate-600 border border-slate-200 bg-white rounded-md hover:bg-slate-100 transition-colors">
+              Today
+            </button>
+            <button onClick={onNext} title="Next month" className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <button onClick={onNextYear} title="Next year" className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M6 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
 
-        <button onClick={goToday}
-          className="ml-1 px-2.5 py-1 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
-          Today
-        </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-semibold text-slate-800">{MONTH_NAMES[month]}</span>
+            {yearInput ? (
+              <form onSubmit={e => { e.preventDefault(); const y = parseInt(yearDraft, 10); if (y >= 2000 && y <= 2100) { onSetYear(y); } setYearInput(false); }}>
+                <input autoFocus type="number" min="2000" max="2100" value={yearDraft}
+                  onChange={e => setYearDraft(e.target.value)}
+                  onBlur={() => setYearInput(false)}
+                  className="w-20 text-center text-xl font-semibold text-blue-600 border-b-2 border-blue-400 outline-none bg-transparent" />
+              </form>
+            ) : (
+              <button onClick={() => { setYearDraft(String(year)); setYearInput(true); }}
+                className="text-xl font-semibold text-slate-700 hover:text-blue-700 underline-offset-4 hover:underline transition-colors">
+                {year}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Day-of-week headers */}
-      <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50">
-        {DAY_NAMES.map(d => (
-          <div key={d} className="py-2 text-center text-[11px] font-bold text-gray-400 uppercase tracking-wider">{d}</div>
+      <div className="grid grid-cols-[56px_repeat(7,minmax(0,1fr))] border-b border-slate-200 bg-slate-50">
+        <div className="px-2 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-widest border-r border-slate-200">WK</div>
+        {DAY_NAMES.map((d) => (
+          <div key={d} className="py-2 text-center text-[11px] font-semibold text-slate-500 border-r last:border-r-0 border-slate-200 uppercase tracking-wide">{d}</div>
         ))}
       </div>
 
       {/* Day cells */}
-      <div className="grid grid-cols-7 divide-x divide-y divide-gray-100" onClick={() => setActivePost(null)}>
-        {days.map((day, i) => {
-          const dayPosts = day ? (byDay[day] || []) : [];
-          return (
-            <div key={i} className={`min-h-[110px] p-1.5 transition-colors relative
-              ${!day ? "bg-gray-50/60" : ""}
-              ${isToday(day) ? "bg-blue-50/50" : day ? "hover:bg-gray-50/80" : ""}`}>
-              {day && (
-                <>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`inline-flex w-6 h-6 items-center justify-center text-xs font-bold rounded-full
-                      ${isToday(day) ? "bg-blue-600 text-white shadow" : "text-gray-600 hover:bg-gray-200 cursor-default"}`}>
-                      {day}
-                    </span>
-                    {dayPosts.length > 0 && (
-                      <span className="text-[9px] text-gray-400 font-semibold">{dayPosts.length}</span>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    {dayPosts.slice(0, 3).map((post, j) => {
-                      const pls  = parsePlatforms(post.platforms);
-                      const time = new Date(getPostDate(post));
-                      const timeStr = time.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
-                      const isActive = activePost?.postId === post.id && activePost?.dayIdx === i;
-                      return (
-                        <div key={j} className="relative">
-                          <button
-                            onClick={e => { e.stopPropagation(); setActivePost(isActive ? null : { postId: post.id, dayIdx: i }); }}
-                            className={`w-full text-left text-[10px] px-1.5 py-1 rounded-md leading-tight truncate transition-all
-                              ${chipColor(post.status)} hover:opacity-90 shadow-sm`}>
-                            <span className="font-bold mr-0.5">{timeStr}</span>
-                            {pls[0] ? `· ${pls[0].slice(0,2)} ` : ""}
-                            {post.content?.slice(0, 22) || post.postType}
-                          </button>
-                          {isActive && (
-                            <CalendarPostPopover post={post} onClose={() => setActivePost(null)} />
-                          )}
-                        </div>
-                      );
-                    })}
-                    {dayPosts.length > 3 && (
-                      <button className="text-[10px] text-blue-500 font-semibold pl-0.5 hover:text-blue-700 text-left transition-colors">
-                        +{dayPosts.length - 3} more
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
+      <div className="divide-y divide-slate-200" onClick={() => setActivePost(null)}>
+        {weeks.map((weekDays, weekIndex) => (
+          <div key={weekIndex} className="grid grid-cols-[56px_repeat(7,minmax(0,1fr))]">
+            <div className="px-2 pt-3 text-[10px] font-semibold text-slate-400 bg-slate-50 border-r border-slate-200">
+              {getWeekLabel(weekDays, weekIndex)}
             </div>
-          );
-        })}
+
+            {weekDays.map((day, dayIndex) => {
+              const dayPosts = day ? (byDay[day] || []) : [];
+              const absoluteDayIdx = (weekIndex * 7) + dayIndex;
+              const isTodayCell = isToday(day);
+
+              return (
+                <div
+                  key={`${weekIndex}-${dayIndex}`}
+                  className={`relative min-h-32 p-2.5 transition-colors ${dayIndex !== 6 ? "border-r border-slate-200" : ""} ${!day ? "bg-slate-50/70" : isTodayCell ? "bg-slate-100" : "bg-white hover:bg-slate-50/70"}`}
+                >
+                  {day && (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-[9px] font-semibold uppercase tracking-wide ${isTodayCell ? "text-slate-500" : "text-transparent select-none"}`}>
+                          Today
+                        </span>
+                        <span className={`inline-flex min-w-6 h-6 px-1 items-center justify-center text-xs font-bold rounded-full ${isTodayCell ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-600"}`}>
+                          {day}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        {dayPosts.slice(0, 3).map((post, j) => {
+                          const pls = parsePlatforms(post.platforms);
+                          const time = new Date(getPostDate(post));
+                          const timeStr = time.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+                          const isActive = activePost?.postId === post.id && activePost?.dayIdx === absoluteDayIdx;
+
+                          return (
+                            <div key={j} className="relative">
+                              <button
+                                onClick={e => { e.stopPropagation(); setActivePost(isActive ? null : { postId: post.id, dayIdx: absoluteDayIdx }); }}
+                                className={`w-full text-left text-[10px] px-1.5 py-1 rounded-sm leading-tight truncate font-medium transition-all ${chipColor(post.status)} hover:opacity-95`}
+                              >
+                                <span className="font-bold mr-0.5">{timeStr}</span>
+                                {pls[0] ? `· ${pls[0].slice(0,2)} ` : ""}
+                                {post.content?.slice(0, 24) || post.postType}
+                              </button>
+                              {isActive && <CalendarPostPopover post={post} onClose={() => setActivePost(null)} />}
+                            </div>
+                          );
+                        })}
+
+                        {dayPosts.length > 3 && (
+                          <button className="text-[10px] text-blue-600 font-semibold hover:text-blue-700 text-left transition-colors">
+                            +{dayPosts.length - 3} more
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 px-4 py-2 border-t border-gray-100 bg-gray-50">
-        <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+      <div className="flex items-center gap-4 px-4 py-2.5 border-t border-slate-200 bg-slate-50">
+        <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
           <span className="w-3 h-3 rounded-sm bg-green-500 inline-block"></span>Published
         </span>
-        <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+        <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
           <span className="w-3 h-3 rounded-sm bg-blue-500 inline-block"></span>Scheduled
         </span>
+        <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+          <span className="w-3 h-3 rounded-sm bg-amber-400 inline-block"></span>Drafts (table only)
+        </span>
         <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
-          <span className="w-3 h-3 rounded-sm bg-red-400 inline-block"></span>Failed
+          <span className="w-3 h-3 rounded-sm bg-yellow-400 inline-block"></span>Draft
         </span>
       </div>
     </div>
@@ -666,24 +1019,38 @@ function CalendarView({ year, month, onPrev, onNext, onPrevYear, onNextYear, onS
 }
 
 // ── Compose Modal (centered) ───────────────────────────────────────────────────
-function ComposeModal({ activeBrand, onClose, onPosted }) {
+function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
   const [accounts, setAccounts]           = useState([]);
   const [accountsLoading, setALoading]    = useState(true);
-  const [selected, setSelected]           = useState(new Set());
-  const [mode, setMode]                   = useState("Text");
-  const [content, setContent]             = useState("");
+  const [selected, setSelected]           = useState(new Set(
+    resumeDraft ? parseAccountIds(resumeDraft.targetAccountIds) : []
+  ));
+  const [mode, setMode]                   = useState(resumeDraft?.postType ?? "Text");
+  const [content, setContent]             = useState(resumeDraft?.content ?? "");
   const [files, setFiles]                 = useState([]);
-  const [documentTitle, setDocTitle]      = useState("");
+  const [documentTitle, setDocTitle]      = useState(resumeDraft?.documentTitle ?? "");
   const [scheduleEnabled, setSched]       = useState(false);
   const [scheduledAt, setScheduledAt]     = useState("");
   const [posting, setPosting]             = useState(false);
+  const [savingDraft, setSavingDraft]     = useState(false);
   const [results, setResults]             = useState(null);
   const [error, setError]                 = useState("");
   const [showPreview, setShowPreview]     = useState(false);
   const [previewPlatform, setPreviewPl]   = useState("Facebook");
   const [filePreviewUrls, setPreviewUrls] = useState([]);
+  const [drafts, setDrafts]               = useState([]);
+  const [editingDraftId, setEditingDraftId] = useState(null);
+  const [draftNotice, setDraftNotice]     = useState("");
 
   const currentType = POST_TYPES.find(t => t.key === mode);
+
+  const loadDraftsFromApi = useCallback(async () => {
+    if (!activeBrand?.slug) return;
+    try {
+      const res = await api.get("/post/drafts");
+      setDrafts(parseDraftList(res.data));
+    } catch { /* silently fail */ }
+  }, [activeBrand?.slug]);
 
   useEffect(() => {
     if (!activeBrand?.slug) { setALoading(false); return; }
@@ -698,6 +1065,12 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
       .catch(() => setAccounts([]))
       .finally(() => setALoading(false));
   }, [activeBrand?.slug]);
+
+  useEffect(() => {
+    loadDraftsFromApi();
+    setEditingDraftId(null);
+    setDraftNotice("");
+  }, [loadDraftsFromApi]);
 
   useEffect(() => { setFiles([]); setPreviewUrls([]); }, [mode]);
 
@@ -728,6 +1101,54 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   })();
 
+  const resetComposer = () => {
+    setMode("Text");
+    setContent("");
+    setFiles([]);
+    setDocTitle("");
+    setSched(false);
+    setScheduledAt("");
+    setSelected(new Set());
+    setResults(null);
+    setError("");
+    setEditingDraftId(null);
+    setDraftNotice("");
+  };
+
+  const loadDraftForEdit = useCallback((draft) => {
+    setMode(draft.postType || draft.mode || "Text");
+    setContent(draft.content || "");
+    setDocTitle(draft.documentTitle || "");
+    setSched(Boolean(draft.scheduledAt));
+    setScheduledAt(draft.scheduledAt || "");
+    setSelected(new Set(parseAccountIds(draft.targetAccountIds)));
+    setFiles([]);
+    setResults(null);
+    setError("");
+    setEditingDraftId(draft.id);
+    setDraftNotice("Draft loaded. Re-upload media files if needed.");
+  }, []);
+
+  useEffect(() => {
+    if (!resumeDraft) return;
+    loadDraftForEdit(resumeDraft);
+  }, [resumeDraft, loadDraftForEdit]);
+
+  const removeDraft = async (draftId) => {
+    try {
+      await api.delete(`/post/draft/${draftId}`);
+      setDrafts(prev => prev.filter(d => d.id !== draftId));
+      onPosted?.({ draftSaved: true });
+      if (editingDraftId === draftId) {
+        setEditingDraftId(null);
+        resetComposer();
+      }
+      setDraftNotice("Draft deleted.");
+    } catch {
+      setError("Failed to delete draft.");
+    }
+  };
+
   const submit = async () => {
     if (!selected.size)                               { setError("Select at least one account"); return; }
     if (currentType?.needsMedia && !files.length)     { setError(`Select a file for ${mode} post`); return; }
@@ -751,12 +1172,55 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
         headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
       });
       setResults(res.data);
+      if (editingDraftId) {
+        try { await api.delete(`/post/draft/${editingDraftId}`); } catch { /* ok */ }
+        setDrafts(prev => prev.filter(d => d.id !== editingDraftId));
+        setEditingDraftId(null);
+      }
       if (!scheduleEnabled) { setContent(""); setFiles([]); setSelected(new Set()); }
-      onPosted?.({ scheduled: scheduleEnabled });
+      onPosted?.({ scheduled: scheduleEnabled, draftId: resumeDraft?.id });
     } catch (e) {
       setError(e.message || "Failed to post. Please try again.");
     } finally {
       setPosting(false);
+    }
+  };
+
+  const saveDraft = async () => {
+    if (!content.trim() && !files.length) { setError("Add some content before saving as draft."); return; }
+    if (!selected.size) { setError("Select the preferred social to post/schedule."); return; }
+    setSavingDraft(true); setError("");
+    const form = new FormData();
+    form.append("Type", mode);
+    form.append("Content", content || "");
+    if (editingDraftId) {
+      // Keep draft identity so backend can update instead of creating a new row.
+      form.append("DraftId", String(editingDraftId));
+      form.append("Id", String(editingDraftId));
+    }
+    selectedAccounts.forEach(a => form.append("TargetAccountIds", a.pageIdentifier));
+    [...new Set(selectedAccounts.map(a => a.platform))].forEach(p => form.append("Platforms", p));
+    files.forEach(f => form.append("MediaFiles", f));
+    if (documentTitle) form.append("DocumentTitle", documentTitle);
+    try {
+      const res = await api.post("/post/draft", form, {
+        headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
+      });
+
+      const savedId = res?.data?.id ?? res?.data?.draftId ?? res?.data?.data?.id ?? null;
+      if (editingDraftId && savedId && String(savedId) !== String(editingDraftId)) {
+        // Fallback safety: if API still created a new record, remove old one to avoid duplicates.
+        try { await api.delete(`/post/draft/${editingDraftId}`); } catch { /* ignore cleanup failure */ }
+      }
+
+      await loadDraftsFromApi();
+      onPosted?.({ draftSaved: true });
+      setDraftNotice(editingDraftId ? "Draft updated successfully." : "Draft saved successfully.");
+      setEditingDraftId(savedId ?? editingDraftId ?? null);
+    } catch (e) {
+      setError(e.message || "Failed to save draft.");
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -768,7 +1232,7 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
               <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -838,6 +1302,53 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
               )}
             </div>
 
+            {/* Drafts */}
+            <div className="bg-white rounded-xl border border-gray-200 p-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-semibold text-gray-600">Saved Drafts</span>
+                <button type="button" onClick={resetComposer}
+                  className="text-[11px] font-semibold text-gray-500 hover:text-gray-700 hover:underline">
+                  New Draft
+                </button>
+              </div>
+
+              {drafts.length === 0 ? (
+                <p className="text-[11px] text-gray-400">No drafts yet. Use Save as Draft to keep unfinished posts.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
+                  {drafts.map(draft => {
+                    const title = draft.content?.trim()
+                      ? draft.content.trim().slice(0, 56)
+                      : (draft.documentTitle?.trim() ? draft.documentTitle.trim().slice(0, 56) : `${draft.postType || draft.mode || "Text"} draft`);
+                    const isEditing = draft.id === editingDraftId;
+                    return (
+                      <div key={draft.id}
+                        className={`rounded-lg border px-2.5 py-2 flex items-center gap-2 ${isEditing ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-gray-50"}`}>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-semibold text-gray-700 truncate">{title}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {draft.postType || draft.mode || "Text"} · {fmtLocal(draft.updatedAt || draft.createdAt)}
+                          </p>
+                        </div>
+
+                        <button type="button" onClick={() => loadDraftForEdit(draft)}
+                          className={`px-2 py-1 rounded text-[10px] font-semibold ${isEditing ? "bg-blue-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-100"}`}>
+                          {isEditing ? "Editing" : "Edit"}
+                        </button>
+
+                        <button type="button" onClick={() => removeDraft(draft.id)}
+                          className="px-2 py-1 rounded text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100">
+                          Delete
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {draftNotice && <p className="text-[10px] text-blue-600 mt-2">{draftNotice}</p>}
+            </div>
+
             {/* Post type */}
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-1.5">Post Type</p>
@@ -891,12 +1402,18 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
                     className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white min-w-0" />
                 )}
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <p className="text-xs text-gray-400">{selected.size > 0 ? `${selected.size} account${selected.size > 1 ? "s" : ""} selected` : "No accounts selected"}</p>
-                <button onClick={submit} disabled={posting || !selected.size}
-                  className="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm">
-                  {posting ? (<><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>{scheduleEnabled ? "Scheduling…" : "Posting…"}</>) : scheduleEnabled ? "📅 Schedule" : "🚀 Post Now"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={saveDraft} disabled={savingDraft || posting}
+                    className="px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-xl font-medium hover:bg-yellow-100 disabled:opacity-50 transition-all text-xs">
+                    {savingDraft ? "Saving…" : "💾 Save Draft"}
+                  </button>
+                  <button onClick={submit} disabled={posting || !selected.size}
+                    className="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm">
+                    {posting ? (<><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>{scheduleEnabled ? "Scheduling…" : "Posting…"}</>) : scheduleEnabled ? "📅 Schedule" : "🚀 Post Now"}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -929,7 +1446,7 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
 
           {/* Preview panel (optional) */}
           {showPreview && (
-            <div className="w-60 border-l border-gray-200 bg-gray-50/80 p-3 overflow-y-auto flex-shrink-0">
+            <div className="w-60 border-l border-gray-200 bg-gray-50/80 p-3 overflow-y-auto shrink-0">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Preview</p>
               <div className="flex flex-wrap gap-1 mb-3">
                 {previewPlatforms.map(p => {
@@ -955,12 +1472,12 @@ function ComposeModal({ activeBrand, onClose, onPosted }) {
 // ── Post Table (Meta Business Suite style tabular view) ───────────────────────
 function PostTableRow({ post, onEdit, onDelete }) {
   const platforms  = parsePlatforms(post.platforms);
-  const [results, setResults] = useState(() => parseResults(post.postResultsJson));
+  const [results, setResults] = useState(() => parseResults(post.postResultsJson).map(normResult));
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [insightsFetched, setInsightsFetched] = useState(false);
 
   // Re-sync if parent data changes
-  useEffect(() => { setResults(parseResults(post.postResultsJson)); }, [post.postResultsJson]);
+  useEffect(() => { setResults(parseResults(post.postResultsJson).map(normResult)); }, [post.postResultsJson]);
 
   const successResults = results.filter(r => r.success);
   const totalReach = results.reduce((s, r) => s + (r.reach ?? 0), 0);
@@ -979,13 +1496,14 @@ function PostTableRow({ post, onEdit, onDelete }) {
       if (res.data?.insights) {
         setResults(prev => {
           const updated = [...prev];
-          for (const ins of res.data.insights) {
+          for (const rawIns of res.data.insights) {
+            const ins = normResult(rawIns);
             const idx = updated.findIndex(r => r.accountId === ins.accountId);
             if (idx >= 0) {
               updated[idx] = {
                 ...updated[idx],
                 reach:   ins.reach ?? updated[idx].reach,
-                viewUrl: ins.viewUrl || updated[idx].viewUrl || updated[idx].viewPostUrl,
+                viewUrl: ins.viewUrl || updated[idx].viewUrl,
               };
             }
           }
@@ -1002,7 +1520,7 @@ function PostTableRow({ post, onEdit, onDelete }) {
       {/* Thumbnail + Caption */}
       <td className="px-4 py-3">
         <div className="flex items-center gap-3 max-w-xs">
-          <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
+          <div className="shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
             {hasMedia
               ? <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-12 h-12" />
               : <div className="w-12 h-12 flex items-center justify-center text-xl">
@@ -1044,7 +1562,7 @@ function PostTableRow({ post, onEdit, onDelete }) {
           : <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">✗ Failed</span>
         }
         {post.status === "Failed" && post.errorMessage && (
-          <p className="text-[10px] text-red-400 mt-0.5 max-w-[120px] truncate" title={post.errorMessage}>{post.errorMessage}</p>
+          <p className="text-[10px] text-red-400 mt-0.5 max-w-30 truncate" title={post.errorMessage}>{post.errorMessage}</p>
         )}
       </td>
 
@@ -1058,10 +1576,10 @@ function PostTableRow({ post, onEdit, onDelete }) {
               <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline group/link">
                 <PlatformSvg p={link.platform} cls="w-3.5 h-3.5" />
-                <span className="truncate max-w-[130px]">
+                <span className="truncate max-w-32.5">
                   {link.platform}{link.accountName ? ` · ${link.accountName}` : ""}
                 </span>
-                <svg className="w-3 h-3 opacity-0 group-hover/link:opacity-70 flex-shrink-0 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3 h-3 opacity-0 group-hover/link:opacity-70 shrink-0 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
               </a>
@@ -1094,15 +1612,13 @@ function PostTableRow({ post, onEdit, onDelete }) {
 
       {/* Actions */}
       <td className="px-4 py-3">
-        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {post.status === "Completed" && (
-            <button onClick={() => onEdit(post)} title="Edit post"
-              className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 hover:text-blue-700 transition-colors">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            </button>
-          )}
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => onEdit(post)} title="Edit caption"
+            className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </button>
           <button onClick={() => onDelete(post)} title="Delete post"
             className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1142,6 +1658,81 @@ function PostTable({ posts, onEdit, onDelete }) {
   );
 }
 
+function DraftList({ drafts, onEdit, onDelete }) {
+  return (
+    <div className="space-y-2">
+      {drafts.map((draft) => {
+        const platforms = getDraftPlatforms(draft);
+        const title = draft.content?.trim()
+          ? draft.content.trim().slice(0, 160)
+          : (draft.documentTitle?.trim() ? draft.documentTitle.trim().slice(0, 160) : "Untitled draft");
+        const accountCount = parseAccountIds(draft.targetAccountIds).length;
+        const hasMedia = Array.isArray(draft.mediaFileNames) && draft.mediaFileNames.length > 0;
+
+        return (
+          <div key={draft.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                    {draft.mode || "Text"}
+                  </span>
+                  {platforms.length > 0 ? (
+                    platforms.map((platform) => (
+                      <span key={`${draft.id}-${platform}`} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PLATFORM_COLORS[platform] ?? "bg-gray-100 text-gray-600"}`}>
+                        <PlatformSvg p={platform} cls="w-2.5 h-2.5" />
+                        {platform}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">No platforms</span>
+                  )}
+                </div>
+
+                <p className="text-sm text-gray-700 line-clamp-3 leading-snug">
+                  {title}
+                </p>
+
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                  <span className="text-[11px] text-gray-400">Updated {fmtLocal(draft.updatedAt || draft.createdAt)}</span>
+                  <span className="text-[11px] text-gray-400">{accountCount} account{accountCount !== 1 ? "s" : ""}</span>
+                  {draft.scheduleEnabled && (
+                    <span className="text-[11px] text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
+                      Scheduled {fmtLocal(draft.scheduledAt)}
+                    </span>
+                  )}
+                  {hasMedia && (
+                    <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      Media re-upload needed
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onEdit(draft)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(draft.id)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function PostHistory() {
   const { activeBrand, brands, loading: brandLoading, switchBrand } = useBrand();
@@ -1157,10 +1748,21 @@ export default function PostHistory() {
 
   const [tab, setTab]             = useState("completed");
   const [viewMode, setViewMode]   = useState("table");
+  const [platformFilter, setPlatformFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("newest");
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [hoveredPlatformFilter, setHoveredPlatformFilter] = useState(null);
   const [showCompose, setCompose] = useState(false);
   const [editingPost, setEditing] = useState(null);
+  const [deletingDraft, setDeletingDraft] = useState(null);
+  const [deleteDraftLoading, setDeleteDraftLoading] = useState(false);
+  const [removingDraftId, setRemovingDraftId] = useState(null);
   const [deletingPost, setDeleting] = useState(null);
   const [deleteLoading, setDelLoad] = useState(false);
+  const sortMenuRef = useRef(null);
+  const draftItemRefs = useRef(new Map());
+  const draftPrevRectsRef = useRef(new Map());
+  const hasDraftMeasurementsRef = useRef(false);
 
   const today = new Date();
   const [calYear, setCalYear]   = useState(today.getFullYear());
@@ -1173,8 +1775,22 @@ export default function PostHistory() {
   const [historyPage, setHistoryPage]       = useState(1);
   const [historyTotal, setHistoryTotal]     = useState(0);
   const [cancellingId, setCancellingId]     = useState(null);
+  const [drafts, setDrafts]                 = useState([]);
+  const [draftsLoading, setDraftsLoad]      = useState(false);
+  const [resumingDraft, setResumingDraft]   = useState(null); // draft post to resume in ComposeModal
   const [error, setError]                   = useState("");
   const PAGE_SIZE = 20;
+
+  const openComposeForNew = () => {
+    setResumingDraft(null);
+    setCompose(true);
+  };
+
+  const setDraftItemRef = useCallback((draftId, node) => {
+    const key = String(draftId);
+    if (node) draftItemRefs.current.set(key, node);
+    else draftItemRefs.current.delete(key);
+  }, []);
 
   const loadScheduled = useCallback(async () => {
     if (!effectiveBrand?.slug) return;
@@ -1200,9 +1816,19 @@ export default function PostHistory() {
     finally { setHistLoad(false); }
   }, [effectiveBrand?.slug]);
 
-  useEffect(() => { loadScheduled(); loadHistory(1); }, [loadScheduled, loadHistory]);
+  const loadDrafts = useCallback(async () => {
+    if (!effectiveBrand?.slug) return;
+    setDraftsLoad(true);
+    try {
+      const res = await api.get("/post/drafts");
+      setDrafts(parseDraftList(res.data));
+    } catch { /* silently fail */ }
+    finally { setDraftsLoad(false); }
+  }, [effectiveBrand?.slug]);
 
-  const refresh = () => { loadScheduled(); loadHistory(historyPage); };
+  useEffect(() => { loadScheduled(); loadHistory(1); loadDrafts(); }, [loadScheduled, loadHistory, loadDrafts]);
+
+  const refresh = () => { loadScheduled(); loadHistory(historyPage); loadDrafts(); };
 
   const cancelPost = async (id) => {
     if (!window.confirm("Cancel this scheduled post?")) return;
@@ -1210,6 +1836,30 @@ export default function PostHistory() {
     try { await api.delete(`/post/scheduled/${id}`); setScheduled(prev => prev.filter(p => p.id !== id)); }
     catch { setError("Failed to cancel post."); }
     finally { setCancellingId(null); }
+  };
+
+  const handleReschedule = async (id, scheduledAt) => {
+    await reschedulePost(id, scheduledAt);
+    setScheduled(prev => prev.map(p => p.id === id ? { ...p, scheduledAt } : p));
+  };
+
+  const deleteDraftById = async () => {
+    if (!deletingDraft?.id) return;
+    const draftId = deletingDraft.id;
+    setDeleteDraftLoading(true);
+    try {
+      await api.delete(`/post/draft/${draftId}`);
+      setRemovingDraftId(draftId);
+      await sleep(220);
+      setDrafts(prev => prev.filter(p => p.id !== draftId));
+      setDeletingDraft(null);
+    } catch {
+      setRemovingDraftId(null);
+      setError("Failed to delete draft.");
+    } finally {
+      setRemovingDraftId(null);
+      setDeleteDraftLoading(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -1227,11 +1877,80 @@ export default function PostHistory() {
     setHistory(prev => prev.map(p => p.id === id ? { ...p, content: newContent } : p));
   };
 
-  const completed = history.filter(p => p.status === "Completed");
-  const failed    = history.filter(p => p.status === "Failed");
-  const allPosts  = [...scheduled, ...history];
+  const filterByPlatform = useCallback((posts) => {
+    if (platformFilter === "All") return posts;
+    return posts.filter(post => getPostPlatforms(post).includes(platformFilter));
+  }, [platformFilter]);
 
-  const counts = { completed: completed.length, scheduled: scheduled.length, failed: failed.length };
+  const completed = history.filter(p => p.status === "Completed" || p.status === "Failed");
+  const allPosts  = [...scheduled, ...history];
+  const currentSortOptions = tab === "drafted"
+    ? DRAFT_SORT_OPTIONS
+    : tab === "scheduled"
+      ? SCHEDULED_SORT_OPTIONS
+      : POST_SORT_OPTIONS;
+  const activeSortKey = currentSortOptions.some(option => option.key === sortBy)
+    ? sortBy
+    : currentSortOptions[0].key;
+  const filteredCompleted = sortPosts(filterByPlatform(completed), activeSortKey);
+  const filteredScheduled = sortPosts(filterByPlatform(scheduled), activeSortKey);
+  const filteredDrafts    = sortDrafts(filterByPlatform(drafts), activeSortKey);
+  const filteredAllPosts  = filterByPlatform(allPosts);
+
+  const counts = { completed: completed.length, scheduled: scheduled.length, drafted: drafts.length };
+
+  useLayoutEffect(() => {
+    if (tab !== "drafted" || viewMode !== "table") return;
+
+    const nextRects = new Map();
+    filteredDrafts.forEach((draft) => {
+      const node = draftItemRefs.current.get(String(draft.id));
+      if (node) nextRects.set(String(draft.id), node.getBoundingClientRect());
+    });
+
+    const prevRects = draftPrevRectsRef.current;
+    if (hasDraftMeasurementsRef.current) {
+      nextRects.forEach((nextRect, id) => {
+        const node = draftItemRefs.current.get(id);
+        if (!node) return;
+
+        const prevRect = prevRects.get(id);
+        if (!prevRect) {
+          node.style.transition = "none";
+          node.style.opacity = "0";
+          node.style.transform = "translateY(12px) scale(0.98)";
+          requestAnimationFrame(() => {
+            if (!node.isConnected) return;
+            node.style.transition = "transform 420ms cubic-bezier(0.22, 1, 0.36, 1), opacity 320ms ease";
+            node.style.opacity = "1";
+            node.style.transform = "translateY(0) scale(1)";
+          });
+          return;
+        }
+
+        const deltaX = prevRect.left - nextRect.left;
+        const deltaY = prevRect.top - nextRect.top;
+        if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return;
+
+        node.style.transition = "none";
+        node.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+        requestAnimationFrame(() => {
+          if (!node.isConnected) return;
+          node.style.transition = "transform 520ms cubic-bezier(0.22, 1, 0.36, 1)";
+          node.style.transform = "translate(0, 0)";
+        });
+      });
+    }
+
+    hasDraftMeasurementsRef.current = true;
+    draftPrevRectsRef.current = nextRects;
+  }, [filteredDrafts, tab, viewMode]);
+
+  useEffect(() => {
+    if (tab === "drafted" && viewMode === "table") return;
+    hasDraftMeasurementsRef.current = false;
+    draftPrevRectsRef.current = new Map();
+  }, [tab, viewMode]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1256,7 +1975,7 @@ export default function PostHistory() {
                 📅 Calendar
               </button>
             </div>
-            <button onClick={() => setCompose(true)}
+            <button onClick={openComposeForNew}
               className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-all shadow-sm">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -1273,6 +1992,7 @@ export default function PostHistory() {
           {STATUS_TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-all ${tab === t.key ? "border-blue-600 text-blue-600 bg-blue-50" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100"}`}>
+              <StatusTabIcon type={t.icon} cls={`w-4 h-4 ${t.iconColor}`} />
               {t.label}
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${t.badge}`}>{counts[t.key]}</span>
             </button>
@@ -1283,38 +2003,134 @@ export default function PostHistory() {
           </button>
         </div>
 
+        {/* Platform filters + sort */}
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {PLATFORM_FILTER_OPTIONS.map(option => {
+              const active = platformFilter === option.key;
+              const hovered = hoveredPlatformFilter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  onClick={() => setPlatformFilter(option.key)}
+                  onMouseEnter={() => setHoveredPlatformFilter(option.key)}
+                  onMouseLeave={() => setHoveredPlatformFilter(null)}
+                  onBlur={() => setHoveredPlatformFilter(null)}
+                  className={`relative overflow-hidden px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${option.border}`}
+                >
+                  <span
+                    className={`pointer-events-none absolute inset-0 ${option.fill} ${active ? "transition-none" : "transition-transform duration-700 ease-in-out"} ${(active || hovered) ? "scale-x-100 origin-left" : "scale-x-0 origin-left"}`}
+                  />
+                  <span className={`relative z-10 transition-colors duration-200 ${(active || hovered) ? "text-white" : option.text}`}>
+                    {option.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div ref={sortMenuRef} className="relative ml-auto">
+            <button
+              type="button"
+              onClick={() => setSortMenuOpen(prev => !prev)}
+              aria-haspopup="listbox"
+              aria-expanded={sortMenuOpen}
+              className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 shadow-sm"
+            >
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Sort by</span>
+              <span className="text-xs font-semibold text-gray-700">{(currentSortOptions.find(o => o.key === activeSortKey) || currentSortOptions[0]).label}</span>
+              <svg className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-300 ${sortMenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <div
+              className={`absolute right-0 top-full mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-20 origin-top-right transition-all duration-200 ${sortMenuOpen ? "opacity-100 scale-100 translate-y-0 pointer-events-auto" : "opacity-0 scale-95 -translate-y-1 pointer-events-none"}`}
+            >
+              <div role="listbox" aria-label="Sort posts" className="py-1">
+                {currentSortOptions.map(option => {
+                  const selected = activeSortKey === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => { setSortBy(option.key); setSortMenuOpen(false); }}
+                      className={`w-full px-3 py-2 text-left text-xs font-medium flex items-center justify-between transition-colors ${selected ? "text-blue-700 bg-blue-50" : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"}`}
+                    >
+                      <span>{option.label}</span>
+                      {selected && (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Content */}
         {viewMode === "calendar" ? (
-          <CalendarView year={calYear} month={calMonth}
-            onPrev={() => { if (calMonth === 0) { setCalYear(y => y-1); setCalMonth(11); } else setCalMonth(m => m-1); }}
-            onNext={() => { if (calMonth === 11) { setCalYear(y => y+1); setCalMonth(0); } else setCalMonth(m => m+1); }}
-            onPrevYear={() => setCalYear(y => y - 1)}
-            onNextYear={() => setCalYear(y => y + 1)}
-            onSetYear={(y) => { setCalYear(y); if (y === new Date().getFullYear()) setCalMonth(new Date().getMonth()); }}
-            posts={allPosts} tab={tab} />
+          tab === "draft" ? (
+            <EmptyCard icon="📝" msg="Drafts are available in table view. Switch to Table to edit drafts." />
+          ) : (
+            <CalendarView year={calYear} month={calMonth}
+              onPrev={() => { if (calMonth === 0) { setCalYear(y => y-1); setCalMonth(11); } else setCalMonth(m => m-1); }}
+              onNext={() => { if (calMonth === 11) { setCalYear(y => y+1); setCalMonth(0); } else setCalMonth(m => m+1); }}
+              onPrevYear={() => setCalYear(y => y - 1)}
+              onNextYear={() => setCalYear(y => y + 1)}
+              onSetYear={(y) => { setCalYear(y); if (y === new Date().getFullYear()) setCalMonth(new Date().getMonth()); }}
+              posts={filteredAllPosts} tab={tab} />
+          )
         ) : (
           <>
-            {/* Published / Failed — table */}
-            {(tab === "completed" || tab === "failed") && (
+            {/* Published (includes failed) — table */}
+            {tab === "completed" && (
               historyLoading ? <LoadingCard /> :
-              (tab === "completed" ? completed : failed).length === 0
-                ? <EmptyCard icon={tab === "completed" ? "✅" : "❌"} msg={tab === "completed" ? "No published posts yet." : "No failed posts."} />
-                : <PostTable posts={tab === "completed" ? completed : failed} onEdit={setEditing} onDelete={setDeleting} />
+              filteredCompleted.length === 0
+                ? <EmptyCard icon="✅" msg={platformFilter === "All" ? "No published posts yet." : `No published ${platformFilter} posts yet.`} />
+                : <PostTable posts={filteredCompleted} onEdit={setEditing} onDelete={setDeleting} />
+            )}
+
+            {/* Drafted — card list */}
+            {tab === "drafted" && (
+              draftsLoading ? <LoadingCard /> :
+              filteredDrafts.length === 0
+                ? <EmptyCard icon="✏️" msg={platformFilter === "All" ? "No drafts saved yet." : `No ${platformFilter} drafts.`} />
+                : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {filteredDrafts.map(post => (
+                      <div key={post.id} ref={(node) => setDraftItemRef(post.id, node)} className="will-change-transform">
+                        <div className={`transition-all duration-300 ease-out ${removingDraftId === post.id ? "pointer-events-none -translate-y-2 scale-95 opacity-0" : "translate-y-0 scale-100 opacity-100"}`}>
+                          <DraftCard post={post}
+                            onDelete={(p) => setDeletingDraft(p)}
+                            onEdit={(p) => { setResumingDraft(p); setCompose(true); }}
+                            isDeleteConfirmOpen={deletingDraft?.id === post.id}
+                            onCancelDelete={() => setDeletingDraft(null)}
+                            onConfirmDelete={deleteDraftById}
+                            deleteLoading={deleteDraftLoading} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
             )}
 
             {/* Scheduled — card list */}
             {tab === "scheduled" && (
               scheduledLoading ? <LoadingCard /> :
-              scheduled.length === 0 ? <EmptyCard icon="🗓" msg="No scheduled posts." /> :
+              filteredScheduled.length === 0
+                ? <EmptyCard icon="🗓" msg={platformFilter === "All" ? "No scheduled posts." : `No scheduled ${platformFilter} posts.`} />
+                :
               <div className="space-y-2">
-                {scheduled.map(post => (
-                  <ScheduledCard key={post.id} post={post} cancellingId={cancellingId} onCancel={cancelPost} />
+                {filteredScheduled.map(post => (
+                  <ScheduledCard key={post.id} post={post} cancellingId={cancellingId} onCancel={cancelPost} onReschedule={handleReschedule} />
                 ))}
               </div>
             )}
 
             {/* Pagination */}
-            {(tab === "completed" || tab === "failed") && historyTotal > PAGE_SIZE && (
+            {tab === "completed" && historyTotal > PAGE_SIZE && (
               <div className="flex items-center justify-between text-xs text-gray-500 pt-1">
                 <span>{historyTotal} total posts</span>
                 <div className="flex gap-2">
@@ -1329,14 +2145,26 @@ export default function PostHistory() {
       </div>
 
       {/* FAB */}
-      <button onClick={() => setCompose(true)} title="Compose post"
+      <button onClick={openComposeForNew} title="Compose post"
         className="fixed bottom-6 right-6 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center z-40">
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
         </svg>
       </button>
 
-      {showCompose && <ComposeModal activeBrand={effectiveBrand} onClose={() => setCompose(false)} onPosted={({ scheduled } = {}) => { setTimeout(refresh, 500); if (scheduled) setTab("scheduled"); }} />}
+      {showCompose && <ComposeModal
+        activeBrand={effectiveBrand}
+        resumeDraft={resumingDraft}
+        onClose={() => { setCompose(false); setResumingDraft(null); }}
+        onPosted={({ scheduled, draftId, draftSaved } = {}) => {
+          if (draftSaved) {
+            loadDrafts();
+            setTab("drafted");
+          }
+          if (draftId) setDrafts(prev => prev.filter(d => d.id !== draftId));
+          setTimeout(refresh, 500);
+          if (scheduled) setTab("scheduled");
+        }} />}
       {editingPost && <EditPostModal post={editingPost} onClose={() => setEditing(null)} onSaved={handleSaved} />}
 
       {/* Delete confirmation */}

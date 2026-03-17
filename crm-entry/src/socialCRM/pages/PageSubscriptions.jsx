@@ -8,20 +8,23 @@ const unsubscribePage = (pageId) => api.post(`/facebook/pages/${pageId}/unsubscr
 
 export default function PageSubscriptions() {
   const { activeBrand } = useBrand();
-  const [pages, setPages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(null);
+
+  const [pages, setPages]               = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [processing, setProcessing]     = useState(null);
   const [notification, setNotification] = useState(null);
 
-  const load = async () => {
+  const notify = (type, message) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  const loadPages = async () => {
     setLoading(true);
     try {
-      // Load only Facebook pages from local DB (brand accounts endpoint)
       const res = await api.get(activeBrand?.slug ? `/brands/${activeBrand.slug}/accounts` : "/facebook/pages");
       const all = activeBrand?.slug ? (res.data.accounts ?? []) : (res.data ?? []);
-      // Keep only Facebook pages
-      const fb = all.filter(a => (a.platform ?? "Facebook").toLowerCase() === "facebook");
-      setPages(fb);
+      setPages(all.filter(a => (a.platform ?? "Facebook").toLowerCase() === "facebook"));
     } catch {
       setPages([]);
     } finally {
@@ -29,12 +32,7 @@ export default function PageSubscriptions() {
     }
   };
 
-  useEffect(() => { load(); }, [activeBrand?.slug]);
-
-  const notify = (type, message) => {
-    setNotification({ type, message });
-    setTimeout(() => setNotification(null), 3500);
-  };
+  useEffect(() => { loadPages(); }, [activeBrand?.slug]);
 
   const toggleSubscription = async (pageId, isSubscribed) => {
     setProcessing(pageId);
@@ -46,13 +44,9 @@ export default function PageSubscriptions() {
         await subscribePage(pageId);
         notify("success", "Subscribed — leads will now sync automatically in real time");
       }
-      setPages(prev =>
-        prev.map(p =>
-          (p.pageId ?? p.pageIdentifier) === pageId
-            ? { ...p, isSubscribed: !isSubscribed }
-            : p
-        )
-      );
+      setPages(prev => prev.map(p =>
+        (p.pageId ?? p.pageIdentifier) === pageId ? { ...p, isSubscribed: !isSubscribed } : p
+      ));
     } catch {
       notify("error", `Failed to ${isSubscribed ? "unsubscribe" : "subscribe"}`);
     } finally {
@@ -62,28 +56,18 @@ export default function PageSubscriptions() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-3xl mx-auto space-y-5">
+      <div className="max-w-3xl mx-auto space-y-6">
 
-        {/* Header */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center shadow-md">
-              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-800">Facebook Page Subscriptions</h1>
-              <p className="text-sm text-slate-500 mt-0.5">
-                Enable webhook subscriptions to automatically receive leads from your Facebook pages in real time.
-                {activeBrand && <> Active brand: <span className="font-semibold text-slate-700">{activeBrand.name}</span></>}
-              </p>
-            </div>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Page Subscriptions</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Enable webhook subscriptions to automatically receive leads from your Facebook pages in real time.
+            {activeBrand && <> Active brand: <span className="font-semibold text-slate-700">{activeBrand.name}</span></>}
+          </p>
         </div>
 
         {notification && (
-          <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium ${
             notification.type === "success"
               ? "bg-green-50 border-green-200 text-green-800"
               : "bg-red-50 border-red-200 text-red-800"
@@ -95,8 +79,8 @@ export default function PageSubscriptions() {
 
         {loading ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-            <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
-            <p className="text-sm text-slate-400">Loading Facebook pages...</p>
+            <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3" />
+            <p className="text-sm text-slate-400">Loading Facebook pages…</p>
           </div>
         ) : pages.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
@@ -106,7 +90,7 @@ export default function PageSubscriptions() {
               </svg>
             </div>
             <h3 className="font-bold text-slate-700 mb-1">No Facebook Pages Found</h3>
-            <p className="text-sm text-slate-400 mb-4">Connect a Facebook account to manage webhook subscriptions</p>
+            <p className="text-sm text-slate-400 mb-4">Connect a Facebook account first to manage webhook subscriptions</p>
             <button
               onClick={() => connectPlatform("facebook")}
               className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
@@ -126,8 +110,8 @@ export default function PageSubscriptions() {
             </div>
             <div className="divide-y divide-slate-100">
               {pages.map(page => {
-                const pageId = page.pageId ?? page.pageIdentifier;
-                const name = page.name ?? page.displayName ?? pageId;
+                const pageId       = page.pageId ?? page.pageIdentifier;
+                const name         = page.name ?? page.displayName ?? pageId;
                 const isSubscribed = page.isSubscribed ?? false;
                 const isProcessing = processing === pageId;
 
@@ -152,14 +136,14 @@ export default function PageSubscriptions() {
                             ? "bg-green-100 text-green-700 border border-green-200"
                             : "bg-slate-100 text-slate-500 border border-slate-200"
                         }`}>
-                          <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isSubscribed ? "bg-green-500 animate-pulse" : "bg-slate-400"}`}></span>
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isSubscribed ? "bg-green-500 animate-pulse" : "bg-slate-400"}`} />
                           {isSubscribed ? "Active" : "Inactive"}
                         </span>
 
                         <button
                           onClick={() => toggleSubscription(pageId, isSubscribed)}
                           disabled={isProcessing}
-                          title={isSubscribed ? "Click to unsubscribe" : "Click to subscribe"}
+                          title={isSubscribed ? "Click to unsubscribe" : "Click to enable lead gen webhook"}
                           className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed ${
                             isSubscribed ? "bg-green-500" : "bg-slate-300"
                           }`}
@@ -169,7 +153,7 @@ export default function PageSubscriptions() {
                           }`}>
                             {isProcessing
                               ? <svg className="animate-spin h-3 w-3 text-blue-600" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                              : <span className="text-xs text-slate-400">{isSubscribed ? "✓" : ""}</span>
+                              : <span className="text-xs">{isSubscribed ? "✓" : ""}</span>
                             }
                           </span>
                         </button>
@@ -182,13 +166,12 @@ export default function PageSubscriptions() {
           </div>
         )}
 
-        {/* Info card */}
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-800">
-          <p className="font-bold mb-1">💡 About Lead Subscriptions</p>
+          <p className="font-bold mb-1">💡 How Lead Gen Webhooks Work</p>
           <p className="leading-relaxed text-blue-700">
-            When <strong>Active</strong>, your Facebook page is subscribed to Meta's leadgen webhook. 
-            Any lead submitted through your page's lead forms will be automatically delivered to your CRM in real time. 
-            Toggle off to pause lead sync without disconnecting the page.
+            When <strong>Active</strong>, your Facebook page is subscribed to Meta&apos;s <strong>leadgen</strong> webhook field.
+            Any lead submitted via your page&apos;s lead ad forms is delivered to your CRM instantly — no manual sync needed.
+            Toggle off to pause lead collection without disconnecting the page.
           </p>
         </div>
 

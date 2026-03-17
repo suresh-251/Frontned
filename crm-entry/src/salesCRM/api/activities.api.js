@@ -4,11 +4,50 @@ import apiClient from './apiClient';
  * Activities API Service
  */
 
+const unwrapArrayPayload = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+};
+
 const activitiesAPI = {
   // Get all activities
   getAll: async () => {
     const response = await apiClient.get('/Activities');
-    return response.data;
+    return unwrapArrayPayload(response.data);
+  },
+
+  getCalendar: async ({ startDate, endDate, userId } = {}) => {
+    const response = await apiClient.get('/Activities/calendar', {
+      params: {
+        ...(startDate ? { startDate } : {}),
+        ...(endDate ? { endDate } : {}),
+        ...(userId ? { userId } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data);
+  },
+
+  getOpen: async ({ leadId, dealId } = {}) => {
+    const response = await apiClient.get('/Activities/open', {
+      params: {
+        ...(leadId ? { leadId } : {}),
+        ...(dealId ? { dealId } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data);
+  },
+
+  getClosed: async ({ leadId, dealId } = {}) => {
+    const response = await apiClient.get('/Activities/closed', {
+      params: {
+        ...(leadId ? { leadId } : {}),
+        ...(dealId ? { dealId } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data);
   },
 
   // Get activity by ID
@@ -20,6 +59,26 @@ const activitiesAPI = {
   // Create new activity
   create: async (activityData) => {
     const response = await apiClient.post('/Activities', activityData);
+    return response.data;
+  },
+
+  createTask: async (taskData) => {
+    const response = await apiClient.post('/Activities/task', taskData);
+    return response.data;
+  },
+
+  createMeeting: async (meetingData) => {
+    const response = await apiClient.post('/Activities/meeting', meetingData);
+    return response.data;
+  },
+
+  logCall: async (callData) => {
+    const response = await apiClient.post('/Activities/call/log', callData);
+    return response.data;
+  },
+
+  scheduleCall: async (callData) => {
+    const response = await apiClient.post('/Activities/call/schedule', callData);
     return response.data;
   },
 
@@ -41,7 +100,7 @@ const activitiesAPI = {
   // Get activities by deal ID
   getByDealId: async (dealId) => {
     const response = await apiClient.get(`/Activities/deal/${dealId}`);
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 };
 

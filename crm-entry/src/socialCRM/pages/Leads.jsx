@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import useFacebookLeads from "../hooks/useFacebookLeads";
 import { getAvailablePages } from "../api/facebook.pages.api";
-import { getLeadForms } from "../api/facebook.leads.api";
+import { getLeadForms, getLeadHistory } from "../api/facebook.leads.api";
 import useUsers from "../hooks/useUsers";
 import * as XLSX from "xlsx";
 import * as signalR from "@microsoft/signalr";
@@ -11,13 +11,13 @@ import { BASE_URL } from "../api/apiClient";
 import Toast from "../../salesCRM/utils/toast";
 import { getDepartments } from "../../hr_CRM/api/hr.dept";
 import { useAuth } from "../../auth/AuthContext";
-
+import LeadAssignmentModal from "../components/facebook/LeadAssignmentModal";
 
 import {
   FaUsers, FaTimesCircle, FaList, FaTh, FaSearch, FaSync, FaFileExport, FaFilter,
   FaChevronDown, FaCheck, FaTimes, FaEye,
   FaChevronRight, FaChevronLeft, FaSpinner,
-  FaCheckSquare, FaCalendarAlt, FaBuilding,
+  FaCheckSquare, FaCalendarAlt, FaBuilding, FaUserPlus, FaHistory,
 } from "react-icons/fa";
 
 const HUB_URL = BASE_URL.replace("/api", "") + "/hubs/leads";
@@ -204,6 +204,13 @@ export default function Leads() {
     assignLead,
     assignByFormToDepartments,
     removeDepartmentFromForm,
+    countFormLeads,
+    getLeadDepartments,
+    assignLeadDepartments,
+    removeLeadDepartment,
+    getLeadUsers,
+    assignLeadUsers,
+    removeLeadUser,
   } = useFacebookLeads();
 
   const [pages, setPages] = useState([]);
@@ -223,15 +230,16 @@ export default function Leads() {
   const [assignStartDate, setAssignStartDate] = useState("");
   const [assignEndDate, setAssignEndDate] = useState("");
   const [showTimeRange, setShowTimeRange] = useState(false);
+  const [formLeadCount, setFormLeadCount] = useState(null); // preview count for dept assignment
 
   const [remarkMap, setRemarkMap] = useState({});
-  // Tracks the currently selected user per lead in the assign dropdown
-  // { [leadId]: { userId, userName } | null }  — null means "Unassigned"
-  const [pendingAssignMap, setPendingAssignMap] = useState({});
-  // Tracks which lead IDs are currently being saved (spinner state)
-  const [assigningLeadIds, setAssigningLeadIds] = useState(new Set());
   const [selectedLead, setSelectedLead] = useState(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  // Multi-user/dept assignment modal
+  const [assignModalLead, setAssignModalLead] = useState(null);
+  // Remark history for the details modal
+  const [remarkHistory, setRemarkHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   
   // UI & Selection States
   const [viewMode, setViewMode] = useState("list");
@@ -256,16 +264,19 @@ export default function Leads() {
      SIGNALR REAL-TIME
      ========================= */
 const connectionRef = useRef(null);
+const mountedRef = useRef(false);
 
 useEffect(() => {
-  if (connectionRef.current) return;
+  // Guard against React StrictMode double-invoke
+  if (mountedRef.current) return;
+  mountedRef.current = true;
 
   const connection = new signalR.HubConnectionBuilder()
     .withUrl(HUB_URL, {
       accessTokenFactory: () => localStorage.getItem("accessToken")
     })
     .withAutomaticReconnect()
-    .configureLogging(signalR.LogLevel.Information)
+    .configureLogging(signalR.LogLevel.Warning)
     .build();
 
   connectionRef.current = connection;
@@ -278,18 +289,19 @@ useEffect(() => {
     try {
       if (connection.state === signalR.HubConnectionState.Disconnected) {
         await connection.start();
-        console.log("✅ SignalR connected");
       }
     } catch (err) {
-      console.error("SignalR connection failed:", err);
+      // Non-critical — real-time updates unavailable but page still works
+      console.warn("SignalR unavailable:", err?.message ?? err);
     }
   };
 
   startConnection();
 
   return () => {
-    connection.stop();
+    mountedRef.current = false;
     connectionRef.current = null;
+    connection.stop().catch(() => {});
   };
 }, []);
 
@@ -311,6 +323,20 @@ useEffect(() => {
     }
     getLeadForms(filters.pageId).then(setForms);
   }, [filters.pageId]);
+
+  // Live preview: count leads in selected form matching date range
+  useEffect(() => {
+    if (!filters.formId) { setFormLeadCount(null); return; }
+    const timer = setTimeout(() => {
+      countFormLeads(
+        filters.formId,
+        assignStartDate || null,
+        assignEndDate || null
+      ).then(setFormLeadCount);
+    }, 400);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.formId, assignStartDate, assignEndDate]);
 
   /* =========================
      SELECT LEADS LOGIC
@@ -385,6 +411,7 @@ useEffect(() => {
     const rows = exportLeads.map(l => {
       const row = {
         Name: l.name || "",
+        Platform: l.platform || "Facebook",
         Email: l.email || "",
         Phone: l.phone || "",
         Status: l.status || "",
@@ -435,6 +462,20 @@ useEffect(() => {
   }, [filters.formId]);
 
   /* =========================
+     DERIVE APPLIED DEPT IDS FROM LOADED LEADS (persists after reload)
+     ========================= */
+  useEffect(() => {
+    if (!filters.formId || leads.length === 0) return;
+    const formLeads = leads.filter(l => l.formId === filters.formId);
+    if (formLeads.length === 0) return;
+    const deptIds = new Set();
+    formLeads.forEach(l => (l.departments || []).forEach(d => deptIds.add(String(d.departmentId))));
+    const ids = [...deptIds];
+    setAppliedDeptIds(ids);
+    setSelectedDeptIds(ids);
+  }, [leads, filters.formId]);
+
+  /* =========================
      APPLY DEPARTMENT CHANGES (assign newly checked, remove newly unchecked)
      ========================= */
   const handleApplyDeptChanges = async () => {
@@ -452,20 +493,24 @@ useEffect(() => {
           departmentId: id,
           departmentName: departments.find(d => String(d.departmentId) === id)?.departmentName || "",
         }));
-        await assignByFormToDepartments(
+        const result = await assignByFormToDepartments(
           filters.formId,
           depts,
-          showTimeRange && assignStartDate ? assignStartDate : null,
-          showTimeRange && assignEndDate ? assignEndDate : null,
+          assignStartDate || null,
+          assignEndDate || null,
         );
+        const leadAssigned = result?.added ?? "?";
+        Toast?.success(
+          `Assigned ${leadAssigned} lead(s) to ${toAssign.length} department(s)` +
+          (toRemove.length ? `, removed ${toRemove.length} department(s)` : "")
+        );
+      } else {
+        Toast?.success(`Removed ${toRemove.length} department(s)`);
       }
       for (const id of toRemove) {
         await removeDepartmentFromForm(filters.formId, id);
       }
       setAppliedDeptIds([...selectedDeptIds]);
-      Toast?.success(
-        `Applied: ${toAssign.length} assigned, ${toRemove.length} removed`
-      );
     } catch {
       Toast?.error("Failed to apply department changes");
     } finally {
@@ -479,63 +524,35 @@ useEffect(() => {
     );
   };
 
-  /* =========================
-     ASSIGN USER TO LEAD
-     Strong logic: tracks pending selection per lead so that the remark
-     blur never uses stale assignedToUserId from the previous render.
-     ========================= */
-  const handleAssignUser = async (lead, selectedUserId) => {
-    const leadId = lead.id;
-
-    // Determine target user from selection
-    const user = selectedUserId ? users.find(u => u.userId === Number(selectedUserId)) : null;
-    const userId   = user ? user.userId   : null;
-    const userName = user ? (user.name || user.userName || user.username || "") : null;
-
-    // Store selection so remark blur uses the correct (fresh) userId
-    setPendingAssignMap(prev => ({ ...prev, [leadId]: user ? { userId, userName } : null }));
-
-    // Show spinner for this lead
-    setAssigningLeadIds(prev => new Set(prev).add(leadId));
-    try {
-      await assignLead(leadId, userId, userName, remarkMap[leadId] ?? lead.remark ?? "");
-      Toast?.success?.(`Assigned to ${userName || "Unassigned"}`);
-    } catch {
-      Toast?.error?.("Assignment failed — please try again");
-      // Roll back optimistic selection on error
-      setPendingAssignMap(prev => {
-        const next = { ...prev };
-        delete next[leadId];
-        return next;
-      });
-    } finally {
-      setAssigningLeadIds(prev => { const n = new Set(prev); n.delete(leadId); return n; });
-    }
-  };
-
   /**
-   * Save remark independently — uses the latest pending assign (if any)
-   * so the user assign isn't accidentally reset to a stale value.
+   * Save remark from the inline table input on blur.
    */
   const handleSaveRemark = async (lead) => {
     const leadId = lead.id;
     const remark = remarkMap[leadId];
     if (remark === undefined || remark === (lead.remark ?? "")) return; // no change
 
-    // Resolve the correct current user from pendingAssignMap or fall back to lead state
-    const pending = pendingAssignMap[leadId];
-    const userId   = pending !== undefined ? pending?.userId   : lead.assignedToUserId;
-    const userName = pending !== undefined ? pending?.userName : lead.assignedToUserName;
-
-    setAssigningLeadIds(prev => new Set(prev).add(leadId));
     try {
-      await assignLead(leadId, userId ?? null, userName ?? null, remark ?? "");
+      await assignLead(leadId, lead.assignedToUserId ?? null, lead.assignedToUserName ?? null, remark ?? "");
     } catch {
       Toast?.error?.("Failed to save remark");
-    } finally {
-      setAssigningLeadIds(prev => { const n = new Set(prev); n.delete(leadId); return n; });
     }
   };
+
+  /* =========================
+     LOAD REMARK HISTORY WHEN DETAILS MODAL OPENS
+     ========================= */
+  useEffect(() => {
+    if (!selectedLead) {
+      setRemarkHistory([]);
+      return;
+    }
+    setHistoryLoading(true);
+    getLeadHistory(selectedLead.id)
+      .then(data => setRemarkHistory(Array.isArray(data) ? data : []))
+      .catch(() => setRemarkHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }, [selectedLead]);
 
   /* =========================
      RENDER
@@ -688,6 +705,15 @@ useEffect(() => {
                 <FaCalendarAlt className="w-3 h-3" />
                 {showTimeRange ? "Hide Range" : "Set Time Range"}
               </button>
+
+              {/* Lead count preview badge */}
+              {filters.formId && formLeadCount !== null && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700">
+                  <FaUsers className="w-3 h-3" />
+                  {formLeadCount} lead{formLeadCount !== 1 ? "s" : ""}
+                  {(assignStartDate || assignEndDate) ? " in range" : " in form"}
+                </span>
+              )}
 
               {/* Apply button */}
               <button
@@ -854,7 +880,7 @@ useEffect(() => {
                         />
                       </th>
                     )}
-                    {["Name", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map((h) => (
+                    {["Name", "Platform", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -863,14 +889,14 @@ useEffect(() => {
                   {loading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i} className="animate-pulse">
-                        <td colSpan={isSelectMode ? 9 : 8} className="px-4 py-4">
+                        <td colSpan={isSelectMode ? 10 : 9} className="px-4 py-4">
                           <div className="h-4 bg-gray-100 rounded w-full" />
                         </td>
                       </tr>
                     ))
                   ) : paginatedLeads.length === 0 ? (
                     <tr>
-                      <td colSpan={isSelectMode ? 9 : 8} className="text-center py-16 text-gray-400">
+                      <td colSpan={isSelectMode ? 10 : 9} className="text-center py-16 text-gray-400">
                         <FaUsers className="w-8 h-8 mx-auto mb-3 opacity-30" />
                         <p className="text-sm">No leads found</p>
                         <p className="text-xs mt-1">Adjust your filters or search query.</p>
@@ -900,7 +926,33 @@ useEffect(() => {
                             </div>
                           </div>
                         </td>
-                        
+
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border w-fit
+                              ${l.platform === "Instagram" ? "bg-pink-50 text-pink-600 border-pink-200" :
+                                l.platform === "LinkedIn" ? "bg-sky-50 text-sky-700 border-sky-200" :
+                                "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                              {l.platform || "Facebook"}
+                            </span>
+                            {l.leadSource && (
+                              <span className="text-[9px] text-gray-400 px-1">
+                                {l.leadSource === "WebhookRealtime" ? "⚡ Webhook" :
+                                 l.leadSource === "ManualSync" ? "🔄 Synced" :
+                                 l.leadSource}
+                              </span>
+                            )}
+                            {l.qualityScore > 0 && (
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded w-fit
+                                ${l.qualityScore >= 70 ? "bg-green-100 text-green-700" :
+                                  l.qualityScore >= 40 ? "bg-yellow-100 text-yellow-700" :
+                                  "bg-red-100 text-red-600"}`}>
+                                {l.qualityGrade || (l.qualityScore >= 70 ? "A" : l.qualityScore >= 40 ? "B" : "C")} ({l.qualityScore})
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
                         <td className="px-4 py-3">
                           {l.email && <p className="text-xs text-indigo-600 font-medium truncate max-w-[150px]">{l.email}</p>}
                           {l.phone && <p className="text-xs text-gray-500">{l.phone}</p>}
@@ -925,25 +977,28 @@ useEffect(() => {
                         </td>
                         
                         <td className="px-4 py-3">
-                          <div className="relative flex items-center">
-                            <select
-                              value={
-                                pendingAssignMap[l.id] !== undefined
-                                  ? (pendingAssignMap[l.id]?.userId ?? "")
-                                  : (l.assignedToUserId ?? "")
-                              }
-                              onChange={(e) => handleAssignUser(l, e.target.value)}
-                              disabled={assigningLeadIds.has(l.id)}
-                              className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white hover:bg-gray-50 transition-colors cursor-pointer w-[130px] disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                              <option value="">Unassigned</option>
-                              {users.map(u => (
-                                <option key={u.userId} value={u.userId}>{u.name || u.userName || u.username}</option>
-                              ))}
-                            </select>
-                            {assigningLeadIds.has(l.id) && (
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                          <div className="flex flex-wrap gap-1 items-center min-w-[110px]">
+                            {(l.assignedUsers && l.assignedUsers.length > 0) ? (
+                              <>
+                                {l.assignedUsers.slice(0, 2).map(u => (
+                                  <span key={u.userId} className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200 truncate max-w-[80px]" title={u.userName}>
+                                    {u.userName}
+                                  </span>
+                                ))}
+                                {l.assignedUsers.length > 2 && (
+                                  <span className="text-[10px] text-gray-400">+{l.assignedUsers.length - 2}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">Unassigned</span>
                             )}
+                            <button
+                              onClick={() => setAssignModalLead(l)}
+                              className="p-1 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors ml-1 flex-shrink-0"
+                              title="Manage user & department assignments"
+                            >
+                              <FaUserPlus className="w-3 h-3" />
+                            </button>
                           </div>
                         </td>
 
@@ -1004,9 +1059,25 @@ useEffect(() => {
                       )}
                       <div className="flex items-center gap-3 mb-3">
                          <Avatar name={l.name || "?"} />
-                         <div className={isSelectMode ? "pr-6" : ""}>
+                         <div className={`flex-1 min-w-0 ${isSelectMode ? "pr-6" : ""}`}>
                             <p className="text-sm font-semibold text-gray-800 truncate">{l.name || "—"}</p>
-                            <p className="text-xs text-gray-400">ID #{l.id}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-xs text-gray-400">ID #{l.id}</p>
+                              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border
+                                ${l.platform === "Instagram" ? "bg-pink-50 text-pink-600 border-pink-200" :
+                                  l.platform === "LinkedIn" ? "bg-sky-50 text-sky-700 border-sky-200" :
+                                  "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                                {l.platform || "Facebook"}
+                              </span>
+                              {l.qualityScore > 0 && (
+                                <span className={`text-[8px] font-bold px-1 py-0.5 rounded
+                                  ${l.qualityScore >= 70 ? "bg-green-100 text-green-700" :
+                                    l.qualityScore >= 40 ? "bg-yellow-100 text-yellow-700" :
+                                    "bg-red-100 text-red-600"}`}>
+                                  {l.qualityGrade || "?"} ({l.qualityScore})
+                                </span>
+                              )}
+                            </div>
                          </div>
                       </div>
                       {l.email && <p className="text-xs text-indigo-600 font-medium truncate mb-1">{l.email}</p>}
@@ -1046,8 +1117,9 @@ useEffect(() => {
       </div>
 
       {/* ── DETAILS MODAL ── */}
-      <Modal isOpen={!!selectedLead} onClose={() => setSelectedLead(null)} title="Lead Form Details" size="md">
-        <div className="space-y-4">
+      <Modal isOpen={!!selectedLead} onClose={() => setSelectedLead(null)} title="Lead Form Details" size="lg">
+        <div className="space-y-5">
+          {/* Form fields */}
           {selectedLead?.fields && Object.keys(selectedLead.fields).length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {Object.entries(selectedLead.fields).map(([k, v]) => (
@@ -1060,15 +1132,72 @@ useEffect(() => {
               ))}
             </div>
           ) : (
-            <div className="text-center py-10">
+            <div className="text-center py-6">
               <div className="w-14 h-14 bg-gray-50 border border-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <FaEye className="w-6 h-6 text-gray-300" />
               </div>
               <p className="text-sm font-medium text-gray-500">No additional form data available</p>
             </div>
           )}
-          
-          <div className="flex justify-end pt-4 border-t border-gray-100">
+
+          {/* Remark History */}
+          <div className="border-t border-gray-100 pt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <FaHistory className="w-3.5 h-3.5 text-indigo-400" />
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Remark History</h3>
+            </div>
+            {historyLoading ? (
+              <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                <FaSpinner className="w-3.5 h-3.5 animate-spin" /> Loading history…
+              </div>
+            ) : remarkHistory.filter(h => h.remark).length === 0 ? (
+              <p className="text-xs text-gray-400 italic">No remarks recorded yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                {remarkHistory.filter(h => h.remark).map(h => (
+                  <div key={h.id} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-semibold text-indigo-600">
+                        {h.assignedToUserName || "System"}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        {new Date(h.assignedAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-700">{h.remark}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Inline remark input */}
+            <div className="mt-3 flex gap-2">
+              <input
+                type="text"
+                placeholder="Add new remark…"
+                value={selectedLead ? (remarkMap[selectedLead.id] ?? selectedLead.remark ?? "") : ""}
+                onChange={e => selectedLead && setRemarkMap(prev => ({ ...prev, [selectedLead.id]: e.target.value }))}
+                className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50"
+              />
+              <button
+                onClick={async () => {
+                  if (!selectedLead) return;
+                  const remark = remarkMap[selectedLead.id];
+                  if (!remark || remark === (selectedLead.remark ?? "")) return;
+                  await assignLead(selectedLead.id, selectedLead.assignedToUserId ?? null, selectedLead.assignedToUserName ?? null, remark);
+                  // Refresh history
+                  const updated = await getLeadHistory(selectedLead.id);
+                  setRemarkHistory(Array.isArray(updated) ? updated : []);
+                  Toast?.success("Remark saved");
+                }}
+                className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors active:scale-95"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-gray-100">
             <button
               onClick={() => setSelectedLead(null)}
               className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
@@ -1078,6 +1207,24 @@ useEffect(() => {
           </div>
         </div>
       </Modal>
+
+      {/* ── ASSIGNMENT MODAL (multi-user & dept) ── */}
+      {assignModalLead && (
+        <LeadAssignmentModal
+          lead={assignModalLead}
+          departments={departments}
+          users={users}
+          onClose={() => { setAssignModalLead(null); reload({}, true); }}
+          hookHandlers={{
+            getLeadDepartments,
+            assignLeadDepartments,
+            removeLeadDepartment,
+            getLeadUsers,
+            assignLeadUsers,
+            removeLeadUser,
+          }}
+        />
+      )}
 
     </div>
   );

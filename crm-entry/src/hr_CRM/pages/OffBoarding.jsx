@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { 
-  LogOut, X, Search, Plus, Loader2, Trash2, 
-  ClipboardList, CheckCircle, AlertTriangle, Info, ShieldAlert 
+import {
+  LogOut, X, Search, Plus, Loader2, Trash2,
+  ClipboardList, CheckCircle, AlertTriangle, Info, ShieldAlert
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { jwtDecode } from "jwt-decode";
@@ -56,6 +56,7 @@ export default function OffBoarding() {
       } else {
         setList(rawData.filter(item => item && String(item.employeeId) === String(auth?.id)));
       }
+    } catch {
     } catch {
       toast.error("Sync Failure");
       setList([]);

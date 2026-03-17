@@ -1,82 +1,178 @@
 // src/salesCRM/api/leads.api.js
 import apiClient from "./apiClient";
+import { getUsers } from "../../api/admin/users.api";
+
+const unwrapArrayPayload = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (Array.isArray(payload?.leads)) return payload.leads;
+  return [];
+};
+
+const unwrapObjectPayload = (payload) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+  if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) return payload.data;
+  if (payload.item && typeof payload.item === "object" && !Array.isArray(payload.item)) return payload.item;
+  if (payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)) return payload.result;
+  return payload;
+};
+
+const formatUserName = (user) => {
+  const raw = String(
+    user?.name || user?.username || user?.email || `User ${user?.userId || user?.id || ""}`
+  )
+    .trim()
+    .replace(/\s+/g, " ");
+
+  return raw.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 
 const leadsAPI = {
-  // Get all leads
   getAll: async () => {
     const response = await apiClient.get("/Leads");
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 
-  // Get summary statistics for dashboard
+  getDeleted: async () => {
+    const response = await apiClient.get("/Leads/deleted");
+    return unwrapArrayPayload(response.data);
+  },
+
   getDashboard: async () => {
     const response = await apiClient.get("/Leads/dashboard");
-    return response.data;
+    return unwrapObjectPayload(response.data);
   },
 
-  // Get single lead by ID
   getById: async (id) => {
     const response = await apiClient.get(`/Leads/${id}`);
-    return response.data;
+    return unwrapObjectPayload(response.data);
   },
 
-  // Get timeline for a lead
   getTimeline: async (id) => {
     const response = await apiClient.get(`/Leads/${id}/timeline`);
+    return unwrapArrayPayload(response.data);
+  },
+
+  getCommunications: async (leadId, type) => {
+    let url = `/Leads/${leadId}/communications`;
+    if (type) url += `?type=${type}`;
+    const response = await apiClient.get(url);
+    return unwrapArrayPayload(response.data);
+  },
+
+  addCommunication: async (data) => {
+    const response = await apiClient.post(`/Leads/communication`, data);
     return response.data;
   },
 
-  // Create new lead
   create: async (leadData) => {
     const response = await apiClient.post("/Leads", leadData);
     return response.data;
   },
 
-  // Update lead — used for general field edits
   update: async (id, data) => {
     const response = await apiClient.patch(`/Leads/${id}`, data);
     return response.data;
   },
 
-  // Patch status via dedicated endpoint
-  updateStatus: async (leadId, status) => {
-    const response = await apiClient.patch(`/Leads/status`, { leadId, status });
+  updateScore: async (id, score) => {
+    const response = await apiClient.patch(`/Leads/${id}/score`, score, {
+      headers: { "Content-Type": "application/json" },
+    });
     return response.data;
   },
 
-  // Convert lead to a deal/customer
-  // No body needed — endpoint only uses the {id} path param
-  convertToDeal: async (id) => {
+  assignLead: async (leadId, userId) => {
+    const response = await apiClient.put(`/Leads/assign/${leadId}`, null, {
+      params: { userId },
+    });
+    return response.data;
+  },
+
+  bulkUpdateStatus: async (ids, status) => {
+    const response = await apiClient.put("/Leads/bulk/status", {
+      ids,
+      status,
+    });
+    return response.data;
+  },
+
+  bulkDelete: async (ids) => {
+    const response = await apiClient.delete("/Leads/bulk", {
+      data: { ids },
+    });
+    return response.data;
+  },
+
+  getSalesUsers: async () => {
+    const data = await getUsers({ page: 1, pageSize: 200 });
+    const users = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.users)
+        ? data.users
+        : [];
+    return users
+      .filter((user) => {
+        const roles = Array.isArray(user.roles) ? user.roles : user.role ? [user.role] : [];
+        return roles.some((role) => String(role).trim().toLowerCase() === "sales user");
+      })
+      .map((user) => ({
+        ...user,
+        name: formatUserName(user),
+      }));
+  },
+
+  convertToDeal: async (id, data) => {
     const response = await apiClient.post(
       `/Leads/${id}/convert-to-deal`,
-      undefined,    // ← no body
-      { headers: { "Content-Type": undefined } }  // ← strip Content-Type so .NET doesn't reject
+      data
     );
     return response.data;
   },
 
-  // Delete lead
   delete: async (id) => {
     const response = await apiClient.delete(`/Leads/${id}`);
     return response.data;
   },
 
-  // Import leads from a CSV/XLSX file
   import: async (file) => {
     const formData = new FormData();
     formData.append("file", file);
+
     const response = await apiClient.post("/Leads/import", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+
+    return response.data;
+  },
+
+  getContactHistory: async (id) => {
+    const response = await apiClient.get(`/Leads/${id}/contact-history`);
+    return unwrapArrayPayload(response.data);
+  },
+
+  getAttachments: async (leadId) => {
+    const response = await apiClient.get(`/Leads/${leadId}/attachments`);
+    return unwrapArrayPayload(response.data);
+  },
+
+  uploadAttachment: async (leadId, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiClient.post(`/Leads/${leadId}/attachments`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     return response.data;
   },
 
-  // Get contact history for a lead
-  getContactHistory: async (id) => {
-    const response = await apiClient.get(`/Leads/${id}/contact-history`);
+  deleteAttachment: async (attachmentId) => {
+    const response = await apiClient.delete(`/Leads/attachments/${attachmentId}`);
     return response.data;
   },
 };
 
-
 export default leadsAPI;
+

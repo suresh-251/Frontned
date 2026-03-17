@@ -1,579 +1,811 @@
-import { useState, useEffect, useCallback } from "react";
-import {
-  X, Phone, Mail, Calendar, MessageSquare, Plus,
-  Clock, CheckSquare, FileText, Activity,
-  MapPin, Briefcase, TrendingUp, AlertTriangle, RefreshCw, UserCheck, Tag,
-} from "lucide-react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, Calendar, FileText, Mail, MapPin, Paperclip, Phone, RefreshCw, Trash2, UploadCloud, UserCheck, X } from "lucide-react";
+import { flip, offset } from "@floating-ui/react";
 import { FaWhatsapp } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
+import DatePicker from "react-datepicker";
 import leadsAPI from "../api/leads.api";
+import activitiesAPI from "../api/activities.api";
+import meetingsAPI from "../api/meetings.api";
+import { BASE_URL } from "../api/apiClient";
+import { formatLeadSource, formatStatus } from "../pages/leads/utils";
+import Toast from "../utils/toast";
 
-/* ── tiny helpers (already exist in Leads.jsx, re-declared here for portability) ── */
-const fmtDate = (d) => {
-  if (!d) return "—";
-  const parsed = new Date(d);
-  return isNaN(parsed)
-    ? "—"
-    : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const TABS = [
+  ["activity", "Activity", Activity],
+  ["tasks", "Tasks", UserCheck],
+  ["notes", "Notes", FileText],
+  ["emails", "Emails", Mail],
+  ["calls", "Calls", Phone],
+  ["whatsapp", "WhatsApp", FaWhatsapp],
+  ["meetings", "Meetings", Calendar],
+  ["attachments", "Attachments", Paperclip],
+];
+
+const EMAIL_TEMPLATES = [
+  { id: "intro", name: "Warm Introduction", subject: "A quick introduction for {{name}}", body: "Hi {{name}},\n\nI hope you're doing well. I wanted to personally reach out and introduce myself. Based on your interest, I believe we can help you move faster and with more clarity.\n\nIf you're open to it, I would be happy to understand your current requirement and suggest the most suitable next step.\n\nPlease let me know a convenient time to connect.\n\nBest regards," },
+  { id: "followup", name: "Professional Follow-Up", subject: "Following up on our discussion, {{name}}", body: "Hi {{name}},\n\nI wanted to follow up regarding our previous conversation. I understand priorities can shift, so I just wanted to check whether this is still something you would like to explore.\n\nIf it helps, I can share a concise overview, answer any questions, or schedule a quick call at your convenience.\n\nLooking forward to your response.\n\nBest regards," },
+];
+
+const WHATSAPP_TEMPLATES = [
+  { id: "intro", name: "Warm Introduction", message: "Hi {{name}}, this is a quick introduction from our team. I wanted to personally connect and understand your requirement better. If you're available, I would be happy to guide you with the next best step." },
+  { id: "followup", name: "Polite Follow-Up", message: "Hi {{name}}, just following up on our earlier discussion. I understand you may be busy, so I wanted to check whether you would like to continue the conversation. Happy to help whenever convenient for you." },
+  { id: "proposal", name: "Value Pitch", message: "Hi {{name}}, based on what we discussed, I believe we can offer a solution that saves time and gives you a smoother process overall. If you'd like, I can share a quick summary and walk you through the best option." },
+];
+
+const CONTACT_SHORTCUTS = [
+  { id: "calls", label: "Call", icon: Phone },
+  { id: "whatsapp", label: "WhatsApp", icon: FaWhatsapp },
+  { id: "emails", label: "Email", icon: Mail },
+];
+const CALL_PURPOSE_OPTIONS = [
+  "Follow-up",
+  "Introduction",
+  "Qualification",
+  "Demo",
+  "Negotiation",
+  "Support",
+  "Closing",
+];
+const CALL_STATUS_OPTIONS = [
+  "Pending",
+  "Incomplete",
+  "Completed",
+  "Cancelled",
+];
+const TASK_STATUS_OPTIONS = [
+  "Pending",
+  "Incomplete",
+  "Completed",
+  "Cancelled",
+];
+const TASK_PRIORITY_OPTIONS = ["Low", "Medium", "High"];
+const DEAL_STAGE_OPTIONS = [
+  "New",
+  "Prospect",
+  "Qualification",
+  "Qualified",
+  "Proposal",
+  "ProposalSent",
+  "Negotiation",
+  "ClosedWon",
+  "ClosedLost",
+];
+const CONTACT_ROLE_OPTIONS = [
+  "Developer/Evaluator",
+  "Decision Maker",
+  "Purchasing",
+  "Executive Sponsor",
+  "Engineering Lead",
+  "Economic Decision Maker",
+  "Product Management",
+];
+
+const card = { border: "1px solid #e5e7eb", borderRadius: 14, background: "#fff", boxShadow: "none" };
+const input = { width: "100%", minHeight: 38, padding: "10px 12px", border: "1px solid #dbe4f0", borderRadius: 12, outline: "none", fontSize: 13, color: "#334155", background: "#fff", boxSizing: "border-box" };
+const floatingWrap = { position: "relative", width: "100%", paddingTop: 10 };
+const floatingInput = { ...input, minHeight: 48, padding: "14px 12px 8px" };
+const floatingLabel = { position: "absolute", top: -7, left: 12, padding: "0 5px 0 0", fontSize: 10.5, fontWeight: 700, color: "#475569", background: "#ffffff", pointerEvents: "none", letterSpacing: "0.01em", lineHeight: 1.1 };
+const floatingErrorText = { marginTop: 6, marginLeft: 4, fontSize: 11.5, color: "#dc2626", lineHeight: 1.3 };
+const datePickerInputBase = { ...floatingInput, width: "100%", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+const selectFieldStyle = {
+  appearance: "none",
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E\")",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 12px center",
+  backgroundSize: "14px 14px",
+  paddingRight: 36,
+  cursor: "pointer",
 };
 
-const fmtDateTime = (iso) => {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d)) return "—";
-  return d.toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
+const hasValue = (v) => !(v === null || v === undefined || (typeof v !== "boolean" && String(v).trim() === ""));
+const leadName = (lead) => [lead?.firstName, lead?.lastName].filter(Boolean).join(" ").trim() || lead?.name || "Lead";
+const assignee = (lead) => lead?.assignee || lead?.assignedToUserName || lead?.assignedUserName || (lead?.assignedToUserId ? `User ${lead.assignedToUserId}` : "");
+const sanitizePhoneNumber = (value = "") => String(value).replace(/[^\d+]/g, "");
+const formatDisplayText = (value = "") => String(value)
+  .replace(/([a-z])([A-Z])/g, "$1 $2")
+  .replace(/_/g, " ")
+  .replace(/\s+/g, " ")
+  .trim()
+  .replace(/\bWhats App\b/g, "WhatsApp");
+const fmtDate = (v, withTime = true) => {
+  if (!v) return "-";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleString("en-US", withTime ? { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", year: "numeric" });
 };
-
-const todayStr = () => new Date().toISOString().split("T")[0];
-
-const STATUS_META = {
-  FreshLead:       { color: "#1e40af", bg: "#dbeafe" },
-  Contacted:       { color: "#065f46", bg: "#d1fae5" },
-  FollowUp:        { color: "#92400e", bg: "#fef3c7" },
-  Interested:      { color: "#5b21b6", bg: "#ede9fe" },
-  Qualified:       { color: "#1d4ed8", bg: "#bfdbfe" },
-  Negotiation:     { color: "#c2410c", bg: "#ffedd5" },
-  Converted:       { color: "#166534", bg: "#bbf7d0" },
-  Lost:            { color: "#991b1b", bg: "#fee2e2" },
-  NotInterested:   { color: "#374151", bg: "#f3f4f6" },
-  UnableToContact: { color: "#78350f", bg: "#fef9c3" },
-  JunkLead:        { color: "#6b7280", bg: "#e5e7eb" },
-  "Need Review":   { color: "#6d28d9", bg: "#ede9fe" },
-  New:             { color: "#1e40af", bg: "#dbeafe" },
+const hasRealDate = (v) => {
+  if (!v) return false;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getUTCFullYear() > 1900;
 };
-
-/* ────────────────────────────────────────────
-   TIMELINE EVENT ICON
-──────────────────────────────────────────── */
-const TIMELINE_CFG = {
-  "Lead Assigned":  { icon: UserCheck, color: "#4f46e5", bg: "#eef2ff", border: "#c7d2fe" },
-  "Lead Created":   { icon: Plus,      color: "#059669", bg: "#ecfdf5", border: "#a7f3d0" },
-  "Status Changed": { icon: Activity,  color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
-  "Note Added":     { icon: FileText,  color: "#0891b2", bg: "#ecfeff", border: "#a5f3fc" },
-  "Call Made":      { icon: Phone,     color: "#10b981", bg: "#ecfdf5", border: "#a7f3d0" },
-  "Email Sent":     { icon: Mail,      color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
-  "Meeting":        { icon: Calendar,  color: "#8b5cf6", bg: "#f5f3ff", border: "#ddd6fe" },
-  default:          { icon: Clock,     color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb" },
+const followUpDisplayValue = (lead) => {
+  if (hasValue(lead?.followUpDate) && hasRealDate(lead.followUpDate)) {
+    return fmtDate(lead.followUpDate, true);
+  }
+  const rawCandidates = [
+    lead?.nextFollowUpAt,
+    lead?.next_follow_up_at,
+    lead?.nextFollowupAt,
+  ];
+  const rawMatch = rawCandidates.find((value) => hasRealDate(value));
+  return rawMatch ? fmtDate(rawMatch, true) : "";
 };
+const fmtTime = (v) => {
+  if (!v) return "-";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+};
+const timelineDateValue = (item) => item?.createdAt || item?.date || item?.eventDate || item?.updatedAt || item?.sentAt || item?.occurredAt || null;
+const timelineDescription = (item) => String(item?.description || "").replace(/from\s+([A-Za-z]+)\s+to\s+([A-Za-z]+)/g, (_, from, to) => `from ${formatStatus(from)} to ${formatStatus(to)}`);
+const timelineAuthor = (item) => item?.createdByName || item?.userName || item?.performedBy || item?.author || item?.createdBy || "";
+const timelineKind = (item) => {
+  const raw = String(item?.type || item?.eventType || "").toLowerCase();
+  if (raw.includes("call")) return "call";
+  if (raw.includes("meeting")) return "meeting";
+  if (raw.includes("email")) return "email";
+  if (raw.includes("whatsapp")) return "whatsapp";
+  if (raw.includes("attach")) return "attachment";
+  if (raw.includes("note")) return "note";
+  return "activity";
+};
+const timelineIcon = (item) => {
+  const kind = timelineKind(item);
+  if (kind === "meeting") return Calendar;
+  if (kind === "call") return Phone;
+  if (kind === "email") return Mail;
+  if (kind === "attachment") return Paperclip;
+  if (kind === "note") return FileText;
+  return Activity;
+};
+const getApiErrorMessage = (error, fallback = "Unable to save") => {
+  const data = error?.response?.data;
+  if (typeof data === "string" && data.trim()) return data;
+  if (typeof data?.message === "string" && data.message.trim()) return data.message;
+  if (Array.isArray(data?.errors)) return data.errors.join(", ");
+  if (data?.errors && typeof data.errors === "object") {
+    const messages = Object.values(data.errors).flat().filter(Boolean);
+    if (messages.length) return messages.join(", ");
+  }
+  if (typeof error?.message === "string" && error.message.trim()) return error.message;
+  return fallback;
+};
+const attachmentUrl = (a) => {
+  const raw = a?.fileUrl || a?.url || a?.filePath || a?.path || "";
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `${BASE_URL.replace(/\/api$/, "")}/${String(raw).replace(/^\/+/, "")}`;
+};
+const commKind = (type = "") => {
+  const raw = String(type).toLowerCase();
+  if (raw.includes("note")) return "notes";
+  if (raw.includes("whatsapp")) return "whatsapp";
+  if (raw.includes("email")) return "emails";
+  if (raw.includes("call")) return "calls";
+  if (raw.includes("meeting")) return "meetings";
+  return "other";
+};
+const mapActivity = (x) => ({
+  id: x?.id,
+  title: x?.title || x?.subject || x?.eventType || x?.type || "Activity",
+  type: x?.type || x?.eventType || "Activity",
+  description: x?.description || "",
+  date: x?.callStartTime || x?.activityDate || x?.dueDate || x?.createdAt,
+  dueDate: x?.dueDate || x?.activityDate || x?.callStartTime || x?.createdAt,
+  status: x?.status || x?.callStatus || "",
+  priority: x?.priority || ""
+});
+const mapComm = (x) => ({
+  id: x?.id || `${x?.eventType || x?.type}-${x?.date || x?.description}`,
+  kind: commKind(x?.type || x?.eventType),
+  title: formatDisplayText(x?.eventType || x?.type || "Update"),
+  description: x?.description || "",
+  preview: x?.body || x?.message || x?.description || x?.subject || "",
+  date: x?.date || x?.createdAt,
+  author: x?.createdByName || x?.userName || x?.author || x?.createdBy || "",
+  meta: x?.subject || x?.toEmail || x?.phoneNumber || "",
+});
+const mapMeetingRecord = (x) => ({
+  id: x?.id || `meeting-${x?.subject || x?.startTime}`,
+  kind: "meetings",
+  title: x?.subject || "Meeting",
+  description: x?.description || "",
+  preview: [x?.description, x?.joinUrl, x?.location].filter(Boolean).join("\n"),
+  date: x?.startTime,
+  provider: x?.provider || x?.location || "",
+  location: x?.location || "",
+  joinUrl: x?.joinUrl || "",
+  durationMinutes: x?.durationMinutes ?? 0,
+  author: x?.createdByName || x?.organizerName || x?.createdBy || "",
+});
+const meetingMetaValue = (item) => {
+  const provider = formatDisplayText(item?.provider || "");
+  const location = String(item?.location || "").trim();
+  if (provider && location && provider.toLowerCase() !== location.toLowerCase()) {
+    return `${provider} / ${location}`;
+  }
+  return provider || location || "";
+};
+const compactMeetingDate = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+};
+const toIsoString = (v) => {
+  if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString();
+};
+const buildCallSummary = (x) => {
+  const parts = [
+    x?.callStatus ? `Status: ${x.callStatus}` : "",
+    x?.callResult ? `Result: ${x.callResult}` : "",
+    hasValue(x?.durationMinutes) ? `Duration: ${x.durationMinutes} min` : "",
+    x?.callPurpose ? `Purpose: ${x.callPurpose}` : "",
+    x?.reminder ? `Reminder: ${x.reminder}` : "",
+    x?.voiceRecordingUrl ? `Recording: ${x.voiceRecordingUrl}` : "",
+    x?.description || "",
+  ].filter(Boolean);
+  return parts.join(" | ");
+};
+const mapCallActivity = (x) => ({
+  id: x?.id || `call-${x?.subject || x?.callStartTime || x?.createdAt}`,
+  kind: "calls",
+  title: x?.subject || x?.title || "Call",
+  description: buildCallSummary(x),
+  preview: buildCallSummary(x),
+  date: x?.callStartTime || x?.activityDate || x?.dueDate || x?.createdAt,
+  status: x?.callStatus || x?.status || "",
+  durationMinutes: x?.durationMinutes ?? x?.callDurationMinutes ?? null,
+  author: x?.createdByName || x?.userName || x?.createdBy || "",
+});
 
-function TimelineIcon({ type }) {
-  const cfg = TIMELINE_CFG[type] || TIMELINE_CFG.default;
-  const Ic = cfg.icon;
+function InfoRow({ icon: Icon, label, value }) {
+  if (!hasValue(value)) return null;
   return (
-    <div style={{
-      width: 32, height: 32, borderRadius: "50%",
-      background: cfg.bg, border: `2px solid ${cfg.border}`,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      flexShrink: 0, position: "relative", zIndex: 1,
-    }}>
-      <Ic size={14} color={cfg.color} strokeWidth={2} />
+    <div style={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: 10, alignItems: "start", padding: "12px 0", borderBottom: "1px solid #edf2f7" }}>
+      <div style={{ width: 28, height: 28, borderRadius: 10, background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }}><Icon size={15} /></div>
+      <div><div style={{ fontSize: 11.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div><div style={{ marginTop: 4, fontSize: 13.5, color: "#1e293b", wordBreak: "break-word" }}>{value}</div></div>
     </div>
   );
 }
 
-const ACT_VERB = { email: "Sent", call: "Made", meeting: "Scheduled" };
-
-const getActLabel = (act) => {
-  if (act.type === "created") return "Lead Created";
-  if (act.type === "score-change") return act.notes;
-  const verb = ACT_VERB[act.type] ?? "Sent";
-  return `${act.type.charAt(0).toUpperCase() + act.type.slice(1)} ${verb}`;
-};
-
-const ACT_TYPE_MAP = {
-  email:          { Ic: Mail,          color: "#3b82f6", bg: "#eff6ff" },
-  call:           { Ic: Phone,         color: "#10b981", bg: "#ecfdf5" },
-  message:        { Ic: MessageSquare, color: "#8b5cf6", bg: "#f5f3ff" },
-  meeting:        { Ic: Calendar,      color: "#f59e0b", bg: "#fffbeb" },
-  created:        { Ic: Plus,          color: "#6b7280", bg: "#f3f4f6" },
-  "score-change": { Ic: TrendingUp,    color: "#ec4899", bg: "#fdf2f8" },
-};
-
-
-/* ────────────────────────────────────────────
-   ACTIVITY TABS  (middle panel)
-──────────────────────────────────────────── */
-const ACTIVITY_TABS = [
-  { k: "Activity",  icon: Activity },
-  { k: "Notes",     icon: FileText },
-  { k: "Emails",    icon: Mail },
-  { k: "Calls",     icon: Phone },
-  { k: "Tasks",     icon: CheckSquare },
-  { k: "Meetings",  icon: Calendar },
-];
-
-/* Tab → compose config: placeholder text + which type to log */
-const TAB_COMPOSE_CFG = {
-  Activity: { placeholder: "Log a note, call, email…", type: "note"    },
-  Notes:    { placeholder: "Write a note…",            type: "note"    },
-  Emails:   { placeholder: "Compose an email…",        type: "email"   },
-  Calls:    { placeholder: "Log call notes…",          type: "call"    },
-  Tasks:    { placeholder: "Describe the task…",       type: "task"    },
-  Meetings: { placeholder: "Add meeting notes…",       type: "meeting" },
-};
-
-function MiddlePanel({ lead, activityLog, onAdjustScore }) {
-  const [activeTab, setActiveTab]   = useState("Activity");
-  const [focused,   setFocused]     = useState(false);
-  const [notes,     setNotes]       = useState("");
-  const activities = activityLog[lead?.id] || [];
-
-  const composeCfg = TAB_COMPOSE_CFG[activeTab] ?? TAB_COMPOSE_CFG.Activity;
-
-  const filtered = activeTab === "Activity"
-    ? activities
-    : activities.filter(a => a.type === activeTab.toLowerCase().replace(/s$/, ""));
-
-  const handleSave = () => {
-    if (!notes.trim()) return;
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-    onAdjustScore(lead.id, 0, {
-      type: composeCfg.type,
-      date: todayStr(),
-      time: timeStr,
-      notes,
-    });
-    setNotes("");
-    setFocused(false);
+function FloatingInput({ label, as = "input", style, error, autoGrow = false, ...props }) {
+  const fieldStyle = {
+    ...floatingInput,
+    borderColor: error ? "#f87171" : "#cbd5e1",
+    boxShadow: error ? "0 0 0 3px rgba(248, 113, 113, 0.14)" : "none",
+    ...style
   };
+  if (as === "textarea") {
+    const textareaMinHeight = style?.minHeight ?? 120;
+    return (
+      <div style={floatingWrap}>
+        <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
+        <textarea
+          {...props}
+          onInput={(event) => {
+            if (autoGrow) {
+              event.currentTarget.style.height = "auto";
+              event.currentTarget.style.height = `${Math.max(event.currentTarget.scrollHeight, Number(textareaMinHeight) || 120)}px`;
+            }
+            props.onInput?.(event);
+          }}
+          style={{ ...fieldStyle, minHeight: textareaMinHeight, resize: autoGrow ? "none" : "vertical", overflow: autoGrow ? "hidden" : undefined }}
+        />
+        {error ? <div style={floatingErrorText}>{error}</div> : null}
+      </div>
+    );
+  }
 
-  const handleCancel = () => { setNotes(""); setFocused(false); };
-
-  /* Reset compose when tab changes */
-  const handleTabChange = (k) => { setActiveTab(k); setNotes(""); setFocused(false); };
+  if (as === "select") {
+    return (
+      <div style={floatingWrap}>
+        <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
+        <select {...props} style={fieldStyle} />
+        {error ? <div style={floatingErrorText}>{error}</div> : null}
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#f8fafc" }}>
+    <div style={floatingWrap}>
+      <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
+      <input {...props} style={fieldStyle} />
+      {error ? <div style={floatingErrorText}>{error}</div> : null}
+    </div>
+  );
+}
 
-      {/* ── Tabs ── */}
-      <div style={{
-        display: "flex", padding: "0 20px",
-        background: "white", borderBottom: "1px solid #e5e7eb",
-        overflowX: "auto", gap: 0, flexShrink: 0,
-      }}>
-        {ACTIVITY_TABS.map(({ k, icon: Ic }) => {
-          const isActive = activeTab === k;
-          return (
-            <button
-              key={k}
-              onClick={() => handleTabChange(k)}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "11px 15px",
-                border: "none",
-                borderBottom: `2px solid ${isActive ? "#4f46e5" : "transparent"}`,
-                background: "none",
-                fontSize: 12, fontWeight: isActive ? 700 : 500,
-                color: isActive ? "#4f46e5" : "#9ca3af",
-                cursor: "pointer", whiteSpace: "nowrap",
-                transition: "color 0.15s", letterSpacing: "0.01em",
-              }}
-            >
-              <Ic size={11} strokeWidth={isActive ? 2.5 : 2} />
-              {k}
-            </button>
-          );
-        })}
+const DatePickerInput = forwardRef(function DatePickerInput({ value, onClick, style, label }, ref) {
+  return (
+    <input
+      ref={ref}
+      value={value}
+      onClick={onClick}
+      readOnly
+      style={{ ...datePickerInputBase, cursor: "pointer", ...style }}
+      aria-label={label}
+    />
+  );
+});
+
+function FloatingDateTimePicker({ label, selected, onChange, minDate, error, style, popperPlacement = "bottom-start", popperOffset = 8, popperModifiers }) {
+  return (
+    <div style={floatingWrap}>
+      <label style={{ ...floatingLabel, zIndex: 2 }}>{label}</label>
+      <DatePicker
+        selected={selected}
+        onChange={onChange}
+        showTimeSelect
+        timeIntervals={15}
+        dateFormat="MMM d, yyyy h:mm aa"
+        minDate={minDate}
+        calendarClassName="followup-datepicker"
+        popperPlacement={popperPlacement}
+        showPopperArrow={false}
+        popperClassName="lead-details-datepicker-popper"
+        wrapperClassName="lead-details-datepicker-wrapper"
+        popperModifiers={[
+          offset(popperOffset),
+          ...(popperModifiers || []),
+        ]}
+        customInput={<DatePickerInput label={label} style={{ borderColor: error ? "#f87171" : "#cbd5e1", boxShadow: error ? "0 0 0 3px rgba(248, 113, 113, 0.14)" : "none", ...style }} />}
+      />
+      {error ? <div style={floatingErrorText}>{error}</div> : null}
+    </div>
+  );
+}
+
+function LeftPanel({ lead, onConvert, onOpenTab }) {
+  const location = [lead?.address, lead?.city, lead?.state, lead?.country, lead?.zipCode || lead?.zip].filter(Boolean).join(", ");
+  const initials = (leadName(lead).match(/\b\w/g) || []).join("").slice(0, 2).toUpperCase();
+  const canCall = hasValue(lead?.phone) || hasValue(lead?.mobile) || hasValue(lead?.secondaryPhone);
+  const canWhatsapp = canCall;
+  const canEmail = hasValue(lead?.email) || hasValue(lead?.secondaryEmail);
+  const shortcutEnabled = {
+    calls: canCall,
+    whatsapp: canWhatsapp,
+    emails: canEmail,
+  };
+  return (
+    <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderRight: "1px solid #e5e7eb", background: "#fff" }}>
+      <div style={{ padding: 22, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(180deg, #f8faff 0%, #f3f6ff 100%)" }}>
+        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+          <div style={{ width: 62, height: 62, borderRadius: "50%", background: lead?.avatarBg || "#6366f1", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800 }}>{initials}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{leadName(lead)}</div>
+            {hasValue(lead?.company) && <div style={{ marginTop: 4, fontSize: 13.5, color: "#64748b" }}>{lead.company}</div>}
+            {hasValue(lead?.status) && <div style={{ display: "inline-flex", marginTop: 10, padding: "5px 10px", borderRadius: 999, background: "#eef2ff", color: "#4f46e5", fontSize: 12, fontWeight: 700 }}>{formatStatus(lead.status)}</div>}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 18 }}>
+          {CONTACT_SHORTCUTS.map(({ id, label, icon: Icon }) => {
+            const enabled = shortcutEnabled[id];
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => enabled && onOpenTab?.(id)}
+                disabled={!enabled}
+                title={label}
+                aria-label={label}
+                style={{
+                  width: 34,
+                  height: 34,
+                  border: enabled ? "1px solid #dbe4f0" : "1px solid #e2e8f0",
+                  borderRadius: "50%",
+                  background: "#ffffff",
+                  color: enabled ? "#2563eb" : "#94a3b8",
+                  cursor: enabled ? "pointer" : "not-allowed",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                  outline: "none",
+                  boxShadow: "none",
+                  transition: "transform 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease",
+                  animation: enabled ? "leadShortcutPop 320ms ease" : "none",
+                }}
+                onMouseEnter={(event) => {
+                  if (!enabled) return;
+                  event.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
+                  event.currentTarget.style.backgroundColor = "#f8fafc";
+                  event.currentTarget.style.borderColor = "#cbd5e1";
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.transform = "translateY(0) scale(1)";
+                  event.currentTarget.style.backgroundColor = "#ffffff";
+                  event.currentTarget.style.borderColor = enabled ? "#dbe4f0" : "#e2e8f0";
+                }}
+                onMouseDown={(event) => {
+                  if (!enabled) return;
+                  event.currentTarget.style.transform = "scale(0.96)";
+                }}
+                onMouseUp={(event) => {
+                  if (!enabled) return;
+                  event.currentTarget.style.transform = "translateY(-2px) scale(1.04)";
+                }}
+              >
+                <Icon size={14} color={enabled ? "#64748b" : "#94a3b8"} />
+              </button>
+            );
+          })}
+        </div>
+        <style>{`
+          @keyframes leadShortcutPop {
+            0% { transform: scale(0.88); opacity: 0; }
+            70% { transform: scale(1.06); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+
+          .lead-details-datepicker-popper {
+            z-index: 900 !important;
+          }
+
+          .lead-details-datepicker-wrapper {
+            display: block;
+            width: 100%;
+          }
+
+          .lead-details-datepicker-wrapper .react-datepicker__input-container {
+            display: block;
+            width: 100%;
+          }
+        `}</style>
+        <button
+          type="button"
+          onClick={onConvert}
+          style={{
+            marginTop: 18,
+            display: "block",
+            width: 130,
+            marginLeft: "auto",
+            marginRight: "auto",
+            padding: "10px 0",
+            border: "1px solid #bbf7d0",
+            borderRadius: 12,
+            background: "#f0fdf4",
+            color: "#166534",
+            fontSize: 13,
+            fontWeight: 800,
+            cursor: "pointer",
+            lineHeight: 1.1,
+          }}
+        >
+          Convert To Deal
+        </button>
       </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 22px 18px" }}>
+        <InfoRow icon={Mail} label="Email" value={lead?.email} />
+        <InfoRow icon={Mail} label="Secondary Email" value={lead?.secondaryEmail} />
+        <InfoRow icon={Phone} label="Phone" value={lead?.phone} />
+        <InfoRow icon={Phone} label="Secondary Phone" value={lead?.secondaryPhone || lead?.mobile} />
+        <InfoRow icon={UserCheck} label="Assignee" value={assignee(lead)} />
+        <InfoRow icon={FileText} label="Position" value={lead?.position} />
+        <InfoRow icon={FileText} label="Industry" value={lead?.industry} />
+        <InfoRow icon={Paperclip} label="Source" value={lead?.source ? formatLeadSource(lead.source) : ""} />
+        <InfoRow icon={Calendar} label="Follow Up" value={followUpDisplayValue(lead)} />
+        <InfoRow icon={MapPin} label="Location" value={location} />
+        <InfoRow icon={FileText} label="Website" value={lead?.website} />
+        <InfoRow icon={FileText} label="Comments" value={lead?.comments} />
+        <InfoRow icon={FileText} label="Description" value={lead?.description} />
+      </div>
+    </aside>
+  );
+}
 
-      {/* ── Scrollable body: compose box + history ── */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+function ConvertToDealModal({ lead, onClose, onConverted }) {
+  const navigate = useNavigate();
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [form, setForm] = useState({
+    amount: "",
+    closingDate: "",
+    stage: "New",
+    contactRole: "Purchasing",
+  });
 
-        {/* ── Inline compose box (always visible, HubSpot-style) ── */}
-        <div style={{
-          background: "white",
-          border: `1.5px solid ${focused ? "#4f46e5" : "#e5e7eb"}`,
-          borderRadius: 10,
-          boxShadow: focused ? "0 0 0 3px rgba(79,70,229,0.08)" : "0 1px 3px rgba(0,0,0,0.05)",
+  const setField = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setErrors((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const handleSubmit = async () => {
+    const nextErrors = {};
+    if (!String(form.amount).trim() || Number(form.amount) <= 0) nextErrors.amount = "Enter a valid deal amount.";
+    if (!String(form.closingDate).trim()) nextErrors.closingDate = "Closing date is required.";
+    if (!String(form.stage).trim()) nextErrors.stage = "Stage is required.";
+    if (!String(form.contactRole).trim()) nextErrors.contactRole = "Contact role is required.";
+    if (Object.keys(nextErrors).length) {
+      setErrors(nextErrors);
+      Toast.error("Please complete the deal details.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        amount: Number(form.amount),
+        closingDate: new Date(form.closingDate).toISOString(),
+        stage: form.stage,
+        contactRole: form.contactRole,
+      };
+      const createdDeal = await leadsAPI.convertToDeal(lead.id, payload);
+      Toast.success(createdDeal?.dealId ? `Lead converted to deal #${createdDeal.dealId}` : "Lead converted to deal");
+      onConverted?.(createdDeal);
+      onClose?.();
+      navigate("/crm/sales/deals");
+    } catch (error) {
+      Toast.error(getApiErrorMessage(error, "Unable to convert lead"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="overlay" onClick={onClose} style={{ padding: 24, zIndex: 750 }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(560px, calc(100vw - 48px))",
+          background: "#ffffff",
+          borderRadius: 24,
+          border: "1px solid #e5e7eb",
+          boxShadow: "0 28px 70px rgba(15, 23, 42, 0.18)",
           overflow: "hidden",
-          transition: "border-color 0.15s, box-shadow 0.15s",
-          flexShrink: 0,
-        }}>
-          <textarea
-            placeholder={composeCfg.placeholder}
-            value={notes}
-            rows={focused ? 4 : 2}
-            onChange={e => setNotes(e.target.value)}
-            onFocus={() => setFocused(true)}
-            style={{
-              width: "100%", padding: "12px 14px",
-              border: "none", outline: "none", resize: "none",
-              fontSize: 13, color: "#111827", lineHeight: 1.55,
-              fontFamily: "inherit", background: "transparent",
-              boxSizing: "border-box",
-              transition: "height 0.15s",
-            }}
-          />
-
-          {/* Toolbar — only when focused */}
-          {focused && (
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "8px 12px",
-              borderTop: "1px solid #f3f4f6",
-              background: "#fafafa",
-              animation: "fadeSlideIn 0.15s ease both",
-            }}>
-              {/* Type pills */}
-              <div style={{ display: "flex", gap: 5 }}>
-                {(activeTab === "Activity"
-                  ? ["note", "call", "email", "meeting"]
-                  : [composeCfg.type]
-                ).map(t => {
-                  const cfg = ACT_TYPE_MAP[t] ?? ACT_TYPE_MAP.created;
-                  const sel = composeCfg.type === t;
-                  return (
-                    <span
-                      key={t}
-                      style={{
-                        padding: "3px 9px",
-                        borderRadius: 20,
-                        border: `1px solid ${sel ? cfg.color + "88" : "#e5e7eb"}`,
-                        background: sel ? cfg.bg : "transparent",
-                        color: sel ? cfg.color : "#9ca3af",
-                        fontSize: 11, fontWeight: 600,
-                        textTransform: "capitalize",
-                        letterSpacing: "0.01em",
-                      }}
-                    >{t}</span>
-                  );
-                })}
-              </div>
-
-              {/* Actions */}
-              <div style={{ display: "flex", gap: 7 }}>
-                <button
-                  onClick={handleCancel}
-                  style={{
-                    padding: "5px 13px", border: "1px solid #e5e7eb",
-                    borderRadius: 6, background: "white",
-                    fontSize: 12, fontWeight: 500, color: "#6b7280", cursor: "pointer",
-                  }}
-                >Cancel</button>
-                <button
-                  onClick={handleSave}
-                  disabled={!notes.trim()}
-                  style={{
-                    padding: "5px 16px", border: "none",
-                    borderRadius: 6,
-                    background: notes.trim() ? "#4f46e5" : "#e5e7eb",
-                    color: notes.trim() ? "white" : "#9ca3af",
-                    fontSize: 12, fontWeight: 600, cursor: notes.trim() ? "pointer" : "default",
-                    boxShadow: notes.trim() ? "0 1px 4px rgba(79,70,229,0.25)" : "none",
-                    transition: "all 0.15s",
-                  }}
-                >Save</button>
-              </div>
+        }}
+      >
+        <div style={{ padding: "22px 24px 18px", borderBottom: "1px solid #eef2f7", display: "flex", alignItems: "start", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>Convert Lead To Deal</div>
+            <div style={{ marginTop: 6, fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>
+              Create a deal for {leadName(lead)} by adding the amount, closing date, stage, and contact role.
             </div>
-          )}
+          </div>
+          <button className="icon-btn" onClick={onClose} title="Close"><X size={18} /></button>
         </div>
 
-        {/* ── History label ── */}
-        {filtered.length > 0 && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8,
-          }}>
-            <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-              {filtered.length} {activeTab === "Activity" ? "activities" : activeTab.toLowerCase()}
-            </span>
-            <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
-          </div>
-        )}
+        <div style={{ padding: 24, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 }}>
+          <FloatingInput type="number" min="0" label="Deal Amount" value={form.amount} error={errors.amount} onChange={(e) => setField("amount", e.target.value)} />
+          <FloatingInput type="date" label="Closing Date" value={form.closingDate} error={errors.closingDate} onChange={(e) => setField("closingDate", e.target.value)} />
+          <FloatingInput as="select" label="Deal Stage" value={form.stage} error={errors.stage} onChange={(e) => setField("stage", e.target.value)}>
+            {DEAL_STAGE_OPTIONS.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+          </FloatingInput>
+          <FloatingInput as="select" label="Contact Role" value={form.contactRole} error={errors.contactRole} onChange={(e) => setField("contactRole", e.target.value)}>
+            {CONTACT_ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role}</option>)}
+          </FloatingInput>
+        </div>
 
-        {/* ── Activity feed ── */}
-        {filtered.length === 0 ? (
-          <div style={{
-            display: "flex", flexDirection: "column", alignItems: "center",
-            justifyContent: "center", padding: "40px 0", color: "#9ca3af",
-          }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: "50%",
-              background: "#f3f4f6",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              marginBottom: 10,
-            }}>
-              <MessageSquare size={20} color="#d1d5db" strokeWidth={1.5} />
+        <div style={{ padding: "0 24px 24px", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn-primary" disabled={submitting} onClick={handleSubmit}>
+            {submitting ? "Converting..." : "Create Deal"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Timeline({ items, loading, onRefresh }) {
+  const groups = useMemo(() => items.reduce((acc, item) => { const key = fmtDate(timelineDateValue(item), false); (acc[key] ||= []).push(item); return acc; }, {}), [items]);
+  return (
+    <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderLeft: "1px solid #e2e8f0", background: "linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%)" }}>
+      <div style={{ borderBottom: "1px solid #e2e8f0", background: "linear-gradient(180deg, #ffffff 0%, #f7fbff 100%)", padding: "20px 22px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em" }}>Lead Story</div>
+            <div style={{ marginTop: 6, fontSize: 18, fontWeight: 800, color: "#0f172a" }}>Timeline</div>
+            <div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b", lineHeight: 1.5 }}>A clean view of status changes, communications, and lead updates.</div>
+          </div>
+          <button className="icon-btn" onClick={onRefresh} title="Refresh timeline" style={{ width: 40, height: 40, border: "1px solid #dbe4f0", borderRadius: 12, background: "#ffffff", boxShadow: "0 8px 20px rgba(148, 163, 184, 0.12)" }}><RefreshCw size={16} /></button>
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "18px 14px 22px 0" }}>
+        {loading ? <div style={{ color: "#94a3b8", fontSize: 13, padding: "16px 6px" }}>Loading timeline...</div> : null}
+        {!loading && !items.length ? (
+          <div style={{ marginTop: 8, padding: "20px 18px", border: "1px solid #e2e8f0", borderRadius: 18, background: "rgba(255,255,255,0.92)", boxShadow: "0 18px 36px rgba(148, 163, 184, 0.12)" }}>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: "#eef6ff", color: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center" }}><Activity size={18} /></div>
+            <div style={{ marginTop: 14, fontSize: 15, fontWeight: 800, color: "#0f172a" }}>No timeline updates yet</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "#64748b" }}>When this lead gets notes, calls, meetings, or status changes, they will appear here in a clean activity stream.</div>
+          </div>
+        ) : null}
+        {!loading && Object.entries(groups).map(([date, group]) => (
+          <div key={date} style={{ marginBottom: 18 }}>
+            <div style={{ position: "relative", paddingBottom: 12 }}>
+              <div style={{ position: "absolute", left: 113, top: "calc(100% - 1px)", width: 1, height: 13, background: "#dbe4f0" }} />
+              <div style={{ display: "inline-flex", minWidth: 160, justifyContent: "center", marginLeft: 33, padding: "8px 14px", border: "1px solid #dbe4f0", borderRadius: 6, background: "#ffffff", fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>{date}</div>
             </div>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#6b7280" }}>No {activeTab.toLowerCase()} yet</p>
-            <span style={{ fontSize: 12, marginTop: 4 }}>Use the box above to log one.</span>
+            <div style={{ position: "relative" }}>
+              <div style={{ position: "absolute", left: 113, top: 0, bottom: 0, width: 1, background: "#dbe4f0" }} />
+              {group.map((item, idx) => {
+                const EventIcon = timelineIcon(item);
+                const author = timelineAuthor(item);
+                const eventTitle = item.type || item.eventType || "Update";
+                const eventDescription = timelineDescription(item);
+                return (
+                  <div key={`${timelineDateValue(item)}-${item.type || item.eventType || idx}`} style={{ display: "grid", gridTemplateColumns: "78px 42px minmax(0, 1fr)", gap: 10, alignItems: "start", paddingBottom: 22 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", paddingTop: 10 }}>{fmtTime(timelineDateValue(item))}</div>
+                    <div style={{ width: 42, display: "flex", justifyContent: "center" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #dbe4f0", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", position: "relative", zIndex: 1 }}>
+                        <EventIcon size={15} />
+                      </div>
+                    </div>
+                    <div style={{ paddingTop: 7, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1e293b", lineHeight: 1.35, wordBreak: "break-word" }}>{eventTitle}</div>
+                      {eventDescription ? <div style={{ marginTop: 1, fontSize: 12.5, lineHeight: 1.45, color: "#334155", wordBreak: "break-word" }}>{eventDescription}</div> : null}
+                      <div style={{ marginTop: 2, fontSize: 11.5, lineHeight: 1.35, color: "#64748b", wordBreak: "break-word" }}>
+                        {author ? `by ${author} ` : ""}
+                        {fmtDate(timelineDateValue(item), false)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        ) : (
-          <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 10 }}>
-            {/* Timeline connector line */}
-            {filtered.length > 1 && (
-              <div style={{
-                position: "absolute", left: 17, top: 34, bottom: 10,
-                width: 1, background: "linear-gradient(to bottom, #e2e8f0 80%, transparent)",
-              }} />
-            )}
+        ))}
+      </div>
+    </aside>
+  );
+}
 
-            {filtered.map((act, idx) => {
-              const { Ic, color, bg } = ACT_TYPE_MAP[act.type] ?? ACT_TYPE_MAP.created;
+function HistoryTooltip({ item }) {
+  const lines = [item?.meta, item?.preview].filter(Boolean).join("\n\n").trim();
+  const isCall = item?.kind === "calls";
+  const duration = Number(item?.durationMinutes || 0);
+  const hasDuration = isCall && Number.isFinite(duration) && duration > 0;
+  const normalized = hasDuration ? Math.min(1, duration / 60) : 0;
+  const graphBars = [0.25, 0.4, 0.55, 0.7, 0.85].map((factor) => Math.max(0.15, factor * normalized));
+  if (!lines && !hasDuration) return null;
+  return (
+    <div style={{
+      position: "absolute",
+      left: "calc(100% + 14px)",
+      top: 0,
+      width: 280,
+      padding: "12px 14px",
+      borderRadius: 16,
+      border: "1px solid #dbe4f0",
+      background: "rgba(255,255,255,0.98)",
+      boxShadow: "0 24px 50px rgba(15, 23, 42, 0.14)",
+      color: "#334155",
+      fontSize: 12.5,
+      lineHeight: 1.6,
+      whiteSpace: "pre-wrap",
+      zIndex: 8,
+      pointerEvents: "none",
+    }}>
+      {lines ? <div>{lines}</div> : null}
+      {hasDuration ? (
+        <div style={{ marginTop: lines ? 12 : 0 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>Call duration</div>
+          <div style={{ marginTop: 6, display: "flex", alignItems: "flex-end", gap: 4, height: 32 }}>
+            {graphBars.map((height, idx) => (
+              <div
+                key={idx}
+                style={{
+                  width: 10,
+                  height: Math.max(6, Math.round(height * 32)),
+                  borderRadius: 6,
+                  background: "#bfdbfe",
+                }}
+              />
+            ))}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: "#94a3b8" }}>{duration} min</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TabHistoryTimeline({ items, emptyLabel, icon: Icon }) {
+  const [hoveredId, setHoveredId] = useState(null);
+  const groups = useMemo(() => {
+    const sortedItems = [...items].sort((a, b) => {
+      const aTime = a?.date ? new Date(a.date).getTime() : 0;
+      const bTime = b?.date ? new Date(b.date).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    return sortedItems.reduce((acc, item) => {
+      const date = item?.date ? new Date(item.date) : null;
+      const key = date && !Number.isNaN(date.getTime()) ? fmtDate(date, false) : "Unknown date";
+      (acc[key] ||= []).push(item);
+      return acc;
+    }, {});
+  }, [items]);
+
+  if (!items.length) {
+    return (
+      <div style={{ border: "1px dashed #dbe4f0", borderRadius: 18, background: "#fbfdff", color: "#94a3b8", fontSize: 13, textAlign: "center", padding: "32px 18px" }}>
+        No {emptyLabel} history available.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ border: "1px solid #e5e7eb", borderRadius: 22, background: "#ffffff", padding: "18px 16px 10px", overflow: "visible" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 12, background: "#eef4ff", color: "#4f46e5", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon size={17} />
+        </div>
+      </div>
+      {Object.entries(groups).map(([date, group]) => (
+        <div key={date} style={{ marginBottom: 18 }}>
+          <div style={{ position: "relative", paddingBottom: 12 }}>
+            <div style={{ position: "absolute", left: 117, top: "calc(100% - 1px)", width: 1, height: 13, background: "#dbe4f0" }} />
+            <div style={{ display: "inline-flex", minWidth: 132, justifyContent: "center", marginLeft: 38, padding: "8px 14px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#f8fbff", fontSize: 12, fontWeight: 700, color: "#475569" }}>{date}</div>
+          </div>
+          <div style={{ position: "relative" }}>
+            <div style={{ position: "absolute", left: 117, top: 0, bottom: 0, width: 1, background: "#dbe4f0" }} />
+            {group.map((item, idx) => {
+              const active = hoveredId === item.id;
               return (
                 <div
-                  key={act.id}
-                  style={{
-                    display: "flex", gap: 12, position: "relative",
-                    animation: "fadeSlideIn 0.2s ease both",
-                    animationDelay: `${idx * 0.04}s`,
-                  }}
+                  key={`${item.id}-${idx}`}
+                  style={{ display: "grid", gridTemplateColumns: "82px 44px minmax(0, 1fr)", gap: 12, alignItems: "start", paddingBottom: 20 }}
+                  onMouseEnter={() => setHoveredId(item.id)}
+                  onMouseLeave={() => setHoveredId(null)}
                 >
-                  {/* Circle icon */}
-                  <div style={{
-                    width: 34, height: 34, borderRadius: "50%",
-                    background: bg, border: `1.5px solid ${color}30`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    flexShrink: 0, zIndex: 1,
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-                  }}>
-                    <Ic size={14} color={color} strokeWidth={2} />
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", paddingTop: 10 }}>{fmtTime(item?.date)}</div>
+                  <div style={{ width: 44, display: "flex", justifyContent: "center" }}>
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #dbe4f0", background: active ? "#eef4ff" : "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", position: "relative", zIndex: 1 }}>
+                      <Icon size={15} />
+                    </div>
                   </div>
-
-                  {/* Card */}
-                  <div style={{
-                    flex: 1, minWidth: 0,
-                    background: "white",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                    padding: "9px 13px",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>
-                        {getActLabel(act)}
-                      </span>
-                      <span style={{
-                        fontSize: 10.5, fontWeight: 600,
-                        color: color, background: bg,
-                        padding: "2px 7px", borderRadius: 10,
-                        letterSpacing: "0.02em", flexShrink: 0, marginLeft: 8,
-                      }}>
-                        {act.type.replace("-", " ")}
-                      </span>
-                    </div>
-
-                    {!["created", "score-change"].includes(act.type) && act.notes && (
-                      <div style={{ fontSize: 12, color: "#4b5563", marginTop: 3, lineHeight: 1.45 }}>
-                        {act.notes}
-                      </div>
-                    )}
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 5 }}>
-                      <Clock size={10} color="#9ca3af" strokeWidth={2} />
-                      <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                        {fmtDate(act.date)} · {act.time}
-                      </span>
-                    </div>
+                  <div style={{ position: "relative", paddingTop: 7, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b", lineHeight: 1.4, wordBreak: "break-word" }}>{item.title}</div>
+                    {item.description ? <div style={{ marginTop: 2, fontSize: 13, lineHeight: 1.5, color: "#334155", wordBreak: "break-word" }}>{item.description}</div> : null}
+                    {item.author ? <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.4, color: "#64748b", wordBreak: "break-word" }}>{`by ${item.author}`}</div> : null}
+                    {active ? <HistoryTooltip item={item} /> : null}
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }
 
-/* ────────────────────────────────────────────
-   LEFT PANEL — Profile + Details
-──────────────────────────────────────────── */
-function LeftPanel({ lead, onUpdateLead, onAdjustScore }) {
-  const initials = lead.name?.split(" ").map(n => n[0]).join("").slice(0, 2) || "?";
-  const scoreTier = lead.score >= 80 ? "high" : lead.score >= 60 ? "mid" : "low";
-  const scoreColor = { high: "#059669", mid: "#d97706", low: "#dc2626" }[scoreTier];
-  const scoreBg    = { high: "#f0fdf4", mid: "#fffbeb", low: "#fff5f5" }[scoreTier];
-  const meta = STATUS_META[lead.status] || STATUS_META.FreshLead;
-
-  const fields = [
-    { icon: Mail,     label: "Email",      value: lead.email,    href: `mailto:${lead.email}` },
-    { icon: Phone,    label: "Phone",      value: lead.phone,    href: `tel:${lead.phone}` },
-    { icon: Briefcase,label: "Company",    value: lead.company },
-    { icon: Tag,      label: "Source",     value: lead.source },
-    { icon: UserCheck,label: "Owner",      value: lead.assignee },
-    { icon: Calendar, label: "Follow-Up",  value: lead.followUpDate ? fmtDate(lead.followUpDate + "T00:00:00") : "Not set" },
-    { icon: Clock,    label: "Created",    value: fmtDate(lead.createdDate) },
-    { icon: MapPin,   label: "Address",    value: lead.address || "—" },
-  ];
+function Lane({ title, Icon, items }) {
+  const sortedItems = useMemo(() => [...items].sort((a, b) => {
+    const aTime = a?.date ? new Date(a.date).getTime() : 0;
+    const bTime = b?.date ? new Date(b.date).getTime() : 0;
+    return bTime - aTime;
+  }), [items]);
 
   return (
-    <div style={{ overflowY: "auto", height: "100%", padding: "0 0 20px" }}>
-      {/* Profile hero */}
-{/* Profile Header */}
-<div
-  style={{
-    background: "linear-gradient(135deg, #f8faff 0%, #eef2ff 100%)",
-    padding: "16px",
-    borderBottom: "1px solid #e5e7eb",
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-  }}
->
-  {/* Avatar */}
-  <div
-    style={{
-      width: 50,
-      height: 50,
-      borderRadius: "50%",
-      background: lead.avatarBg || "#4f46e5",
-      color: "white",
-      fontSize: 18,
-      fontWeight: 700,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      flexShrink: 0,
-    }}
-  >
-    {initials}
-  </div>
-
-  {/* Name + Company */}
-  <div style={{ flex: 1 }}>
-    <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>
-      {lead.name}
-    </div>
-
-    {lead.company && (
-      <div style={{ fontSize: 12, color: "#6b7280" }}>
-        {lead.company}
+    <div style={{ minWidth: 0, flex: "1 1 0", display: "flex", flexDirection: "column", overflow: "hidden", borderRight: "1px solid #e5e7eb", background: "#ffffff" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "#ffffff", border: "1px solid #e2e8f0", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} /></div>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b" }}>{title}</div>
+        </div>
+        <div style={{ minWidth: 24, height: 24, padding: "0 7px", borderRadius: 999, background: "#ffffff", border: "1px solid #e2e8f0", color: "#475569", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{items.length}</div>
       </div>
-    )}
-
-    <span
-      style={{
-        marginTop: 4,
-        display: "inline-block",
-        padding: "2px 8px",
-        borderRadius: 12,
-        fontSize: 10,
-        fontWeight: 700,
-        background: meta.bg,
-        color: meta.color,
-      }}
-    >
-      {lead.status?.replace(/([A-Z])/g, " $1").trim()}
-    </span>
-
-    {/* Quick actions */}
-    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-      <a
-        href={`tel:${lead.phone}`}
-        title="Call"
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: "50%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          border: "1px solid #e5e7eb",
-        }}
-      >
-        <Phone size={14} />
-      </a>
-
-      <a
-        href={`mailto:${lead.email}`}
-        title="Email"
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: "50%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          border: "1px solid #e5e7eb",
-        }}
-      >
-        <Mail size={14} />
-      </a>
-
-      <a
-        href={`https://wa.me/${lead.phone?.replace(/\D/g, "")}`}
-        target="_blank"
-        rel="noreferrer"
-        title="WhatsApp"
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: "50%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          border: "1px solid #e5e7eb",
-        }}
-      >
-       <FaWhatsapp size={14} />
-      </a>
-    </div>
-  </div>
-</div>
-
-      {/* Score widget */}
-      {/* <div style={{
-        margin: "16px 16px 0",
-        padding: "12px 16px",
-        background: scoreBg,
-        borderRadius: 10,
-        border: `1.5px solid ${scoreColor}22`,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-      }}>
-        <div>
-          <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Lead Score</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{lead.score}</div>
-        </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {[-10, +10].map(d => (
-            <button
-              key={d}
-              onClick={() => onAdjustScore(lead.id, d)}
-              style={{
-                padding: "4px 10px",
-                border: `1.5px solid ${d > 0 ? "#bbf7d0" : "#fecaca"}`,
-                borderRadius: 6,
-                background: d > 0 ? "#f0fdf4" : "#fff5f5",
-                color: d > 0 ? "#059669" : "#dc2626",
-                fontSize: 12, fontWeight: 700, cursor: "pointer",
-              }}
-            >{d > 0 ? `+${d}` : d}</button>
-          ))}
-        </div>
-      </div> */}
-
-      {/* Detail fields */}
-      <div style={{ padding: "16px 16px 0" }}>
-        <div style={{
-          fontSize: 11, fontWeight: 700, color: "#9ca3af",
-          textTransform: "uppercase", letterSpacing: "0.05em",
-          marginBottom: 12,
-        }}>Contact Info</div>
-
-        {fields.map(({ icon: Ic, label, value, href }) => (
-          <div key={label} style={{
-            display: "flex", alignItems: "flex-start", gap: 10,
-            marginBottom: 8, paddingBottom: 8,
-            borderBottom: "1px solid #f3f4f6",
-          }}>
-            <div style={{
-              width: 24, height: 24, borderRadius: 7,
-              background: "#f3f4f6", flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <Ic size={12} color="#6b7280" strokeWidth={2} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, marginBottom: 1 }}>{label}</div>
-              {href && value
-                ? <a href={href} style={{ fontSize: 12.5, color: "#4f46e5", fontWeight: 500, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</a>
-                : <div style={{ fontSize: 12, color: "#111827", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value || "—"}</div>
-              }
-            </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px" }}>
+        {!items.length ? (
+          <div style={{ minHeight: 92, display: "flex", alignItems: "center", justifyContent: "center", border: "1px dashed #dbe4f0", borderRadius: 12, background: "#fbfdff", color: "#94a3b8", fontSize: 13, textAlign: "center" }}>No records found</div>
+        ) : sortedItems.map((item) => (
+          <div key={item.id} style={{ padding: "0 0 12px", marginBottom: 12, borderBottom: "1px solid #f1f5f9" }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: "#334155" }}>{item.title}</div>
+            {hasValue(item.description) && <div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b", lineHeight: 1.45 }}>{item.description}</div>}
+            <div style={{ marginTop: 6, fontSize: 12, color: "#475569" }}>{fmtDate(item.date)}</div>
+            {hasValue(item.status) && <div style={{ marginTop: 4, fontSize: 11.5, color: "#94a3b8" }}>{formatStatus(item.status)}</div>}
           </div>
         ))}
       </div>
@@ -581,304 +813,613 @@ function LeftPanel({ lead, onUpdateLead, onAdjustScore }) {
   );
 }
 
-/* ────────────────────────────────────────────
-   RIGHT PANEL — Timeline
-──────────────────────────────────────────── */
-function RightPanel({ leadId }) {
-  const [timeline, setTimeline] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState(null);
-
-  const fetchTimeline = useCallback(async () => {
-    if (!leadId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await leadsAPI.getTimeline(leadId);
-      setTimeline(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [leadId]);
-
-  useEffect(() => { fetchTimeline(); }, [fetchTimeline]);
+function ActivitySection({ title, bg, items }) {
+  const tasks = items.filter((x) => String(x.type).toLowerCase().includes("task"));
+  const meetings = items.filter((x) => String(x.type).toLowerCase().includes("meeting"));
+  const calls = items.filter((x) => String(x.type).toLowerCase().includes("call"));
+  const hasAnyItems = tasks.length || meetings.length || calls.length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      {/* Panel header */}
-      <div style={{
-        padding: "14px 16px 12px",
-        borderBottom: "1px solid #e5e7eb",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        flexShrink: 0,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "#eef2ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Activity size={14} color="#4f46e5" strokeWidth={2} />
+    <section style={{ flex: hasAnyItems ? "1 1 0" : "0 0 auto", minHeight: hasAnyItems ? 260 : "auto", border: "1px solid #e5e7eb", borderRadius: 12, background: "#ffffff", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", gap: 0, height: hasAnyItems ? "100%" : "auto", overflowX: "auto", overflowY: "hidden", padding: 0, alignItems: "stretch", minHeight: 0 }}>
+        <Lane title="Tasks" Icon={FileText} items={tasks} />
+        <Lane title="Meetings" Icon={Calendar} items={meetings} />
+        <Lane title="Calls" Icon={Phone} items={calls} />
+      </div>
+    </section>
+  );
+}
+
+function Composer({ tab, lead, onSaved }) {
+  const [templateId, setTemplateId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [showCallDetails, setShowCallDetails] = useState(false);
+  const callableNumber = lead?.phone || lead?.mobile || lead?.secondaryPhone || "";
+  const whatsappNumber = sanitizePhoneNumber(lead?.mobile || lead?.phone || lead?.secondaryPhone || "");
+  const [v, setV] = useState({
+    note: "",
+    toEmail: lead?.email || "",
+    emailSubject: "",
+    emailBody: "",
+    whatsappMessage: "",
+    callType: "Outgoing",
+    callStatus: "Completed",
+    callResult: "Connected",
+    callDescription: "",
+    callStartTime: new Date(),
+    callDurationMinutes: 0,
+    callPurpose: "",
+    voiceRecordingUrl: "",
+    callMode: "log",
+    meetingTitle: "",
+    meetingDescription: "",
+    meetingStartTime: new Date(),
+    meetingEndTime: new Date(Date.now() + 30 * 60 * 1000),
+    meetingProvider: "Zoom",
+    taskSubject: "",
+    taskDueDate: new Date(),
+    taskPriority: "Medium",
+    taskStatus: "Pending",
+    taskReminder: "",
+    taskRepeat: "",
+    taskDescription: "",
+  });
+  const setField = (k, val) => {
+    setV((p) => ({ ...p, [k]: val }));
+    setErrors((prev) => {
+      if (!prev[k]) return prev;
+      const next = { ...prev };
+      delete next[k];
+      return next;
+    });
+  };
+  const applyTemplate = (id) => {
+    setTemplateId(id);
+    if (tab === "emails") {
+      const t = EMAIL_TEMPLATES.find((x) => x.id === id);
+      if (t) setV((p) => ({ ...p, emailSubject: t.subject.replaceAll("{{name}}", leadName(lead)), emailBody: t.body.replaceAll("{{name}}", leadName(lead)) }));
+    }
+    if (tab === "whatsapp") {
+      const t = WHATSAPP_TEMPLATES.find((x) => x.id === id);
+      if (t) setV((p) => ({ ...p, whatsappMessage: t.message.replaceAll("{{name}}", leadName(lead)) }));
+    }
+  };
+  const submit = async () => {
+    if (!lead?.id) return;
+    if (tab === "calls") {
+      const nextErrors = {};
+      if (!String(v.callPurpose || "").trim()) nextErrors.callPurpose = "Call purpose is required.";
+      if (!String(v.callStartTime || "").trim()) nextErrors.callStartTime = "Call start time is required.";
+      if (Object.keys(nextErrors).length) {
+        setErrors(nextErrors);
+        Toast.error("Please fill the required call fields.");
+        return;
+      }
+    }
+    setSubmitting(true);
+    try {
+      if (tab === "notes") await leadsAPI.addCommunication({ leadId: lead.id, type: "Note", message: v.note, createdBy: lead.assignedToUserId || 0 });
+      if (tab === "emails") await leadsAPI.addCommunication({ leadId: lead.id, type: "Email", subject: v.emailSubject, body: v.emailBody, toEmail: v.toEmail || lead.email, createdBy: lead.assignedToUserId || 0 });
+      if (tab === "whatsapp") {
+        if (!whatsappNumber) {
+          Toast.error("No WhatsApp number available for this lead");
+          return;
+        }
+        const whatsappUrl = `https://wa.me/${encodeURIComponent(whatsappNumber)}?text=${encodeURIComponent(v.whatsappMessage || "")}`;
+        let communicationSaved = true;
+
+        try {
+          await leadsAPI.addCommunication({
+            leadId: lead.id,
+            type: "WhatsApp",
+            subject: "WhatsApp Message",
+            message: v.whatsappMessage,
+            body: v.whatsappMessage,
+            description: v.whatsappMessage,
+            sentAt: new Date().toISOString(),
+            direction: "Outgoing",
+            ...(lead.assignedToUserId ? { createdBy: Number(lead.assignedToUserId) } : {}),
+          });
+        } catch (error) {
+          communicationSaved = false;
+          console.error("Failed to save WhatsApp communication", error);
+        }
+
+        const popup = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+        if (!popup) {
+          Toast.error("Allow pop-ups to open WhatsApp in a new tab.");
+        }
+
+        if (!communicationSaved) {
+          Toast.error("WhatsApp opened, but the communication could not be saved.");
+          await onSaved?.();
+          return;
+        }
+      }
+      if (tab === "calls") {
+        const callStartTime = toIsoString(v.callStartTime);
+        const subject = String(v.callPurpose || "").trim();
+        const basePayload = {
+          leadId: lead.id,
+          subject,
+          callType: v.callType,
+          callStatus: v.callMode === "schedule" ? (v.callStatus || "Scheduled") : (v.callStatus || "Completed"),
+          callStartTime,
+          ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
+          ...(hasValue(v.callPurpose) ? { callPurpose: v.callPurpose } : {}),
+        };
+        if (v.callMode === "schedule") {
+          await activitiesAPI.scheduleCall({
+            ...basePayload,
+          });
+        } else {
+          await activitiesAPI.logCall({
+            ...basePayload,
+            ...(hasValue(v.callResult) ? { callResult: v.callResult } : {}),
+            ...(hasValue(v.callDescription) ? { description: v.callDescription } : {}),
+            ...(hasValue(v.voiceRecordingUrl) ? { voiceRecordingUrl: v.voiceRecordingUrl } : {}),
+            ...(Number(v.callDurationMinutes) > 0 ? { durationMinutes: Number(v.callDurationMinutes) } : {}),
+          });
+        }
+      }
+      if (tab === "tasks") {
+        const subject = String(v.taskSubject || "").trim();
+        const dueDate = toIsoString(v.taskDueDate);
+        if (!subject) {
+          setErrors((prev) => ({ ...prev, taskSubject: "Task title is required." }));
+          Toast.error("Task title is required.");
+          return;
+        }
+        await activitiesAPI.createTask({
+          leadId: lead.id,
+          subject,
+          dueDate,
+          priority: v.taskPriority || "Medium",
+          status: v.taskStatus || "Pending",
+          reminder: v.taskReminder || "",
+          repeat: v.taskRepeat || "",
+          description: v.taskDescription || "",
+          ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
+        });
+      }
+      if (tab === "meetings") await meetingsAPI.create({
+        leadId: lead.id,
+        ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
+        title: v.meetingTitle,
+        meetingVenue: v.meetingProvider,
+        startTime: toIsoString(v.meetingStartTime),
+        endTime: toIsoString(v.meetingEndTime),
+        description: v.meetingDescription,
+        provider: v.meetingProvider,
+      });
+      Toast.success(tab === "whatsapp" ? "WhatsApp chat opened successfully" : "Saved successfully");
+      await onSaved?.();
+    } catch (e) {
+      Toast.error(getApiErrorMessage(e, "Unable to save"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const handleCallNow = () => {
+    if (!callableNumber) {
+      Toast.error("No phone number available for this lead");
+      return;
+    }
+    window.location.href = `tel:${String(callableNumber).trim()}`;
+  };
+  const showCallExtraFields = v.callMode === "log" && showCallDetails;
+  if (tab === "activity" || tab === "attachments") return null;
+  return (
+    <div style={{ ...card, padding: 16 }}>
+      {tab === "tasks" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          <FloatingInput
+            label="Task Title"
+            value={v.taskSubject}
+            error={errors.taskSubject}
+            onChange={(e) => setField("taskSubject", e.target.value)}
+          />
+          <FloatingDateTimePicker
+            label="Due Date"
+            selected={v.taskDueDate}
+            onChange={(date) => setField("taskDueDate", date)}
+            popperPlacement="bottom-start"
+            popperOffset={8}
+            popperModifiers={[flip({ fallbackPlacements: [] })]}
+          />
+          <FloatingInput
+            as="select"
+            label="Priority"
+            value={v.taskPriority}
+            onChange={(e) => setField("taskPriority", e.target.value)}
+            style={selectFieldStyle}
+          >
+            {TASK_PRIORITY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </FloatingInput>
+          <FloatingInput
+            as="select"
+            label="Status"
+            value={v.taskStatus}
+            onChange={(e) => setField("taskStatus", e.target.value)}
+            style={selectFieldStyle}
+          >
+            {TASK_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+          </FloatingInput>
+          <FloatingInput label="Reminder" value={v.taskReminder} onChange={(e) => setField("taskReminder", e.target.value)} />
+          <FloatingInput label="Repeat" value={v.taskRepeat} onChange={(e) => setField("taskRepeat", e.target.value)} />
+          <FloatingInput
+            as="textarea"
+            autoGrow
+            label="Task Notes"
+            style={{ gridColumn: "1 / -1", width: "100%", minHeight: 84, padding: "10px 12px 6px" }}
+            value={v.taskDescription}
+            onChange={(e) => setField("taskDescription", e.target.value)}
+          />
+        </div>
+      )}
+      {tab === "notes" && <textarea style={{ ...input, minHeight: 110, resize: "vertical" }} value={v.note} onChange={(e) => setField("note", e.target.value)} placeholder="Add a note for the sales team" />}
+      {tab === "emails" && <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 0.9fr) minmax(0, 1.1fr)", gap: 12, alignItems: "start" }}>
+        <select style={input} value={templateId} onChange={(e) => applyTemplate(e.target.value)}><option value="">Select template</option>{EMAIL_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+        <input style={input} value={v.toEmail} onChange={(e) => setField("toEmail", e.target.value)} placeholder="recipient@email.com" />
+        <input style={{ ...input, gridColumn: "1 / -1" }} value={v.emailSubject} onChange={(e) => setField("emailSubject", e.target.value)} placeholder="Email subject" />
+        <textarea style={{ ...input, minHeight: 140, resize: "vertical", gridColumn: "1 / -1", width: "100%" }} value={v.emailBody} onChange={(e) => setField("emailBody", e.target.value)} placeholder="Compose your email" />
+      </div>}
+      {tab === "whatsapp" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+        <select style={input} value={templateId} onChange={(e) => applyTemplate(e.target.value)}><option value="">Select template</option>{WHATSAPP_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+        <textarea style={{ ...input, minHeight: 110, resize: "vertical", gridColumn: "1 / -1" }} value={v.whatsappMessage} onChange={(e) => setField("whatsappMessage", e.target.value)} placeholder="Write the WhatsApp message" />
+      </div>}
+      {tab === "calls" && <>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
+          <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+            {[["log", "Log Call"], ["schedule", "Schedule Call"]].map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setField("callMode", mode)}
+                style={{
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "9px 14px",
+                  background: v.callMode === mode ? "#ffffff" : "transparent",
+                  color: v.callMode === mode ? "#5b7fa6" : "#64748b",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: v.callMode === mode ? "0 6px 16px rgba(191, 219, 254, 0.22)" : "none"
+                }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Timeline</div>
-            {!loading && !error && (
-              <div style={{ fontSize: 11, color: "#9ca3af" }}>{timeline.length} event{timeline.length !== 1 ? "s" : ""}</div>
-            )}
+          <button
+            type="button"
+            onClick={handleCallNow}
+            disabled={!callableNumber}
+            style={{
+              minHeight: 40,
+              padding: "10px 14px",
+              border: "1px solid #bbf7d0",
+              borderRadius: 12,
+              background: callableNumber ? "#f0fdf4" : "#f8fafc",
+              color: callableNumber ? "#166534" : "#94a3b8",
+              fontSize: 13,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              opacity: callableNumber ? 1 : 0.7,
+              cursor: callableNumber ? "pointer" : "not-allowed",
+              flexShrink: 0,
+            }}
+          >
+            Call Now
+          </button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, alignItems: "start" }}>
+          <FloatingInput
+            as="select"
+            label="Call Purpose"
+            value={v.callPurpose}
+            error={errors.callPurpose}
+            onChange={(e) => setField("callPurpose", e.target.value)}
+            style={selectFieldStyle}
+          >
+            <option value="">Select purpose</option>
+            {CALL_PURPOSE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </FloatingInput>
+          <FloatingDateTimePicker
+            label={v.callMode === "schedule" ? "Scheduled Time" : "Call Time"}
+            selected={v.callStartTime}
+            error={errors.callStartTime}
+            onChange={(date) => setField("callStartTime", date)}
+            popperPlacement="bottom-start"
+            popperOffset={8}
+            popperModifiers={[flip({ fallbackPlacements: [] })]}
+          />
+          <FloatingInput
+            as="select"
+            label="Call Status"
+            value={v.callStatus}
+            onChange={(e) => setField("callStatus", e.target.value)}
+            style={selectFieldStyle}
+          >
+            <option value="">Select status</option>
+            {CALL_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+          </FloatingInput>
+          <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(e) => setField("callType", e.target.value)} style={selectFieldStyle}>
+            <option value="Outgoing">Outgoing</option>
+            <option value="Incoming">Incoming</option>
+          </FloatingInput>
+          <FloatingInput as="textarea" autoGrow label={v.callMode === "schedule" ? "Call Agenda / Notes" : "Call Notes"} style={{ gridColumn: "1 / -1", width: "100%", minHeight: 74, padding: "10px 12px 6px" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} />
+          {v.callMode === "log" ? <div style={{ gridColumn: "1 / -1", marginTop: 2 }}>
+            <button
+              type="button"
+              onClick={() => setShowCallDetails((prev) => !prev)}
+              style={{
+                border: "1px solid #dbe4f0",
+                borderRadius: 12,
+                padding: "9px 12px",
+                background: "#f8fbff",
+                color: "#475569",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              {showCallExtraFields ? "Hide extra details" : "Add more details"}
+            </button>
+          </div> : null}
+          {showCallExtraFields ? <FloatingInput label="Call Result" value={v.callResult} onChange={(e) => setField("callResult", e.target.value)} /> : null}
+          {showCallExtraFields ? <FloatingInput type="number" min="0" label="Duration (Minutes)" value={v.callDurationMinutes} onChange={(e) => setField("callDurationMinutes", e.target.value)} /> : null}
+          {showCallExtraFields ? <FloatingInput label="Voice Recording URL" style={{ gridColumn: "1 / -1" }} value={v.voiceRecordingUrl} onChange={(e) => setField("voiceRecordingUrl", e.target.value)} /> : null}
+        </div>
+      </>}
+      {tab === "meetings" && <div style={{ padding: 0, borderRadius: 0, background: "transparent", border: "none", boxShadow: "none" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16 }}>
+          {(() => {
+            const roomyFieldStyle = { height: 50, minHeight: 50, padding: "14px 14px 8px" };
+            return <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
+            <FloatingInput label="Meeting Title" style={roomyFieldStyle} value={v.meetingTitle} onChange={(e) => setField("meetingTitle", e.target.value)} />
+            <FloatingInput as="select" style={roomyFieldStyle} label="Provider" value={v.meetingProvider} onChange={(e) => setField("meetingProvider", e.target.value)}>
+              <option value="Zoom">Zoom</option>
+              <option value="Teams">Teams</option>
+            </FloatingInput>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
+            <FloatingDateTimePicker label="Start Time" style={roomyFieldStyle} selected={v.meetingStartTime} onChange={(date) => setField("meetingStartTime", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
+            <FloatingDateTimePicker label="End Time" style={roomyFieldStyle} selected={v.meetingEndTime} minDate={v.meetingStartTime || undefined} onChange={(date) => setField("meetingEndTime", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
+          </div>
+            </>;
+          })()}
+          <FloatingInput as="textarea" autoGrow label="Meeting Notes" style={{ minHeight: 72, padding: "10px 12px 6px" }} value={v.meetingDescription} onChange={(e) => setField("meetingDescription", e.target.value)} />
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ minWidth: 190 }}>
+              <button className="btn-primary" onClick={submit} disabled={submitting} style={{ minWidth: 170, minHeight: 44, border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>
+                {submitting ? "Saving..." : "Schedule Meeting"}
+              </button>
+            </div>
           </div>
         </div>
-        <button
-          onClick={fetchTimeline}
-          title="Refresh timeline"
-          style={{
-            background: "none", border: "1.5px solid #e5e7eb",
-            borderRadius: 6, padding: "4px 7px", cursor: "pointer",
-            display: "flex", alignItems: "center",
-            transition: "border-color 0.15s",
-          }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = "#4f46e5"}
-          onMouseLeave={e => e.currentTarget.style.borderColor = "#e5e7eb"}
-        >
-          <RefreshCw size={12} color="#6b7280" strokeWidth={2} />
-        </button>
-      </div>
-
-      {/* Timeline body */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px" }}>
-        {loading && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "#9ca3af" }}>
-            <div style={{
-              width: 28, height: 28, border: "3px solid #e5e7eb",
-              borderTopColor: "#4f46e5", borderRadius: "50%",
-              animation: "spin 0.8s linear infinite", marginBottom: 10,
-            }} />
-            <span style={{ fontSize: 12 }}>Loading timeline…</span>
-          </div>
-        )}
-
-        {!loading && error && (
-          <div style={{
-            padding: 14, background: "#fff5f5", border: "1.5px solid #fecaca",
-            borderRadius: 8, textAlign: "center",
-          }}>
-            <AlertTriangle size={20} color="#ef4444" style={{ marginBottom: 6 }} />
-            <div style={{ fontSize: 12, color: "#dc2626", fontWeight: 600 }}>Failed to load timeline</div>
-            <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>{error}</div>
-            <button
-              onClick={fetchTimeline}
-              style={{ marginTop: 10, padding: "5px 12px", border: "none", borderRadius: 6, background: "#4f46e5", color: "white", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
-            >Retry</button>
-          </div>
-        )}
-
-        {!loading && !error && timeline.length === 0 && (
-          <div style={{ textAlign: "center", padding: "48px 0", color: "#9ca3af" }}>
-            <Clock size={32} color="#d1d5db" />
-            <p style={{ marginTop: 8, fontSize: 13 }}>No timeline events</p>
-            <span style={{ fontSize: 12 }}>Events will appear here as the lead progresses.</span>
-          </div>
-        )}
-
-        {!loading && !error && timeline.length > 0 && (
-          <div style={{ position: "relative" }}>
-            {/* Vertical line */}
-            <div style={{
-              position: "absolute",
-              left: 15, top: 16,
-              bottom: 16, width: 2,
-              background: "linear-gradient(to bottom, #e5e7eb 0%, #e5e7eb 95%, transparent 100%)",
-              borderRadius: 2,
-            }} />
-
-            {timeline.map((event, idx) => {
-              const cfg = TIMELINE_CFG[event.type] || TIMELINE_CFG.default;
-              const isLast = idx === timeline.length - 1;
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    display: "flex", gap: 12,
-                    marginBottom: isLast ? 0 : 16,
-                    position: "relative",
-                    animation: `fadeSlideIn 0.3s ease both`,
-                    animationDelay: `${idx * 0.05}s`,
-                  }}
-                >
-                  <TimelineIcon type={event.type} />
-
-                  <div style={{
-                    flex: 1, minWidth: 0,
-                    background: "white",
-                    border: "1.5px solid #f3f4f6",
-                    borderRadius: 8,
-                    padding: "9px 12px",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-                    transition: "border-color 0.15s, box-shadow 0.15s",
-                  }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = cfg.border; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = "#f3f4f6"; e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)"; }}
-                  >
-                    {/* Event type badge */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700,
-                        color: cfg.color,
-                        background: cfg.bg,
-                        padding: "2px 7px", borderRadius: 12,
-                        letterSpacing: "0.02em",
-                      }}>{event.type}</span>
-                    </div>
-
-                    {/* Description */}
-                    {event.description && (
-                      <div style={{ fontSize: 12.5, color: "#374151", fontWeight: 500, lineHeight: 1.4, marginBottom: 5 }}>
-                        {event.description}
-                      </div>
-                    )}
-
-                    {/* Date */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <Clock size={10} color="#9ca3af" strokeWidth={2} />
-                      <span style={{ fontSize: 11, color: "#9ca3af" }}>{fmtDateTime(event.date)}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        @keyframes fadeSlideIn {
-          from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+      </div>}
+      {tab !== "meetings" ? <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}><button className="btn-primary" onClick={submit} disabled={submitting} style={{ border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>{submitting ? "Saving..." : tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Open WhatsApp" : tab === "calls" ? "Save Call" : tab === "tasks" ? "Save Task" : "Save Note"}</button></div> : null}
     </div>
   );
 }
 
-/* ════════════════════════════════════════════════════════════
-   MAIN COMPONENT — LeadDetailsModal
-   Replace the existing LeadDetailsModal in Leads.jsx with this
-════════════════════════════════════════════════════════════ */
-export function LeadDetailsModal({ lead, onClose, activityLog, onUpdateLead, onAdjustScore }) {
-  const [animated, setAnimated] = useState(false);
-  const meta       = STATUS_META[lead.status] || STATUS_META.FreshLead;
-
-  useEffect(() => {
-    const t = requestAnimationFrame(() => setAnimated(true));
-    return () => cancelAnimationFrame(t);
-  }, []);
-
+function Attachments({ leadId }) {
+  const [items, setItems] = useState([]); const [loading, setLoading] = useState(false); const [uploading, setUploading] = useState(false);
+  const load = async () => { if (!leadId) return; setLoading(true); try { const data = await leadsAPI.getAttachments(leadId); setItems(Array.isArray(data) ? data : []); } catch (e) { Toast.error(e?.response?.data?.message || "Unable to load attachments"); } finally { setLoading(false); } };
+  useEffect(() => { load(); }, [leadId]);
+  const upload = async (e) => { const file = e.target.files?.[0]; if (!file || !leadId) return; setUploading(true); try { await leadsAPI.uploadAttachment(leadId, file); Toast.success("Attachment uploaded"); await load(); } catch (err) { Toast.error(err?.response?.data?.message || "Unable to upload attachment"); } finally { setUploading(false); e.target.value = ""; } };
+  const remove = async (id) => { try { await leadsAPI.deleteAttachment(id); Toast.success("Attachment deleted"); await load(); } catch (err) { Toast.error(err?.response?.data?.message || "Unable to delete attachment"); } };
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed", inset: 0,
-          background: "rgba(0,0,0,0.45)",
-          backdropFilter: "blur(2px)",
-          zIndex: 500,
-          opacity: animated ? 1 : 0,
-          transition: "opacity 0.2s ease",
-        }}
-      />
-
-      {/* Modal */}
-      <div style={{
-        position: "fixed", inset: 0,
-        zIndex: 501,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "20px",
-        pointerEvents: "none",
-      }}>
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            pointerEvents: "all",
-            width: "min(1200px, 96vw)",
-            height: "min(780px, 92vh)",
-            background: "white",
-            borderRadius: 16,
-            boxShadow: "0 24px 80px rgba(0,0,0,0.22)",
-            display: "flex", flexDirection: "column",
-            overflow: "hidden",
-            transform: animated ? "scale(1) translateY(0)" : "scale(0.95) translateY(20px)",
-            opacity: animated ? 1 : 0,
-            transition: "transform 0.3s cubic-bezier(0.34,1.2,0.64,1), opacity 0.25s ease",
-          }}
-        >
-          {/* ── Modal Header ── */}
-          <div style={{
-            padding: "13px 20px",
-            borderBottom: "1px solid #e5e7eb",
-            display: "flex", alignItems: "center",justifyContent:"flex-end", gap: 12,
-            flexShrink: 0, background: "#fafafa",
-          }}>
-
-            {/* Header actions */}
-            <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-              <button
-                onClick={onClose}
-                style={{
-                  background: "none", border: "1.5px solid #e5e7eb",
-                  borderRadius: 6, padding: "6px", cursor: "pointer",
-                  display: "flex", alignItems: "center",
-                }}
-              >
-                <X size={15} color="#6b7280" strokeWidth={2} />
-              </button>
-            </div>
-          </div>
-
-          {/* ── 3-panel body ── */}
-          <div style={{
-            flex: 1,
-            display: "grid",
-            gridTemplateColumns: "260px 1fr 280px",
-            overflow: "hidden",
-            minHeight: 0,
-          }}>
-            {/* Panel 1 — Profile */}
-            <div style={{
-              borderRight: "1px solid #e5e7eb",
-              overflow: "hidden",
-              display: "flex", flexDirection: "column",
-            }}>
-              <LeftPanel
-                lead={lead}
-                onUpdateLead={onUpdateLead}
-                onAdjustScore={onAdjustScore}
-              />
-            </div>
-
-            {/* Panel 2 — Activities */}
-            <div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
-              <MiddlePanel
-                lead={lead}
-                activityLog={activityLog}
-                onAdjustScore={onAdjustScore}
-              />
-            </div>
-
-            {/* Panel 3 — Timeline */}
-            <div style={{
-              borderLeft: "1px solid #e5e7eb",
-              background: "#fafbfc",
-              overflow: "hidden",
-              display: "flex", flexDirection: "column",
-            }}>
-              <RightPanel leadId={lead.id} />
-            </div>
-          </div>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ ...card, padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><div><div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Lead Attachments</div><div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b" }}>Upload and review files saved against this lead.</div></div><label className="btn-primary" style={{ cursor: uploading ? "progress" : "pointer", border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}><UploadCloud size={15} />{uploading ? "Uploading..." : "Add File"}<input type="file" hidden onChange={upload} /></label></div>
+      <div style={{ ...card, padding: 16, minHeight: 260 }}>
+        {loading ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading attachments...</div> : null}
+        {!loading && !items.length ? <div style={{ color: "#94a3b8", fontSize: 13 }}>No attachments found.</div> : null}
+        {!loading && items.map((a) => <div key={a.id || a.fileName} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 0", borderBottom: "1px solid #eef2f7" }}><div><div style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b", wordBreak: "break-word" }}>{a.fileName || a.name || "Attachment"}</div><div style={{ marginTop: 4, fontSize: 12, color: "#94a3b8" }}>{fmtDate(a.uploadedAt || a.createdAt)}</div></div><div style={{ display: "flex", alignItems: "center", gap: 8 }}>{attachmentUrl(a) ? <a href={attachmentUrl(a)} target="_blank" rel="noreferrer" className="btn-ghost" style={{ textDecoration: "none" }}>Open</a> : null}<button className="icon-btn" onClick={() => remove(a.id)} title="Delete attachment"><Trash2 size={16} /></button></div></div>)}
       </div>
-    </>
+    </div>
   );
 }
 
-export default LeadDetailsModal;
+function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
+  const [activityView, setActivityView] = useState("open"); const [meetingView, setMeetingView] = useState("create"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]); const [comms, setComms] = useState([]);
+  const [meetings, setMeetings] = useState([]);
+  const allowMeetingPopups = activeTab === "meetings" && meetingView === "create";
+  const load = async () => {
+    if (!lead?.id) return;
+    setLoading(true);
+    try {
+      const [openResult, closedResult, commResult, meetingResult] = await Promise.allSettled([
+        activitiesAPI.getOpen({ leadId: lead.id }),
+        activitiesAPI.getClosed({ leadId: lead.id }),
+        leadsAPI.getCommunications(lead.id),
+        meetingsAPI.getAll(),
+      ]);
+
+      if (openResult.status === "fulfilled") {
+        setOpen((Array.isArray(openResult.value) ? openResult.value : []).map(mapActivity));
+      } else {
+        console.error("Failed to load open activities", openResult.reason);
+        setOpen([]);
+      }
+
+      if (closedResult.status === "fulfilled") {
+        setClosed((Array.isArray(closedResult.value) ? closedResult.value : []).map(mapActivity));
+      } else {
+        console.error("Failed to load closed activities", closedResult.reason);
+        setClosed([]);
+      }
+
+      if (commResult.status === "fulfilled") {
+        setComms((Array.isArray(commResult.value) ? commResult.value : []).map(mapComm));
+      } else {
+        console.error("Failed to load communications", commResult.reason);
+        setComms([]);
+      }
+
+      if (meetingResult.status === "fulfilled") {
+        setMeetings((Array.isArray(meetingResult.value) ? meetingResult.value : []).filter((item) => Number(item?.leadId) === Number(lead.id)).map(mapMeetingRecord));
+      } else {
+        console.error("Failed to load meetings", meetingResult.reason);
+        setMeetings([]);
+      }
+
+      if (
+        openResult.status === "rejected" &&
+        closedResult.status === "rejected" &&
+        commResult.status === "rejected" &&
+        meetingResult.status === "rejected"
+      ) {
+        Toast.error("Unable to load lead details");
+      }
+    } catch (e) {
+      Toast.error(e?.response?.data?.message || "Unable to load lead details");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, [lead?.id]);
+  const callHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("call")).map(mapCallActivity), [open, closed]);
+  const taskHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("task")), [open, closed]);
+  const filtered = useMemo(() => {
+    if (activeTab === "tasks") return taskHistory;
+    if (activeTab === "calls") return callHistory;
+    if (activeTab === "meetings") return meetings;
+    return comms.filter((x) => x.kind === activeTab);
+  }, [activeTab, callHistory, comms, meetings, taskHistory]);
+  const activityItems = activityView === "open" ? open : closed;
+  return (
+    <section style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: allowMeetingPopups ? "visible" : "hidden", background: "#ffffff" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 12px 0", overflowX: "auto", flexShrink: 0, background: "#ffffff", borderBottom: "1px solid #eef2f7" }}>
+        {TABS.map(([id, label, Icon]) => (
+          <button
+            key={id}
+            onClick={() => onTabChange?.(id)}
+            style={{
+              border: "none",
+              borderBottom: activeTab === id ? "2px solid #93c5fd" : "2px solid transparent",
+              background: "transparent",
+              color: activeTab === id ? "#5b7fa6" : "#64748b",
+              padding: "10px 4px 9px",
+              marginRight: 8,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {id === "whatsapp" ? <FaWhatsapp size={15} /> : <Icon size={15} />}
+            {label}
+          </button>
+        ))}
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: allowMeetingPopups ? "visible" : "auto", overflowX: allowMeetingPopups ? "visible" : "hidden", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+        {loading && <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading details...</div>}
+        {activeTab === "activity" && <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#ffffff" }}>
+            {[
+              ["open", `Open Activities (${open.length})`],
+              ["closed", `Closed Activities (${closed.length})`],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setActivityView(id)}
+                style={{
+                  border: "none",
+                  borderRight: id === "open" ? "1px solid #e5e7eb" : "none",
+                  padding: "7px 12px",
+                  background: activityView === id ? "#eff6ff" : "transparent",
+                  color: activityView === id ? "#5b7fa6" : "#6b7280",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap"
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            </div>
+          </div>
+          <ActivitySection title={activityView === "open" ? "Open Activities" : "Closed Activities"} bg="#ffffff" items={activityItems} />
+        </div>}
+        {activeTab !== "activity" && activeTab !== "attachments" && <>
+          {activeTab === "meetings" ? <>
+            <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", alignSelf: "flex-start" }}>
+              {[["create", "Create Meeting"], ["scheduled", "Scheduled Meetings"]].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setMeetingView(id)}
+                  style={{
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "9px 14px",
+                    background: meetingView === id ? "#ffffff" : "transparent",
+                    color: meetingView === id ? "#0f172a" : "#64748b",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: meetingView === id ? "0 6px 16px rgba(191, 219, 254, 0.22)" : "none"
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {meetingView === "create" ? <Composer tab={activeTab} lead={lead} onSaved={async () => {
+              await load();
+              await onActivitySaved?.();
+              setMeetingView("scheduled");
+            }} /> : null}
+            {meetingView === "scheduled" ? <TabHistoryTimeline items={meetings.map((item) => ({
+              ...item,
+              description: [meetingMetaValue(item), `${item.durationMinutes || 0} min`].filter(Boolean).join(" • "),
+              meta: item.joinUrl || "",
+            }))} emptyLabel="meetings" icon={Calendar} /> : null}
+          </> : <>
+            <Composer tab={activeTab} lead={lead} onSaved={async () => {
+              await load();
+              await onActivitySaved?.();
+            }} />
+            <TabHistoryTimeline items={filtered} emptyLabel={activeTab} icon={activeTab === "emails" ? Mail : activeTab === "calls" ? Phone : activeTab === "whatsapp" ? FaWhatsapp : activeTab === "tasks" ? UserCheck : FileText} />
+          </>}
+        </>}
+        {activeTab === "attachments" && <Attachments leadId={lead?.id} />}
+      </div>
+    </section>
+  );
+}
+
+export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
+  const [showConvertModal, setShowConvertModal] = useState(false);
+  const [activeTab, setActiveTab] = useState("activity");
+  const [timeline, setTimeline] = useState([]); const [timelineLoading, setTimelineLoading] = useState(false);
+  const loadTimeline = async () => { if (!lead?.id) return; setTimelineLoading(true); try { const data = await leadsAPI.getTimeline(lead.id); setTimeline(Array.isArray(data) ? data : []); } catch (e) { Toast.error(e?.response?.data?.message || "Unable to load timeline"); } finally { setTimelineLoading(false); } };
+  useEffect(() => { loadTimeline(); }, [lead?.id]);
+  useEffect(() => { setActiveTab("activity"); }, [lead?.id]);
+  useEffect(() => { const onKey = (e) => { if (e.key === "Escape") onClose?.(); }; document.addEventListener("keydown", onKey); return () => document.removeEventListener("keydown", onKey); }, [onClose]);
+  return (
+    <>
+      <div className="overlay" onClick={onClose} style={{ padding: 24, zIndex: 700 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1480px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "visible", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
+          <button className="icon-btn" onClick={onClose} title="Close" style={{ position: "absolute", top: 14, right: 16, zIndex: 2, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(6px)" }}><X size={18} /></button>
+          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 360px", borderRadius: 24, overflow: "hidden", background: "#fff" }}>
+            <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} onOpenTab={setActiveTab} />
+            <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} />
+            <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} />
+          </div>
+        </div>
+      </div>
+      {showConvertModal ? <ConvertToDealModal lead={lead} onClose={() => setShowConvertModal(false)} onConverted={onDealConverted} /> : null}
+    </>
+  );
+}
