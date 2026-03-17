@@ -40,7 +40,9 @@ export const getAllLiveLocations = async () =>
   hrApi.get(`/api/Attendence/live-locations`).catch(() => ({ data: [] }));
 
 export const getLocationTrail = async (userId, date) => 
-  hrApi.get(`/api/Attendence/location-trail/${userId}?date=${date}`).catch(() => ({ data: [] }));
+  hrApi
+    .get(`/api/Attendence/location-trail/${userId}?date=${encodeURIComponent(date)}`)
+    .catch(() => ({ data: [] }));
 
 export const getUserLiveLocation = async (userId) => 
   hrApi.get(`/api/Attendence/live-location/${userId}`).catch(() => ({ data: null }));

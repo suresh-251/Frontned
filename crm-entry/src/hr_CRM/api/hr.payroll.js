@@ -1,16 +1,20 @@
 import hrApi from "./hr.api";
 
-// Fetch all payroll records
-export const getAllPayroll = () => hrApi.get("/api/Payroll");
-
-// Fetch payroll by Employee ID
-export const getPayrollByEmployee = (employeeId) => hrApi.get(`/api/Payroll/${employeeId}`);
-
-// Generate new payroll (POST)
+export const getAllPayroll = () => hrApi.get("/api/Payroll/all");
+export const getPayrollByEmployee = (userId) => hrApi.get(`/api/Payroll/${userId}`);
 export const generatePayroll = (data) => hrApi.post("/api/Payroll/generate", data);
-
-// Update payroll record (PUT)
 export const updatePayroll = (id, data) => hrApi.put(`/api/Payroll/${id}`, data);
-
-// Delete payroll record (DELETE)
 export const deletePayroll = (id) => hrApi.delete(`/api/Payroll/${id}`);
+export const approvePayroll = (id) => hrApi.put(`/api/Payroll/${id}/approve`);
+export const markPaid = (id) => hrApi.put(`/api/Payroll/${id}/mark-paid`);
+export const addAllowance = (data) => hrApi.post("/api/Payroll/allowance", data);
+export const addDeduction = (data) => hrApi.post("/api/Payroll/deduction", data);
+export const getPayslip = (userId) => hrApi.get(`/api/Payroll/payslip/current/${userId}`);
+export const setSalaryConfig = (data) => hrApi.post("/api/Payroll/salary-config", data);
+export const getSalaryConfig = (userId) => hrApi.get(`/api/Payroll/salary-config/${userId}`);
+export const getAllSalaryConfig = () => hrApi.get("/api/Payroll/salary-config/all");
+export const autoGeneratePayroll = () => hrApi.post("/api/Payroll/auto-generate");
+export const addBonus = (data) => hrApi.post("/api/Payroll/bonus", data);
+export const approveBonus = (id) => hrApi.put(`/api/Payroll/bonus/${id}/approve`);
+export const getAllBonuses = () => hrApi.get("/api/Payroll/bonus/all");
+export const getBonusByUser = (userId) => hrApi.get(`/api/Payroll/bonus/${userId}`);
