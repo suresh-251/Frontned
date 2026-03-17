@@ -1,8 +1,5 @@
-<<<<<<< HEAD
 import { useState, useEffect, useRef } from "react";
-=======
-﻿import { useState } from "react";
->>>>>>> a10e2475c0327557ac0af1c22a1083c69d1860e1
+
 import { Navigate, useNavigate } from "react-router-dom";
 import { login } from "../../api/auth.api";
 import { useAuth } from "../../auth/AuthContext";

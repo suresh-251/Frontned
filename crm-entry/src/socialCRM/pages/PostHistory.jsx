@@ -10,7 +10,7 @@ const phCacheKey = (type, slug) => `ph_${type}_${slug}`;
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const POST_TYPES = [
-  { key: "Text",     label: "📝 Text",     needsMedia: false, multi: false },
+  { key: "Text",     label: "📝 Text",     needsMedia: false, multi: false ,},
   { key: "Image",    label: "🖼️ Image",    needsMedia: true,  multi: false, accept: "image/*" },
   { key: "Carousel", label: "🎠 Carousel", needsMedia: true,  multi: true,  accept: "image/*" },
   { key: "Video",    label: "🎥 Video",    needsMedia: true,  multi: false, accept: "video/*" },
@@ -1983,11 +1983,6 @@ export default function PostHistory() {
 
   const completed = _history.filter(p => p.status === "Completed" || p.status === "Failed");
   const allPosts  = [..._scheduled, ..._history];
-  const filteredCompleted = filterByPlatform(completed);
-  const filteredScheduled = filterByPlatform(_scheduled);
-  const filteredDrafts    = filterByPlatform(_drafts);
-  const completed = history.filter(p => p.status === "Completed" || p.status === "Failed");
-  const allPosts  = [...scheduled, ...history];
   const currentSortOptions = tab === "drafted"
     ? DRAFT_SORT_OPTIONS
     : tab === "scheduled"
@@ -1997,8 +1992,8 @@ export default function PostHistory() {
     ? sortBy
     : currentSortOptions[0].key;
   const filteredCompleted = sortPosts(filterByPlatform(completed), activeSortKey);
-  const filteredScheduled = sortPosts(filterByPlatform(scheduled), activeSortKey);
-  const filteredDrafts    = sortDrafts(filterByPlatform(drafts), activeSortKey);
+  const filteredScheduled = sortPosts(filterByPlatform(_scheduled), activeSortKey);
+  const filteredDrafts    = sortDrafts(filterByPlatform(_drafts), activeSortKey);
   const filteredAllPosts  = filterByPlatform(allPosts);
 
   const counts = { completed: completed.length, scheduled: _scheduled.length, drafted: _drafts.length };

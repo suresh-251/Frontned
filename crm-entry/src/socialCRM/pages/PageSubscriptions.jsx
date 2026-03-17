@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useBrand } from "../context/BrandContext";
 import api from "../api/apiClient";
 import { appCache } from "../utils/cache";
