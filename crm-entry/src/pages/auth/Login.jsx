@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { login } from "../../api/auth.api";
 import { useAuth } from "../../auth/AuthContext";
@@ -47,16 +47,45 @@ const Login = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#f3f4f6] px-6 py-10 font-['Manrope'] text-[16.5px]">
       <div className="flex w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-[0_20px_60px_rgba(15,23,42,0.12)]">
-        <div className="flex w-1/2 flex-col items-center justify-center bg-gradient-to-br from-[#3f4a88] via-[#4c5aa3] to-[#5b6abf] px-10 py-12 text-center">
-          <img src={crmDiagram} alt="CRM diagram" className="mb-8 h-56 w-56 rounded-3xl" />
-          <p className="text-xl font-semibold text-white">Customer Relationship Management</p>
-          <p className="mt-3 text-lg font-medium text-white/90">
-            Unify customer data, track every deal stage, and collaborate across Sales, HR, and Social in one workspace.
-          </p>
+        <div className="relative flex w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#273256] via-[#313c63] to-[#3a456f] px-10 py-12 text-white">
+          <div className="pointer-events-none absolute -left-16 -top-24 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -right-10 h-64 w-64 rounded-full bg-[#a5b4fc]/25 blur-3xl" />
+
+          <div>
+            <div className="mb-8 flex items-center gap-4">
+              <img src={crmDiagram} alt="CRM diagram" className="h-16 w-16 rounded-2xl bg-white/10 p-2" />
+              <div>
+                <p className="text-[13.5px] font-semibold text-white/90">Customer Relationship Management</p>
+                <p className="text-[12.5px] text-white/70">Unified data, smarter decisions, faster follow-ups.</p>
+              </div>
+            </div>
+
+            <h2 className="text-3xl font-semibold leading-tight text-center">
+              A calmer way to manage customers.
+            </h2>
+            <p className="mt-3 text-[15px] font-medium leading-relaxed text-white/85 text-center">
+              Everything stays connected, and progress feels effortless.
+            </p>
+          </div>
+
+          <div className="mt-8">
+            <div className="rounded-2xl bg-white/12 px-4 py-3 text-[13px]">
+              <div className="flex items-center justify-between text-white/85">
+                <span className="font-semibold">Quick glance</span>
+                <span className="text-[11px] uppercase tracking-wide text-white/70">Live</span>
+              </div>
+              <div className="mt-2 text-white/85">
+                Sales · HR · Social
+              </div>
+              <div className="mt-1 text-[11.5px] text-white/70">All in one view</div>
+            </div>
+          </div>
+
+          
         </div>
 
         <div className="flex w-1/2 flex-col items-center justify-center px-12 py-12">
-          <p className="text-3xl font-bold text-[#111827]">Welcome to CRM</p>
+          <p className="text-3xl font-semibold text-\[#111827\]">Login to CRM</p>
 
           {error && (
             <p className="mt-4 text-base font-medium text-rose-500">{error}</p>
@@ -140,3 +169,6 @@ const Login = () => {
 };
 
 export default Login;
+
+
+
