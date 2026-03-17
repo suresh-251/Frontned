@@ -131,6 +131,7 @@ export default function Leads() {
   const [deletedLeads, setDeletedLeads] = useState([]);
   const [salesUsers, setSalesUsers] = useState([]);
   const [stats, setStats] = useState(INITIAL_STATS);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [searchField, setSearchField] = useState("all");
   const [showFilter, setShowFilter] = useState(false);
@@ -206,43 +207,54 @@ export default function Leads() {
   }, [visibleCols]);
 
   useEffect(() => {
-    const loadData = async () => {
-      const [leadsResult, deletedResult, statsResult, usersResult] = await Promise.allSettled([
-        leadsAPI.getAll(),
-        leadsAPI.getDeleted(),
-        leadsAPI.getDashboard(),
-        leadsAPI.getSalesUsers(),
-      ]);
+    let active = true;
+    let resolvedUsers = [];
 
-      const resolvedUsers = usersResult.status === "fulfilled" ? usersResult.value : [];
-      if (usersResult.status === "fulfilled") setSalesUsers(usersResult.value);
-      else {
-        console.error("Failed to fetch sales users", usersResult.reason);
-        setSalesUsers([]);
-      }
-
-      if (leadsResult.status === "fulfilled") {
-        const normalizedLeads = applyAssigneeNames(normalizeLeads(leadsResult.value), resolvedUsers);
-        setLeads(normalizedLeads);
-      } else {
-        console.error("Failed to fetch leads", leadsResult.reason);
-        setLeads([]);
-      }
-
-      if (deletedResult.status === "fulfilled") {
-        setDeletedLeads(applyAssigneeNames(normalizeLeads(deletedResult.value), resolvedUsers));
-      } else {
-        console.error("Failed to fetch deleted leads", deletedResult.reason);
-        setDeletedLeads([]);
-      }
-
-      if (statsResult.status === "fulfilled") setStats(statsResult.value);
-      else {
-        console.error("Failed to fetch dashboard stats", statsResult.reason);
-        setStats(INITIAL_STATS);
+    const loadUsers = async () => {
+      try {
+        const users = await leadsAPI.getSalesUsers();
+        if (!active) return [];
+        resolvedUsers = users;
+        setSalesUsers(users);
+        setLeads((current) => applyAssigneeNames(current, users));
+        setDeletedLeads((current) => applyAssigneeNames(current, users));
+        return users;
+      } catch (error) {
+        if (active) {
+          console.error("Failed to fetch sales users", error);
+          setSalesUsers([]);
+        }
+        return [];
       }
     };
-    loadData();
+
+    const loadLeads = async () => {
+      setLoading(true);
+      try {
+        const data = await leadsAPI.getAll();
+        if (!active) return;
+        const normalized = normalizeLeads(data);
+        setLeads(resolvedUsers.length ? applyAssigneeNames(normalized, resolvedUsers) : normalized);
+      } catch (error) {
+        if (active) {
+          console.error("Failed to fetch leads", error);
+          setLeads([]);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadUsers();
+    loadLeads();
+    leadsAPI.getDeleted()
+      .then((data) => { if (active) { const normalized = normalizeLeads(data); setDeletedLeads(resolvedUsers.length ? applyAssigneeNames(normalized, resolvedUsers) : normalized); } })
+      .catch((error) => { if (active) { console.error("Failed to fetch deleted leads", error); setDeletedLeads([]); } });
+    leadsAPI.getDashboard()
+      .then((data) => { if (active) setStats(data); })
+      .catch((error) => { if (active) { console.error("Failed to fetch dashboard stats", error); setStats(INITIAL_STATS); } });
+
+    return () => { active = false; };
   }, [applyAssigneeNames]);
 
   const activeFilterCount = useMemo(() => {
@@ -283,16 +295,6 @@ export default function Leads() {
     try {
       if (field === "status") {
         await leadsAPI.bulkUpdateStatus([id], normalizedValue);
-        try {
-          const refreshed = await leadsAPI.getAll();
-          const normalizedLeads = applyAssigneeNames(normalizeLeads(refreshed), salesUsers);
-          setLeads(normalizedLeads);
-          const refreshedLead = normalizedLeads.find((lead) => lead.id === id);
-          if (refreshedLead) mergeLead(refreshedLead);
-        } catch (refreshError) {
-          console.error("Failed to refresh leads after status update", refreshError);
-          mergeLead({ ...nextLead, status: normalizedValue });
-        }
       }
       else if (field === "followUpDate") await leadsAPI.update(id, { nextFollowUpAt: value ? `${value}T00:00:00.000Z` : null });
       else if (field === "source") await leadsAPI.update(id, { ...leadToUpdatePayload(nextLead), source: value });
@@ -492,13 +494,6 @@ export default function Leads() {
 
     try {
       await leadsAPI.bulkUpdateStatus(ids, bulkStatus);
-      try {
-        const refreshed = await leadsAPI.getAll();
-        const normalizedLeads = applyAssigneeNames(normalizeLeads(refreshed), salesUsers);
-        setLeads(normalizedLeads);
-      } catch (refreshError) {
-        console.error("Failed to refresh leads after bulk status update", refreshError);
-      }
       setSelected(new Set());
       setShowBulkStatusPicker(false);
     } catch (error) {
@@ -553,6 +548,12 @@ export default function Leads() {
       {hasActiveFilters && <div className="chips-bar">{search && <span className="chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip"><span className="chip-dot" style={{ background: STATUS_META[filters.status]?.color || "#4f46e5" }} />Status: {formatStatus(filters.status)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, status: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip">Source: {formatLeadSource(filters.source)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, source: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip">Assignee: {filters.assignee}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, assignee: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{sameFilterDay(filters.createdDateFrom, filters.createdDateTo) ? <span className="chip">Created Date: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "", createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.createdDateFrom && <span className="chip">Created from: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateTo && <span className="chip">Created to: {formatFilterChipDate(filters.createdDateTo)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{sameFilterDay(filters.followUpDateFrom, filters.followUpDateTo) ? <span className="chip">Follow-up: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "", followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.followUpDateFrom && <span className="chip">Follow-up from: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateTo && <span className="chip">Follow-up to: {formatFilterChipDate(filters.followUpDateTo)}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{filters.address && <span className="chip">Address: {filters.address}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, address: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.city && <span className="chip">City: {filters.city}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, city: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.state && <span className="chip">State: {filters.state}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, state: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.country && <span className="chip">Country: {filters.country}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, country: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.zip && <span className="chip">Zip: {filters.zip}<button className="chip-x" onClick={() => setFilters((current) => ({ ...current, zip: "" }))}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
 
       {selected.size > 0 && <div className="bulk-bar"><span className="bulk-cnt">{selected.size} selected</span><button className="bulk-btn">Assign Assignee</button>{showBulkStatusPicker ? <><select className="bulk-select" value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}>{STATUS_LIST.map((status) => <option key={status} value={status}>{formatStatus(status)}</option>)}</select><button className="bulk-btn" onClick={handleBulkStatusChange}>Apply Status</button><button className="bulk-btn" onClick={() => setShowBulkStatusPicker(false)}>Cancel</button></> : <button className="bulk-btn" onClick={() => setShowBulkStatusPicker(true)}>Change Status</button>}<button className="bulk-btn" onClick={handleExportSelected}>Export</button><button className="bulk-btn bulk-btn--danger" onClick={handleBulkDelete}>Delete</button><button className="bulk-close" onClick={() => { setSelected(new Set()); setShowBulkStatusPicker(false); }}><IX s={12} c="#6b7280" /></button></div>}
+
+      {loading && (
+        <div style={{ marginBottom: 16, border: "1px solid #dbe4f0", borderRadius: 16, background: "#ffffff", padding: "12px 14px", color: "#64748b", fontSize: 13, fontWeight: 600 }}>
+          Loading leads. Secondary panels like deleted history, dashboard stats, and assignee names may finish a moment after the table.
+        </div>
+      )}
 
       {viewMode === "kanban" && <KanbanBoard leads={filtered} groupBy={kanbanGroupBy} setGroupBy={setKanbanGroupBy} onUpdateLead={updateLead} onOpenDetails={fetchLeadDetail} />}
 

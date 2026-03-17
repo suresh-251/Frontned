@@ -19,6 +19,17 @@ const activitiesAPI = {
     return unwrapArrayPayload(response.data);
   },
 
+  getCalendar: async ({ startDate, endDate, userId } = {}) => {
+    const response = await apiClient.get('/Activities/calendar', {
+      params: {
+        ...(startDate ? { startDate } : {}),
+        ...(endDate ? { endDate } : {}),
+        ...(userId ? { userId } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data);
+  },
+
   getOpen: async ({ leadId, dealId } = {}) => {
     const response = await apiClient.get('/Activities/open', {
       params: {

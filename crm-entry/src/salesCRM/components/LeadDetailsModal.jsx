@@ -83,7 +83,8 @@ const formatDisplayText = (value = "") => String(value)
   .replace(/([a-z])([A-Z])/g, "$1 $2")
   .replace(/_/g, " ")
   .replace(/\s+/g, " ")
-  .trim();
+  .trim()
+  .replace(/\bWhats App\b/g, "WhatsApp");
 const fmtDate = (v, withTime = true) => {
   if (!v) return "-";
   const d = new Date(v);
@@ -178,18 +179,23 @@ const mapComm = (x) => ({
   kind: commKind(x?.type || x?.eventType),
   title: formatDisplayText(x?.eventType || x?.type || "Update"),
   description: x?.description || "",
-  date: x?.date || x?.createdAt
+  preview: x?.body || x?.message || x?.description || x?.subject || "",
+  date: x?.date || x?.createdAt,
+  author: x?.createdByName || x?.userName || x?.author || x?.createdBy || "",
+  meta: x?.subject || x?.toEmail || x?.phoneNumber || "",
 });
 const mapMeetingRecord = (x) => ({
   id: x?.id || `meeting-${x?.subject || x?.startTime}`,
   kind: "meetings",
   title: x?.subject || "Meeting",
   description: x?.description || "",
+  preview: [x?.description, x?.joinUrl, x?.location].filter(Boolean).join("\n"),
   date: x?.startTime,
   provider: x?.provider || x?.location || "",
   location: x?.location || "",
   joinUrl: x?.joinUrl || "",
   durationMinutes: x?.durationMinutes ?? 0,
+  author: x?.createdByName || x?.organizerName || x?.createdBy || "",
 });
 const meetingMetaValue = (item) => {
   const provider = formatDisplayText(item?.provider || "");
@@ -228,8 +234,10 @@ const mapCallActivity = (x) => ({
   kind: "calls",
   title: x?.subject || x?.title || "Call",
   description: buildCallSummary(x),
+  preview: buildCallSummary(x),
   date: x?.callStartTime || x?.activityDate || x?.dueDate || x?.createdAt,
   status: x?.callStatus || x?.status || "",
+  author: x?.createdByName || x?.userName || x?.createdBy || "",
 });
 
 function InfoRow({ icon: Icon, label, value }) {
@@ -628,7 +636,114 @@ function Timeline({ items, loading, onRefresh }) {
   );
 }
 
+function HistoryTooltip({ item }) {
+  const lines = [item?.meta, item?.preview].filter(Boolean).join("\n\n").trim();
+  if (!lines) return null;
+  return (
+    <div style={{
+      position: "absolute",
+      left: "calc(100% + 14px)",
+      top: 0,
+      width: 280,
+      padding: "12px 14px",
+      borderRadius: 16,
+      border: "1px solid #dbe4f0",
+      background: "rgba(255,255,255,0.98)",
+      boxShadow: "0 24px 50px rgba(15, 23, 42, 0.14)",
+      color: "#334155",
+      fontSize: 12.5,
+      lineHeight: 1.6,
+      whiteSpace: "pre-wrap",
+      zIndex: 8,
+      pointerEvents: "none",
+    }}>
+      {lines}
+    </div>
+  );
+}
+
+function TabHistoryTimeline({ items, emptyLabel, icon: Icon }) {
+  const [hoveredId, setHoveredId] = useState(null);
+  const groups = useMemo(() => {
+    const sortedItems = [...items].sort((a, b) => {
+      const aTime = a?.date ? new Date(a.date).getTime() : 0;
+      const bTime = b?.date ? new Date(b.date).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    return sortedItems.reduce((acc, item) => {
+      const date = item?.date ? new Date(item.date) : null;
+      const key = date && !Number.isNaN(date.getTime()) ? fmtDate(date, false) : "Unknown date";
+      (acc[key] ||= []).push(item);
+      return acc;
+    }, {});
+  }, [items]);
+
+  if (!items.length) {
+    return (
+      <div style={{ border: "1px dashed #dbe4f0", borderRadius: 18, background: "#fbfdff", color: "#94a3b8", fontSize: 13, textAlign: "center", padding: "32px 18px" }}>
+        No {emptyLabel} history available.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ border: "1px solid #e5e7eb", borderRadius: 22, background: "#ffffff", padding: "18px 16px 10px", overflow: "visible" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 12, background: "#eef4ff", color: "#4f46e5", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon size={17} />
+        </div>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>Timeline History</div>
+          <div style={{ marginTop: 2, fontSize: 12.5, color: "#64748b" }}>Hover an event for quick details without opening anything.</div>
+        </div>
+      </div>
+      {Object.entries(groups).map(([date, group]) => (
+        <div key={date} style={{ marginBottom: 18 }}>
+          <div style={{ position: "relative", paddingBottom: 12 }}>
+            <div style={{ position: "absolute", left: 117, top: "calc(100% - 1px)", width: 1, height: 13, background: "#dbe4f0" }} />
+            <div style={{ display: "inline-flex", minWidth: 132, justifyContent: "center", marginLeft: 38, padding: "8px 14px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#f8fbff", fontSize: 12, fontWeight: 700, color: "#475569" }}>{date}</div>
+          </div>
+          <div style={{ position: "relative" }}>
+            <div style={{ position: "absolute", left: 117, top: 0, bottom: 0, width: 1, background: "#dbe4f0" }} />
+            {group.map((item, idx) => {
+              const active = hoveredId === item.id;
+              return (
+                <div
+                  key={`${item.id}-${idx}`}
+                  style={{ display: "grid", gridTemplateColumns: "82px 44px minmax(0, 1fr)", gap: 12, alignItems: "start", paddingBottom: 20 }}
+                  onMouseEnter={() => setHoveredId(item.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", paddingTop: 10 }}>{fmtTime(item?.date)}</div>
+                  <div style={{ width: 44, display: "flex", justifyContent: "center" }}>
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #dbe4f0", background: active ? "#eef4ff" : "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", position: "relative", zIndex: 1 }}>
+                      <Icon size={15} />
+                    </div>
+                  </div>
+                  <div style={{ position: "relative", paddingTop: 7, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b", lineHeight: 1.4, wordBreak: "break-word" }}>{item.title}</div>
+                    {item.description ? <div style={{ marginTop: 2, fontSize: 13, lineHeight: 1.5, color: "#334155", wordBreak: "break-word" }}>{item.description}</div> : null}
+                    {item.author ? <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.4, color: "#64748b", wordBreak: "break-word" }}>{`by ${item.author}`}</div> : null}
+                    {active ? <HistoryTooltip item={item} /> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Lane({ title, Icon, items }) {
+  const sortedItems = useMemo(() => [...items].sort((a, b) => {
+    const aTime = a?.date ? new Date(a.date).getTime() : 0;
+    const bTime = b?.date ? new Date(b.date).getTime() : 0;
+    return bTime - aTime;
+  }), [items]);
+
   return (
     <div style={{ minWidth: 0, flex: "1 1 0", display: "flex", flexDirection: "column", overflow: "hidden", borderRight: "1px solid #e5e7eb", background: "#ffffff" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
@@ -641,7 +756,7 @@ function Lane({ title, Icon, items }) {
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px" }}>
         {!items.length ? (
           <div style={{ minHeight: 92, display: "flex", alignItems: "center", justifyContent: "center", border: "1px dashed #dbe4f0", borderRadius: 12, background: "#fbfdff", color: "#94a3b8", fontSize: 13, textAlign: "center" }}>No records found</div>
-        ) : items.map((item) => (
+        ) : sortedItems.map((item) => (
           <div key={item.id} style={{ padding: "0 0 12px", marginBottom: 12, borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ fontSize: 13.5, fontWeight: 800, color: "#334155" }}>{item.title}</div>
             {hasValue(item.description) && <div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b", lineHeight: 1.45 }}>{item.description}</div>}
@@ -659,9 +774,10 @@ function ActivitySection({ title, bg, items }) {
   const meetings = items.filter((x) => String(x.type).toLowerCase().includes("meeting"));
   const calls = items.filter((x) => String(x.type).toLowerCase().includes("call"));
   const hasAnyItems = tasks.length || meetings.length || calls.length;
+
   return (
-    <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "#ffffff", overflow: "hidden" }}>
-      <div style={{ display: "flex", gap: 0, height: hasAnyItems ? 260 : "auto", overflowX: "auto", overflowY: "hidden", padding: 0, alignItems: "stretch" }}>
+    <section style={{ flex: hasAnyItems ? "1 1 0" : "0 0 auto", minHeight: hasAnyItems ? 260 : "auto", border: "1px solid #e5e7eb", borderRadius: 12, background: "#ffffff", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", gap: 0, height: hasAnyItems ? "100%" : "auto", overflowX: "auto", overflowY: "hidden", padding: 0, alignItems: "stretch", minHeight: 0 }}>
         <Lane title="Tasks" Icon={FileText} items={tasks} />
         <Lane title="Meetings" Icon={Calendar} items={meetings} />
         <Lane title="Calls" Icon={Phone} items={calls} />
@@ -674,6 +790,7 @@ function Composer({ tab, lead, onSaved }) {
   const [templateId, setTemplateId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [showCallDetails, setShowCallDetails] = useState(false);
   const callableNumber = lead?.phone || lead?.mobile || lead?.secondaryPhone || "";
   const whatsappNumber = sanitizePhoneNumber(lead?.mobile || lead?.phone || lead?.secondaryPhone || "");
   const [v, setV] = useState({
@@ -738,10 +855,36 @@ function Composer({ tab, lead, onSaved }) {
           Toast.error("No WhatsApp number available for this lead");
           return;
         }
-        await leadsAPI.addCommunication({ leadId: lead.id, type: "WhatsApp", message: v.whatsappMessage, createdBy: lead.assignedToUserId || 0 });
         const whatsappUrl = `https://wa.me/${encodeURIComponent(whatsappNumber)}?text=${encodeURIComponent(v.whatsappMessage || "")}`;
+        let communicationSaved = true;
+
+        try {
+          await leadsAPI.addCommunication({
+            leadId: lead.id,
+            type: "WhatsApp",
+            subject: "WhatsApp Message",
+            message: v.whatsappMessage,
+            body: v.whatsappMessage,
+            description: v.whatsappMessage,
+            sentAt: new Date().toISOString(),
+            direction: "Outgoing",
+            ...(lead.assignedToUserId ? { createdBy: Number(lead.assignedToUserId) } : {}),
+          });
+        } catch (error) {
+          communicationSaved = false;
+          console.error("Failed to save WhatsApp communication", error);
+        }
+
         const popup = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-        if (!popup) window.location.href = whatsappUrl;
+        if (!popup) {
+          Toast.error("Allow pop-ups to open WhatsApp in a new tab.");
+        }
+
+        if (!communicationSaved) {
+          Toast.error("WhatsApp opened, but the communication could not be saved.");
+          await onSaved?.();
+          return;
+        }
       }
       if (tab === "calls") {
         const callStartTime = toIsoString(v.callStartTime);
@@ -794,6 +937,7 @@ function Composer({ tab, lead, onSaved }) {
     }
     window.location.href = `tel:${String(callableNumber).trim()}`;
   };
+  const showCallExtraFields = v.callMode === "log" && showCallDetails;
   if (tab === "activity" || tab === "attachments") return null;
   return (
     <div style={{ ...card, padding: 16 }}>
@@ -854,19 +998,7 @@ function Composer({ tab, lead, onSaved }) {
             Call Now
           </button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-          <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(e) => setField("callType", e.target.value)}>
-            <option value="Outgoing">Outgoing</option>
-            <option value="Incoming">Incoming</option>
-          </FloatingInput>
-          <FloatingInput as="select" label="Call Status" value={v.callStatus} onChange={(e) => setField("callStatus", e.target.value)}>
-            {v.callMode === "schedule"
-              ? ["Scheduled", "Pending", "Rescheduled"].map((status) => <option key={status} value={status}>{status}</option>)
-              : ["Completed", "Connected", "No Answer", "Missed", "Cancelled"].map((status) => <option key={status} value={status}>{status}</option>)}
-          </FloatingInput>
-          <FloatingInput type="datetime-local" label={v.callMode === "schedule" ? "Scheduled Time" : "Call Start Time"} value={v.callStartTime} error={errors.callStartTime} onChange={(e) => setField("callStartTime", e.target.value)} />
-          {v.callMode === "log" && <FloatingInput label="Call Result" value={v.callResult} onChange={(e) => setField("callResult", e.target.value)} />}
-          {v.callMode === "log" && <FloatingInput type="number" min="0" label="Duration (Minutes)" value={v.callDurationMinutes} onChange={(e) => setField("callDurationMinutes", e.target.value)} />}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, alignItems: "start" }}>
           <div style={{ position: "relative" }}>
             <FloatingInput
               label="Call Purpose"
@@ -879,8 +1011,38 @@ function Composer({ tab, lead, onSaved }) {
               {CALL_PURPOSE_OPTIONS.map((option) => <option key={option} value={option} />)}
             </datalist>
           </div>
-          {v.callMode === "log" && <FloatingInput label="Voice Recording URL" style={{ gridColumn: "1 / -1" }} value={v.voiceRecordingUrl} onChange={(e) => setField("voiceRecordingUrl", e.target.value)} />}
-          {v.callMode === "log" && <FloatingInput as="textarea" autoGrow label="Call Notes" style={{ gridColumn: "2 / 3", width: "100%", minHeight: 24, padding: "8px 12px 4px" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} />}
+          <FloatingInput type="datetime-local" label={v.callMode === "schedule" ? "Scheduled Time" : "Call Time"} value={v.callStartTime} error={errors.callStartTime} onChange={(e) => setField("callStartTime", e.target.value)} />
+          <FloatingInput as="select" label="Call Status" value={v.callStatus} onChange={(e) => setField("callStatus", e.target.value)}>
+            {v.callMode === "schedule"
+              ? ["Scheduled", "Pending", "Rescheduled"].map((status) => <option key={status} value={status}>{status}</option>)
+              : ["Completed", "Connected", "No Answer", "Missed", "Cancelled"].map((status) => <option key={status} value={status}>{status}</option>)}
+          </FloatingInput>
+          <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(e) => setField("callType", e.target.value)}>
+            <option value="Outgoing">Outgoing</option>
+            <option value="Incoming">Incoming</option>
+          </FloatingInput>
+          <FloatingInput as="textarea" autoGrow label={v.callMode === "schedule" ? "Call Agenda / Notes" : "Call Notes"} style={{ gridColumn: "1 / -1", width: "100%", minHeight: 74, padding: "10px 12px 6px" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} />
+          {v.callMode === "log" ? <div style={{ gridColumn: "1 / -1", marginTop: 2 }}>
+            <button
+              type="button"
+              onClick={() => setShowCallDetails((prev) => !prev)}
+              style={{
+                border: "1px solid #dbe4f0",
+                borderRadius: 12,
+                padding: "9px 12px",
+                background: "#f8fbff",
+                color: "#475569",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              {showCallExtraFields ? "Hide extra details" : "Add more details"}
+            </button>
+          </div> : null}
+          {showCallExtraFields ? <FloatingInput label="Call Result" value={v.callResult} onChange={(e) => setField("callResult", e.target.value)} /> : null}
+          {showCallExtraFields ? <FloatingInput type="number" min="0" label="Duration (Minutes)" value={v.callDurationMinutes} onChange={(e) => setField("callDurationMinutes", e.target.value)} /> : null}
+          {showCallExtraFields ? <FloatingInput label="Voice Recording URL" style={{ gridColumn: "1 / -1" }} value={v.voiceRecordingUrl} onChange={(e) => setField("voiceRecordingUrl", e.target.value)} /> : null}
         </div>
       </>}
       {tab === "meetings" && <div style={{ padding: 0, borderRadius: 0, background: "transparent", border: "none", boxShadow: "none" }}>
@@ -942,11 +1104,49 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
     if (!lead?.id) return;
     setLoading(true);
     try {
-      const [openData, closedData, commData, meetingData] = await Promise.all([activitiesAPI.getOpen({ leadId: lead.id }), activitiesAPI.getClosed({ leadId: lead.id }), leadsAPI.getCommunications(lead.id), meetingsAPI.getAll()]);
-      setOpen((Array.isArray(openData) ? openData : []).map(mapActivity));
-      setClosed((Array.isArray(closedData) ? closedData : []).map(mapActivity));
-      setComms((Array.isArray(commData) ? commData : []).map(mapComm));
-      setMeetings((Array.isArray(meetingData) ? meetingData : []).filter((item) => Number(item?.leadId) === Number(lead.id)).map(mapMeetingRecord));
+      const [openResult, closedResult, commResult, meetingResult] = await Promise.allSettled([
+        activitiesAPI.getOpen({ leadId: lead.id }),
+        activitiesAPI.getClosed({ leadId: lead.id }),
+        leadsAPI.getCommunications(lead.id),
+        meetingsAPI.getAll(),
+      ]);
+
+      if (openResult.status === "fulfilled") {
+        setOpen((Array.isArray(openResult.value) ? openResult.value : []).map(mapActivity));
+      } else {
+        console.error("Failed to load open activities", openResult.reason);
+        setOpen([]);
+      }
+
+      if (closedResult.status === "fulfilled") {
+        setClosed((Array.isArray(closedResult.value) ? closedResult.value : []).map(mapActivity));
+      } else {
+        console.error("Failed to load closed activities", closedResult.reason);
+        setClosed([]);
+      }
+
+      if (commResult.status === "fulfilled") {
+        setComms((Array.isArray(commResult.value) ? commResult.value : []).map(mapComm));
+      } else {
+        console.error("Failed to load communications", commResult.reason);
+        setComms([]);
+      }
+
+      if (meetingResult.status === "fulfilled") {
+        setMeetings((Array.isArray(meetingResult.value) ? meetingResult.value : []).filter((item) => Number(item?.leadId) === Number(lead.id)).map(mapMeetingRecord));
+      } else {
+        console.error("Failed to load meetings", meetingResult.reason);
+        setMeetings([]);
+      }
+
+      if (
+        openResult.status === "rejected" &&
+        closedResult.status === "rejected" &&
+        commResult.status === "rejected" &&
+        meetingResult.status === "rejected"
+      ) {
+        Toast.error("Unable to load lead details");
+      }
     } catch (e) {
       Toast.error(e?.response?.data?.message || "Unable to load lead details");
     } finally {
@@ -968,7 +1168,7 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: allowMeetingPopups ? "visible" : "auto", overflowX: allowMeetingPopups ? "visible" : "hidden", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
         {loading && <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading details...</div>}
-        {activeTab === "activity" && <>
+        {activeTab === "activity" && <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#ffffff" }}>
             {[
@@ -996,7 +1196,7 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
             </div>
           </div>
           <ActivitySection title={activityView === "open" ? "Open Activities" : "Closed Activities"} bg="#ffffff" items={activityItems} />
-        </>}
+        </div>}
         {activeTab !== "activity" && activeTab !== "attachments" && <>
           {activeTab === "meetings" ? <>
             <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", alignSelf: "flex-start" }}>
@@ -1026,43 +1226,17 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
               await onActivitySaved?.();
               setMeetingView("scheduled");
             }} /> : null}
-            {meetingView === "scheduled" ? <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {!meetings.length ? <div style={{ ...card, padding: 26, color: "#94a3b8", fontSize: 13, textAlign: "center" }}>No scheduled meetings available.</div> : meetings.map((item) => (
-                <div key={item.id} style={{ ...card, padding: 14, borderRadius: 18, boxShadow: "0 16px 30px rgba(15, 23, 42, 0.05)" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", flexShrink: 0 }}>
-                        <Calendar size={16} />
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
-                        <div style={{ marginTop: 2, fontSize: 12.5, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compactMeetingDate(item.date)}</div>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      {meetingMetaValue(item) ? <div style={{ display: "inline-flex", alignItems: "center", padding: "7px 10px", borderRadius: 999, background: "#f8fafc", color: "#334155", fontSize: 12, fontWeight: 700, border: "1px solid #e2e8f0" }}>
-                        {meetingMetaValue(item)}
-                      </div> : null}
-                      <div style={{ display: "inline-flex", alignItems: "center", padding: "7px 10px", borderRadius: 999, background: "#f8fafc", color: "#334155", fontSize: 12, fontWeight: 700, border: "1px solid #e2e8f0" }}>
-                        {item.durationMinutes || 0} min
-                      </div>
-                      {item.joinUrl ? <a href={item.joinUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 38, padding: "0 14px", borderRadius: 999, background: "linear-gradient(180deg, #111827 0%, #0f172a 100%)", color: "#ffffff", fontSize: 12.5, fontWeight: 800, textDecoration: "none", boxShadow: "0 10px 22px rgba(15, 23, 42, 0.14)" }}>
-                        Join
-                      </a> : null}
-                    </div>
-                  </div>
-                  {item.description ? <div style={{ marginTop: 10, paddingLeft: 46, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>{item.description}</div> : null}
-                </div>
-              ))}
-            </div> : null}
+            {meetingView === "scheduled" ? <TabHistoryTimeline items={meetings.map((item) => ({
+              ...item,
+              description: [meetingMetaValue(item), `${item.durationMinutes || 0} min`].filter(Boolean).join(" • "),
+              meta: item.joinUrl || "",
+            }))} emptyLabel="meetings" icon={Calendar} /> : null}
           </> : <>
             <Composer tab={activeTab} lead={lead} onSaved={async () => {
               await load();
               await onActivitySaved?.();
             }} />
-            <div style={{ ...card, padding: 16, minHeight: 220, maxHeight: 420, overflowY: "auto" }}>
-              {!filtered.length ? <div style={{ minHeight: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>No {activeTab} history available.</div> : filtered.map((item) => <div key={item.id} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: "1px solid #eef2f7" }}><div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b" }}>{item.title}</div><div style={{ marginTop: 6, fontSize: 13, color: "#475569", lineHeight: 1.55 }}>{item.description || "No description"}</div><div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>{fmtDate(item.date)}</div></div>)}
-            </div>
+            <TabHistoryTimeline items={filtered} emptyLabel={activeTab} icon={activeTab === "emails" ? Mail : activeTab === "calls" ? Phone : activeTab === "whatsapp" ? FaWhatsapp : FileText} />
           </>}
         </>}
         {activeTab === "attachments" && <Attachments leadId={lead?.id} />}
