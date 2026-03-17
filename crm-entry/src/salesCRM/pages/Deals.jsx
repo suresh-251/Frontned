@@ -495,25 +495,6 @@ export default function Deals() {
 
   return (
     <div className="page">
-      <div className="stat-grid">
-        <div className="stat-card" style={{ "--sc-card": "#f6fbf7", "--sc-icon": "#e6f6ea", "--sc-ink": "#2e7d32" }}>
-          <div className="stat-header"><span className="stat-label">Total Deals</span></div>
-          <div className="stat-body"><div className="stat-value-row"><div className="stat-value">{deals.length}</div></div></div>
-        </div>
-        <div className="stat-card" style={{ "--sc-card": "#f6f9fe", "--sc-icon": "#e3efff", "--sc-ink": "#1565c0" }}>
-          <div className="stat-header"><span className="stat-label">Annual Revenue</span></div>
-          <div className="stat-body"><div className="stat-value-row"><div className="stat-value" style={{ fontSize: 28 }}>{fmtCurrency(totalValue)}</div></div></div>
-        </div>
-        <div className="stat-card" style={{ "--sc-card": "#fffdf7", "--sc-icon": "#fff6dc", "--sc-ink": "#e65100" }}>
-          <div className="stat-header"><span className="stat-label">Open Pipeline</span></div>
-          <div className="stat-body"><div className="stat-value-row"><div className="stat-value">{deals.filter((deal) => !["ClosedWon", "ClosedLost"].includes(normalizeStage(deal))).length}</div></div></div>
-        </div>
-        <div className="stat-card" style={{ "--sc-card": "#fff6fa", "--sc-icon": "#ffe4ef", "--sc-ink": "#880e4f" }}>
-          <div className="stat-header"><span className="stat-label">Closed Won</span></div>
-          <div className="stat-body"><div className="stat-value-row"><div className="stat-value">{convertedCount}</div></div></div>
-        </div>
-      </div>
-
       <div className="toolbar">
         <div className="toolbar-mid">
           <button className={`btn-ghost ${activeFilterCount > 0 ? "btn-ghost--active" : ""}`} onClick={() => setShowFilter(true)}>

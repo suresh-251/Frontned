@@ -9,7 +9,7 @@ const navItems = [
 
 export default function Sidebar() {
   return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col min-h-screen">
+    <div className="w-56 bg-white border-r border-gray-200 flex flex-col min-h-screen">
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-500 rounded-xl flex items-center justify-center text-white font-bold">
