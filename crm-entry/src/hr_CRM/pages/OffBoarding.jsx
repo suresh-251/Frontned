@@ -57,7 +57,6 @@ export default function OffBoarding() {
         setList(rawData.filter(item => item && String(item.employeeId) === String(auth?.id)));
       }
     } catch {
-    } catch {
       toast.error("Sync Failure");
       setList([]);
     } finally {

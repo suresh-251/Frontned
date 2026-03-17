@@ -47,7 +47,7 @@ const Login = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#f3f4f6] px-6 py-10 font-['Manrope'] text-[16.5px]">
       <div className="flex w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-[0_20px_60px_rgba(15,23,42,0.12)]">
-        <div className="relative flex w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#273256] via-[#313c63] to-[#3a456f] px-10 py-12 text-white">
+        <div className="relative flex w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#32406d] via-[#3b4a7a] to-[#465689] px-10 py-12 text-white">
           <div className="pointer-events-none absolute -left-16 -top-24 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -right-10 h-64 w-64 rounded-full bg-[#a5b4fc]/25 blur-3xl" />
 
@@ -150,7 +150,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="mt-6 w-full cursor-pointer rounded-full bg-gradient-to-r from-[#3f4a88] via-[#4c5aa3] to-[#5b6abf] py-3 text-lg font-semibold text-white shadow-[0_12px_26px_rgba(63,74,136,0.35)] transition-colors hover:from-[#374074] hover:to-[#4a58a6] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-6 w-full cursor-pointer rounded-full bg-gradient-to-r from-[#4b5aa0] via-[#5969b4] to-[#6a7bc9] py-3 text-lg font-semibold text-white shadow-[0_12px_26px_rgba(75,90,160,0.32)] transition-colors hover:from-[#425199] hover:to-[#5a6dbd] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
