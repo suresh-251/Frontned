@@ -4,7 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import DatePicker from "react-datepicker";
 import { LEAD_SOURCE_OPTIONS, STATUS_LIST, STATUS_META } from "./constants";
 import { formatLeadSource, formatStatus, getFollowUpLabel, getScoreTier, offsetDay, todayStr } from "./utils";
-import { ICal, IChevD, parseDateTimeValue, useClickOutside } from "./shared";
+import { ICal, IChevD, parseDateTimeValue, toDateTimeValue, useClickOutside } from "./shared";
 
 export function StatusCell({ value, onChange }) {
   const [open, setOpen] = useState(false);
@@ -165,22 +165,24 @@ export function FollowUpCell({ value, onChange }) {
         {info ? <span>{info.label}</span> : <span>No follow-up</span>}
       </button>
       {editing && panelPos && createPortal(
-        <div className="followup-picker followup-picker--compact" ref={panelRef} style={{ position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 5000 }}>
-          <div className="followup-quick">
-            <button onClick={() => { onChange(todayStr()); setEditing(false); setPanelPos(null); }}>Today</button>
-            <button onClick={() => { onChange(offsetDay(1)); setEditing(false); setPanelPos(null); }}>Tomorrow</button>
-            <button onClick={() => { onChange(offsetDay(3)); setEditing(false); setPanelPos(null); }}>+3 days</button>
+          <div className="followup-picker followup-picker--cute" ref={panelRef} style={{ position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 5000 }}>
+            <div className="followup-quick">
+            <button onClick={() => { onChange(toDateTimeValue(new Date())); setEditing(false); setPanelPos(null); }}>Today</button>
+            <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 1); onChange(toDateTimeValue(d)); setEditing(false); setPanelPos(null); }}>Tomorrow</button>
+            <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 3); onChange(toDateTimeValue(d)); setEditing(false); setPanelPos(null); }}>+3 days</button>
           </div>
 
           <DatePicker
             selected={value ? parseDateTimeValue(value) : null}
             onChange={(date) => {
-              const iso = date.toISOString().split("T")[0];
-              onChange(iso);
+              onChange(toDateTimeValue(date));
               setEditing(false);
               setPanelPos(null);
             }}
             inline
+            showTimeSelect
+            timeIntervals={15}
+            dateFormat="MMM d, yyyy h:mm aa"
             showMonthDropdown
             showYearDropdown
             dropdownMode="select"

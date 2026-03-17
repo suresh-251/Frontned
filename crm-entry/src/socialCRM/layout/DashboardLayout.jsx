@@ -9,6 +9,7 @@ export default function DashboardLayout() {
 
   return (
     <FacebookPageProvider>
+<<<<<<< HEAD
       <div className="flex h-screen overflow-hidden">
         {/* Sidebar — fixed, never scrolls the page */}
         <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
@@ -24,6 +25,15 @@ export default function DashboardLayout() {
               <Outlet />
             </div>
           </main>
+=======
+      <div className="flex h-screen overflow-hidden bg-gray-50">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col bg-gray-50">
+          <Topbar />
+          <div className="flex-1 overflow-auto p-6">
+            <Outlet />
+          </div>
+>>>>>>> a10e2475c0327557ac0af1c22a1083c69d1860e1
         </div>
       </div>
     </FacebookPageProvider>

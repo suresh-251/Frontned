@@ -31,6 +31,11 @@ export function FilterModal({ onClose, filters, activeFilterCount, onApply, assi
       updateFilter(toKey, "");
       return;
     }
+    if (dateField === "followUpDate") {
+      updateFilter(fromKey, toDateTimeValue(date));
+      updateFilter(toKey, toDateTimeValue(date));
+      return;
+    }
     const fromDate = new Date(date);
     fromDate.setHours(0, 0, 0, 0);
     const toDate = new Date(date);
@@ -114,7 +119,19 @@ export function FilterModal({ onClose, filters, activeFilterCount, onApply, assi
                 </button>
                 {activeDatePicker === "single" && (
                   <div style={{ marginTop: 10, border: "1.5px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "#fff", width: "fit-content" }}>
-                    <DatePicker selected={selectedSingleDate} onChange={(date) => { setSingleDate(date); setActiveDatePicker(null); }} inline showMonthDropdown showYearDropdown dropdownMode="select" yearDropdownItemNumber={12} calendarClassName="followup-datepicker" />
+                    <DatePicker
+                      selected={selectedSingleDate}
+                      onChange={(date) => { setSingleDate(date); setActiveDatePicker(null); }}
+                      inline
+                      showMonthDropdown
+                      showYearDropdown
+                      dropdownMode="select"
+                      yearDropdownItemNumber={12}
+                      showTimeSelect={dateField === "followUpDate"}
+                      timeIntervals={15}
+                      dateFormat={dateField === "followUpDate" ? "MMM d, yyyy h:mm aa" : "MMM d, yyyy"}
+                      calendarClassName="followup-datepicker"
+                    />
                   </div>
                 )}
               </div>

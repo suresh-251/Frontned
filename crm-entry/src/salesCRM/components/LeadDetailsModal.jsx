@@ -13,6 +13,7 @@ import Toast from "../utils/toast";
 
 const TABS = [
   ["activity", "Activity", Activity],
+  ["tasks", "Tasks", UserCheck],
   ["notes", "Notes", FileText],
   ["emails", "Emails", Mail],
   ["calls", "Calls", Phone],
@@ -46,6 +47,19 @@ const CALL_PURPOSE_OPTIONS = [
   "Support",
   "Closing",
 ];
+const CALL_STATUS_OPTIONS = [
+  "Pending",
+  "Incomplete",
+  "Completed",
+  "Cancelled",
+];
+const TASK_STATUS_OPTIONS = [
+  "Pending",
+  "Incomplete",
+  "Completed",
+  "Cancelled",
+];
+const TASK_PRIORITY_OPTIONS = ["Low", "Medium", "High"];
 const DEAL_STAGE_OPTIONS = [
   "New",
   "Prospect",
@@ -74,6 +88,15 @@ const floatingInput = { ...input, minHeight: 48, padding: "14px 12px 8px" };
 const floatingLabel = { position: "absolute", top: -7, left: 12, padding: "0 5px 0 0", fontSize: 10.5, fontWeight: 700, color: "#475569", background: "#ffffff", pointerEvents: "none", letterSpacing: "0.01em", lineHeight: 1.1 };
 const floatingErrorText = { marginTop: 6, marginLeft: 4, fontSize: 11.5, color: "#dc2626", lineHeight: 1.3 };
 const datePickerInputBase = { ...floatingInput, width: "100%", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+const selectFieldStyle = {
+  appearance: "none",
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E\")",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 12px center",
+  backgroundSize: "14px 14px",
+  paddingRight: 36,
+  cursor: "pointer",
+};
 
 const hasValue = (v) => !(v === null || v === undefined || (typeof v !== "boolean" && String(v).trim() === ""));
 const leadName = (lead) => [lead?.firstName, lead?.lastName].filter(Boolean).join(" ").trim() || lead?.name || "Lead";
@@ -99,7 +122,7 @@ const hasRealDate = (v) => {
 };
 const followUpDisplayValue = (lead) => {
   if (hasValue(lead?.followUpDate) && hasRealDate(lead.followUpDate)) {
-    return fmtDate(lead.followUpDate, false);
+    return fmtDate(lead.followUpDate, true);
   }
   const rawCandidates = [
     lead?.nextFollowUpAt,
@@ -107,7 +130,7 @@ const followUpDisplayValue = (lead) => {
     lead?.nextFollowupAt,
   ];
   const rawMatch = rawCandidates.find((value) => hasRealDate(value));
-  return rawMatch ? fmtDate(rawMatch, false) : "";
+  return rawMatch ? fmtDate(rawMatch, true) : "";
 };
 const fmtTime = (v) => {
   if (!v) return "-";
@@ -237,6 +260,7 @@ const mapCallActivity = (x) => ({
   preview: buildCallSummary(x),
   date: x?.callStartTime || x?.activityDate || x?.dueDate || x?.createdAt,
   status: x?.callStatus || x?.status || "",
+  durationMinutes: x?.durationMinutes ?? x?.callDurationMinutes ?? null,
   author: x?.createdByName || x?.userName || x?.createdBy || "",
 });
 
@@ -638,7 +662,12 @@ function Timeline({ items, loading, onRefresh }) {
 
 function HistoryTooltip({ item }) {
   const lines = [item?.meta, item?.preview].filter(Boolean).join("\n\n").trim();
-  if (!lines) return null;
+  const isCall = item?.kind === "calls";
+  const duration = Number(item?.durationMinutes || 0);
+  const hasDuration = isCall && Number.isFinite(duration) && duration > 0;
+  const normalized = hasDuration ? Math.min(1, duration / 60) : 0;
+  const graphBars = [0.25, 0.4, 0.55, 0.7, 0.85].map((factor) => Math.max(0.15, factor * normalized));
+  if (!lines && !hasDuration) return null;
   return (
     <div style={{
       position: "absolute",
@@ -657,7 +686,26 @@ function HistoryTooltip({ item }) {
       zIndex: 8,
       pointerEvents: "none",
     }}>
-      {lines}
+      {lines ? <div>{lines}</div> : null}
+      {hasDuration ? (
+        <div style={{ marginTop: lines ? 12 : 0 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>Call duration</div>
+          <div style={{ marginTop: 6, display: "flex", alignItems: "flex-end", gap: 4, height: 32 }}>
+            {graphBars.map((height, idx) => (
+              <div
+                key={idx}
+                style={{
+                  width: 10,
+                  height: Math.max(6, Math.round(height * 32)),
+                  borderRadius: 6,
+                  background: "#bfdbfe",
+                }}
+              />
+            ))}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: "#94a3b8" }}>{duration} min</div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -692,10 +740,6 @@ function TabHistoryTimeline({ items, emptyLabel, icon: Icon }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <div style={{ width: 36, height: 36, borderRadius: 12, background: "#eef4ff", color: "#4f46e5", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Icon size={17} />
-        </div>
-        <div>
-          <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>Timeline History</div>
-          <div style={{ marginTop: 2, fontSize: 12.5, color: "#64748b" }}>Hover an event for quick details without opening anything.</div>
         </div>
       </div>
       {Object.entries(groups).map(([date, group]) => (
@@ -803,7 +847,7 @@ function Composer({ tab, lead, onSaved }) {
     callStatus: "Completed",
     callResult: "Connected",
     callDescription: "",
-    callStartTime: new Date().toISOString().slice(0, 16),
+    callStartTime: new Date(),
     callDurationMinutes: 0,
     callPurpose: "",
     voiceRecordingUrl: "",
@@ -813,6 +857,13 @@ function Composer({ tab, lead, onSaved }) {
     meetingStartTime: new Date(),
     meetingEndTime: new Date(Date.now() + 30 * 60 * 1000),
     meetingProvider: "Zoom",
+    taskSubject: "",
+    taskDueDate: new Date(),
+    taskPriority: "Medium",
+    taskStatus: "Pending",
+    taskReminder: "",
+    taskRepeat: "",
+    taskDescription: "",
   });
   const setField = (k, val) => {
     setV((p) => ({ ...p, [k]: val }));
@@ -912,6 +963,26 @@ function Composer({ tab, lead, onSaved }) {
           });
         }
       }
+      if (tab === "tasks") {
+        const subject = String(v.taskSubject || "").trim();
+        const dueDate = toIsoString(v.taskDueDate);
+        if (!subject) {
+          setErrors((prev) => ({ ...prev, taskSubject: "Task title is required." }));
+          Toast.error("Task title is required.");
+          return;
+        }
+        await activitiesAPI.createTask({
+          leadId: lead.id,
+          subject,
+          dueDate,
+          priority: v.taskPriority || "Medium",
+          status: v.taskStatus || "Pending",
+          reminder: v.taskReminder || "",
+          repeat: v.taskRepeat || "",
+          description: v.taskDescription || "",
+          ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
+        });
+      }
       if (tab === "meetings") await meetingsAPI.create({
         leadId: lead.id,
         ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
@@ -941,6 +1012,52 @@ function Composer({ tab, lead, onSaved }) {
   if (tab === "activity" || tab === "attachments") return null;
   return (
     <div style={{ ...card, padding: 16 }}>
+      {tab === "tasks" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          <FloatingInput
+            label="Task Title"
+            value={v.taskSubject}
+            error={errors.taskSubject}
+            onChange={(e) => setField("taskSubject", e.target.value)}
+          />
+          <FloatingDateTimePicker
+            label="Due Date"
+            selected={v.taskDueDate}
+            onChange={(date) => setField("taskDueDate", date)}
+            popperPlacement="bottom-start"
+            popperOffset={8}
+            popperModifiers={[flip({ fallbackPlacements: [] })]}
+          />
+          <FloatingInput
+            as="select"
+            label="Priority"
+            value={v.taskPriority}
+            onChange={(e) => setField("taskPriority", e.target.value)}
+            style={selectFieldStyle}
+          >
+            {TASK_PRIORITY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </FloatingInput>
+          <FloatingInput
+            as="select"
+            label="Status"
+            value={v.taskStatus}
+            onChange={(e) => setField("taskStatus", e.target.value)}
+            style={selectFieldStyle}
+          >
+            {TASK_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+          </FloatingInput>
+          <FloatingInput label="Reminder" value={v.taskReminder} onChange={(e) => setField("taskReminder", e.target.value)} />
+          <FloatingInput label="Repeat" value={v.taskRepeat} onChange={(e) => setField("taskRepeat", e.target.value)} />
+          <FloatingInput
+            as="textarea"
+            autoGrow
+            label="Task Notes"
+            style={{ gridColumn: "1 / -1", width: "100%", minHeight: 84, padding: "10px 12px 6px" }}
+            value={v.taskDescription}
+            onChange={(e) => setField("taskDescription", e.target.value)}
+          />
+        </div>
+      )}
       {tab === "notes" && <textarea style={{ ...input, minHeight: 110, resize: "vertical" }} value={v.note} onChange={(e) => setField("note", e.target.value)} placeholder="Add a note for the sales team" />}
       {tab === "emails" && <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 0.9fr) minmax(0, 1.1fr)", gap: 12, alignItems: "start" }}>
         <select style={input} value={templateId} onChange={(e) => applyTemplate(e.target.value)}><option value="">Select template</option>{EMAIL_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
@@ -999,25 +1116,37 @@ function Composer({ tab, lead, onSaved }) {
           </button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, alignItems: "start" }}>
-          <div style={{ position: "relative" }}>
-            <FloatingInput
-              label="Call Purpose"
-              value={v.callPurpose}
-              list="call-purpose-options"
-              error={errors.callPurpose}
-              onChange={(e) => setField("callPurpose", e.target.value)}
-            />
-            <datalist id="call-purpose-options">
-              {CALL_PURPOSE_OPTIONS.map((option) => <option key={option} value={option} />)}
-            </datalist>
-          </div>
-          <FloatingInput type="datetime-local" label={v.callMode === "schedule" ? "Scheduled Time" : "Call Time"} value={v.callStartTime} error={errors.callStartTime} onChange={(e) => setField("callStartTime", e.target.value)} />
-          <FloatingInput as="select" label="Call Status" value={v.callStatus} onChange={(e) => setField("callStatus", e.target.value)}>
-            {v.callMode === "schedule"
-              ? ["Scheduled", "Pending", "Rescheduled"].map((status) => <option key={status} value={status}>{status}</option>)
-              : ["Completed", "Connected", "No Answer", "Missed", "Cancelled"].map((status) => <option key={status} value={status}>{status}</option>)}
+          <FloatingInput
+            as="select"
+            label="Call Purpose"
+            value={v.callPurpose}
+            error={errors.callPurpose}
+            onChange={(e) => setField("callPurpose", e.target.value)}
+            style={selectFieldStyle}
+          >
+            <option value="">Select purpose</option>
+            {CALL_PURPOSE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           </FloatingInput>
-          <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(e) => setField("callType", e.target.value)}>
+          <FloatingDateTimePicker
+            label={v.callMode === "schedule" ? "Scheduled Time" : "Call Time"}
+            selected={v.callStartTime}
+            error={errors.callStartTime}
+            onChange={(date) => setField("callStartTime", date)}
+            popperPlacement="bottom-start"
+            popperOffset={8}
+            popperModifiers={[flip({ fallbackPlacements: [] })]}
+          />
+          <FloatingInput
+            as="select"
+            label="Call Status"
+            value={v.callStatus}
+            onChange={(e) => setField("callStatus", e.target.value)}
+            style={selectFieldStyle}
+          >
+            <option value="">Select status</option>
+            {CALL_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+          </FloatingInput>
+          <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(e) => setField("callType", e.target.value)} style={selectFieldStyle}>
             <option value="Outgoing">Outgoing</option>
             <option value="Incoming">Incoming</option>
           </FloatingInput>
@@ -1048,7 +1177,7 @@ function Composer({ tab, lead, onSaved }) {
       {tab === "meetings" && <div style={{ padding: 0, borderRadius: 0, background: "transparent", border: "none", boxShadow: "none" }}>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16 }}>
           {(() => {
-            const roomyFieldStyle = { height: 56, minHeight: 56, padding: "18px 16px 10px" };
+            const roomyFieldStyle = { height: 50, minHeight: 50, padding: "14px 14px 8px" };
             return <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
             <FloatingInput label="Meeting Title" style={roomyFieldStyle} value={v.meetingTitle} onChange={(e) => setField("meetingTitle", e.target.value)} />
@@ -1073,7 +1202,7 @@ function Composer({ tab, lead, onSaved }) {
           </div>
         </div>
       </div>}
-      {tab !== "meetings" ? <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}><button className="btn-primary" onClick={submit} disabled={submitting} style={{ border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>{submitting ? "Saving..." : tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Open WhatsApp" : tab === "calls" ? "Save Call" : "Save Note"}</button></div> : null}
+      {tab !== "meetings" ? <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}><button className="btn-primary" onClick={submit} disabled={submitting} style={{ border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>{submitting ? "Saving..." : tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Open WhatsApp" : tab === "calls" ? "Save Call" : tab === "tasks" ? "Save Task" : "Save Note"}</button></div> : null}
     </div>
   );
 }
@@ -1155,16 +1284,41 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
   };
   useEffect(() => { load(); }, [lead?.id]);
   const callHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("call")).map(mapCallActivity), [open, closed]);
+  const taskHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("task")), [open, closed]);
   const filtered = useMemo(() => {
+    if (activeTab === "tasks") return taskHistory;
     if (activeTab === "calls") return callHistory;
     if (activeTab === "meetings") return meetings;
     return comms.filter((x) => x.kind === activeTab);
-  }, [activeTab, callHistory, comms, meetings]);
+  }, [activeTab, callHistory, comms, meetings, taskHistory]);
   const activityItems = activityView === "open" ? open : closed;
   return (
     <section style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: allowMeetingPopups ? "visible" : "hidden", background: "#ffffff" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 0", overflowX: "auto", flexShrink: 0, background: "#ffffff", borderBottom: "1px solid #eef2f7" }}>
-        {TABS.map(([id, label, Icon]) => <button key={id} onClick={() => onTabChange?.(id)} style={{ border: "none", borderBottom: activeTab === id ? "2px solid #93c5fd" : "2px solid transparent", background: "transparent", color: activeTab === id ? "#5b7fa6" : "#64748b", padding: "12px 4px 11px", marginRight: 12, display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{id === "whatsapp" ? <FaWhatsapp size={16} /> : <Icon size={16} />}{label}</button>)}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 12px 0", overflowX: "auto", flexShrink: 0, background: "#ffffff", borderBottom: "1px solid #eef2f7" }}>
+        {TABS.map(([id, label, Icon]) => (
+          <button
+            key={id}
+            onClick={() => onTabChange?.(id)}
+            style={{
+              border: "none",
+              borderBottom: activeTab === id ? "2px solid #93c5fd" : "2px solid transparent",
+              background: "transparent",
+              color: activeTab === id ? "#5b7fa6" : "#64748b",
+              padding: "10px 4px 9px",
+              marginRight: 8,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {id === "whatsapp" ? <FaWhatsapp size={15} /> : <Icon size={15} />}
+            {label}
+          </button>
+        ))}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: allowMeetingPopups ? "visible" : "auto", overflowX: allowMeetingPopups ? "visible" : "hidden", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
         {loading && <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading details...</div>}
@@ -1236,7 +1390,7 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
               await load();
               await onActivitySaved?.();
             }} />
-            <TabHistoryTimeline items={filtered} emptyLabel={activeTab} icon={activeTab === "emails" ? Mail : activeTab === "calls" ? Phone : activeTab === "whatsapp" ? FaWhatsapp : FileText} />
+            <TabHistoryTimeline items={filtered} emptyLabel={activeTab} icon={activeTab === "emails" ? Mail : activeTab === "calls" ? Phone : activeTab === "whatsapp" ? FaWhatsapp : activeTab === "tasks" ? UserCheck : FileText} />
           </>}
         </>}
         {activeTab === "attachments" && <Attachments leadId={lead?.id} />}

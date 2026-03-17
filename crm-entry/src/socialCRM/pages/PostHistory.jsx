@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import api from "../api/apiClient";
 import { BASE_URL } from "../api/apiClient";
 import { useBrand } from "../context/BrandContext";
@@ -54,7 +54,19 @@ const POST_SORT_OPTIONS = [
   { key: "type", label: "Post Type (A-Z)" },
 ];
 
-const DRAFTS_STORAGE_KEY = "social.postDrafts.v1";
+const SCHEDULED_SORT_OPTIONS = [
+  { key: "newest", label: "Latest Scheduled" },
+  { key: "oldest", label: "Earliest Scheduled" },
+  { key: "platform", label: "Platform (A-Z)" },
+  { key: "type", label: "Post Type (A-Z)" },
+];
+
+const DRAFT_SORT_OPTIONS = [
+  { key: "newest", label: "Recently Saved" },
+  { key: "oldest", label: "Oldest Saved" },
+  { key: "platform", label: "Platform (A-Z)" },
+  { key: "type", label: "Post Type (A-Z)" },
+];
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_NAMES   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
@@ -75,50 +87,32 @@ function parseResults(raw) {
   try { return JSON.parse(raw) ?? []; } catch { return []; }
 }
 
-function readDraftsFromStorage() {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(DRAFTS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function parseDraftList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+
+  const candidates = [
+    payload.items,
+    payload.posts,
+    payload.drafts,
+    payload.data,
+    payload.result,
+    payload.data?.items,
+    payload.data?.posts,
+    payload.data?.drafts,
+    payload.result?.items,
+    payload.result?.posts,
+    payload.result?.drafts,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
   }
+
+  return [];
 }
 
-function writeDraftsToStorage(drafts) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
-  } catch {
-    // Ignore storage write failures (private mode / quota).
-  }
-}
-
-function getDraftsForBrand(brandSlug) {
-  if (!brandSlug) return [];
-  return readDraftsFromStorage()
-    .filter(draft => draft.brandSlug === brandSlug)
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-}
-
-function upsertDraftInStorage(draft) {
-  const allDrafts = readDraftsFromStorage();
-  const idx = allDrafts.findIndex(d => d.id === draft.id && d.brandSlug === draft.brandSlug);
-  if (idx >= 0) allDrafts[idx] = draft;
-  else allDrafts.push(draft);
-  writeDraftsToStorage(allDrafts);
-}
-
-function removeDraftFromStorage(brandSlug, draftId) {
-  const allDrafts = readDraftsFromStorage();
-  const filtered = allDrafts.filter(d => !(d.brandSlug === brandSlug && d.id === draftId));
-  writeDraftsToStorage(filtered);
-}
-
-function getPostReach(post = {}) {
-  return parseResults(post.postResultsJson).reduce((sum, result) => sum + (result.reach ?? 0), 0);
-}
 function getPostPlatforms(post = {}) {
   const fromExplicit = parsePlatforms(post.platforms).map(normPlatform).filter(Boolean);
   const fromResults = parseResults(post.postResultsJson)
@@ -165,33 +159,13 @@ function getISOWeekNumber(date) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-function getTimeValue(post) {
-  const ts = new Date(getPostDate(post)).getTime();
-  return Number.isFinite(ts) ? ts : 0;
+function getPostReach(post = {}) {
+  return parseResults(post.postResultsJson).reduce((sum, result) => sum + Number(result?.reach ?? result?.Reach ?? 0), 0);
 }
 
-function comparePosts(a, b, sortBy) {
-  let diff = 0;
-
-  if (sortBy === "oldest") {
-    diff = getTimeValue(a) - getTimeValue(b);
-  } else if (sortBy === "reach_desc") {
-    diff = getPostReach(b) - getPostReach(a);
-  } else if (sortBy === "reach_asc") {
-    diff = getPostReach(a) - getPostReach(b);
-  } else if (sortBy === "platform") {
-    const aPlatform = getPostPlatforms(a)[0] || "";
-    const bPlatform = getPostPlatforms(b)[0] || "";
-    diff = aPlatform.localeCompare(bPlatform);
-  } else if (sortBy === "type") {
-    diff = (a.postType || "").localeCompare(b.postType || "");
-  } else {
-    // default: newest first
-    diff = getTimeValue(b) - getTimeValue(a);
-  }
-
-  if (diff !== 0) return diff;
-  return getTimeValue(b) - getTimeValue(a);
+function getPostTimeValue(post) {
+  const ts = new Date(getPostDate(post)).getTime();
+  return Number.isFinite(ts) ? ts : 0;
 }
 
 function getDraftTimeValue(draft) {
@@ -199,24 +173,44 @@ function getDraftTimeValue(draft) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
-function compareDrafts(a, b, sortBy) {
-  let diff = 0;
+function sortPosts(posts, sortKey) {
+  return [...posts].sort((a, b) => {
+    if (sortKey === "oldest") {
+      return getPostTimeValue(a) - getPostTimeValue(b);
+    }
+    if (sortKey === "reach_desc") {
+      return getPostReach(b) - getPostReach(a);
+    }
+    if (sortKey === "reach_asc") {
+      return getPostReach(a) - getPostReach(b);
+    }
+    if (sortKey === "platform") {
+      const aPlatform = getPostPlatforms(a)[0] || "";
+      const bPlatform = getPostPlatforms(b)[0] || "";
+      return aPlatform.localeCompare(bPlatform) || (getPostTimeValue(b) - getPostTimeValue(a));
+    }
+    if (sortKey === "type") {
+      return (a.postType || "").localeCompare(b.postType || "") || (getPostTimeValue(b) - getPostTimeValue(a));
+    }
+    return getPostTimeValue(b) - getPostTimeValue(a);
+  });
+}
 
-  if (sortBy === "oldest") {
-    diff = getDraftTimeValue(a) - getDraftTimeValue(b);
-  } else if (sortBy === "platform") {
-    const aPlatform = getDraftPlatforms(a)[0] || "";
-    const bPlatform = getDraftPlatforms(b)[0] || "";
-    diff = aPlatform.localeCompare(bPlatform);
-  } else if (sortBy === "type") {
-    diff = (a.mode || "").localeCompare(b.mode || "");
-  } else {
-    // default: newest first
-    diff = getDraftTimeValue(b) - getDraftTimeValue(a);
-  }
-
-  if (diff !== 0) return diff;
-  return getDraftTimeValue(b) - getDraftTimeValue(a);
+function sortDrafts(drafts, sortKey) {
+  return [...drafts].sort((a, b) => {
+    if (sortKey === "oldest") {
+      return getDraftTimeValue(a) - getDraftTimeValue(b);
+    }
+    if (sortKey === "platform") {
+      const aPlatform = getDraftPlatforms(a)[0] || "";
+      const bPlatform = getDraftPlatforms(b)[0] || "";
+      return aPlatform.localeCompare(bPlatform) || (getDraftTimeValue(b) - getDraftTimeValue(a));
+    }
+    if (sortKey === "type") {
+      return (a.postType || a.mode || "").localeCompare(b.postType || b.mode || "") || (getDraftTimeValue(b) - getDraftTimeValue(a));
+    }
+    return getDraftTimeValue(b) - getDraftTimeValue(a);
+  });
 }
 
 function StatusTabIcon({ type, cls = "w-4 h-4" }) {
@@ -347,7 +341,6 @@ function PostCard({ post, onEdit, onDelete }) {
 
   // Build view links for ALL success results — always try to construct a URL
   const viewLinks = successResults.map(buildViewLink).filter(Boolean);
-
   const isImage = ["Image","Carousel"].includes(post.postType);
   const isVideo = ["Video","Reel","Story"].includes(post.postType);
   const hasMedia = post.hasMedia && (isImage || isVideo);
@@ -581,7 +574,7 @@ function ScheduledCard({ post, cancellingId, onCancel, onReschedule }) {
 }
 
 // ── Draft Card ─────────────────────────────────────────────────────────────────
-function DraftCard({ post, onDelete, onResume }) {
+function DraftCard({ post, onDelete, onEdit, isDeleteConfirmOpen, onCancelDelete, onConfirmDelete, deleteLoading }) {
   const platforms = parsePlatforms(post.platforms);
   const accs      = parseAccountIds(post.targetAccountIds);
   const hasMedia  = post.hasMedia;
@@ -589,7 +582,7 @@ function DraftCard({ post, onDelete, onResume }) {
   const isVideo   = ["Video","Reel","Story"].includes(post.postType);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex overflow-hidden border-l-4 border-l-yellow-400 hover:shadow-md transition-shadow">
+    <div className="relative flex h-full overflow-visible rounded-xl border border-gray-200 border-l-4 border-l-yellow-400 bg-white shadow-sm transition-shadow hover:shadow-md">
       <div className="shrink-0 w-20 h-20 bg-gray-50 flex items-center justify-center self-center m-3 rounded-lg overflow-hidden">
         {hasMedia && (isImage || isVideo) ? (
           <MediaThumbnail postId={post.id} contentType={post.mediaContentType} className="w-20 h-20" />
@@ -599,7 +592,7 @@ function DraftCard({ post, onDelete, onResume }) {
           </span>
         )}
       </div>
-      <div className="flex-1 py-3 pr-3 min-w-0">
+      <div className="flex-1 py-2.5 pr-3 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{post.postType}</span>
           {platforms.map(p => (
@@ -607,24 +600,60 @@ function DraftCard({ post, onDelete, onResume }) {
               <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p.slice(0,2)}
             </span>
           ))}
-          <span className="ml-auto text-[10px] font-semibold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">✏️ Draft</span>
+          <span className="text-[10px] font-semibold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">✏️ Draft</span>
         </div>
-        <p className="text-sm text-gray-700 mt-1.5 line-clamp-2 leading-snug">
+        <p className="text-sm text-gray-700 mt-1 line-clamp-2 leading-snug">
           {post.content || <span className="italic text-gray-400">No content yet…</span>}
         </p>
-        <div className="flex items-center justify-between mt-2">
+        <div className="mt-1.5 flex items-end justify-between gap-2">
           <span className="text-[11px] text-gray-400">
             💾 Saved {fmtLocal(post.createdAt)} · {accs.length} account{accs.length !== 1 ? "s" : ""}
           </span>
-          <div className="flex items-center gap-1.5">
-            <button onClick={() => onResume(post)}
-              className="px-2.5 py-1 text-[11px] font-medium bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors">
-              Resume
+          <div className="relative ml-auto flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              title="Edit draft"
+              onClick={() => onEdit(post)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
             </button>
-            <button onClick={() => onDelete(post.id)}
-              className="px-2.5 py-1 text-[11px] font-medium bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
-              Delete
+            <button
+              type="button"
+              title="Delete draft"
+              onClick={() => onDelete(post)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-500 transition-colors hover:bg-red-100 hover:text-red-600"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
             </button>
+
+            {isDeleteConfirmOpen && (
+              <div className="absolute right-0 bottom-9 z-30 w-56 rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_14px_30px_rgba(15,23,42,0.16)]">
+                <p className="text-sm font-bold text-gray-900">Delete draft?</p>
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={onCancelDelete}
+                    disabled={deleteLoading}
+                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    No
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onConfirmDelete}
+                    disabled={deleteLoading}
+                    className="rounded-xl border border-rose-500 bg-linear-to-b from-rose-500 to-red-600 px-3 py-2 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_6px_14px_rgba(239,68,68,0.28)] transition-all hover:brightness-105 disabled:opacity-60"
+                  >
+                    {deleteLoading ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1026,7 +1055,7 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
     if (!activeBrand?.slug) return;
     try {
       const res = await api.get("/post/drafts");
-      setDrafts(Array.isArray(res.data) ? res.data : []);
+      setDrafts(parseDraftList(res.data));
     } catch { /* silently fail */ }
   }, [activeBrand?.slug]);
 
@@ -1116,6 +1145,7 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
     try {
       await api.delete(`/post/draft/${draftId}`);
       setDrafts(prev => prev.filter(d => d.id !== draftId));
+      onPosted?.({ draftSaved: true });
       if (editingDraftId === draftId) {
         setEditingDraftId(null);
         resetComposer();
@@ -1165,10 +1195,16 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
 
   const saveDraft = async () => {
     if (!content.trim() && !files.length) { setError("Add some content before saving as draft."); return; }
+    if (!selected.size) { setError("Select the preferred social to post/schedule."); return; }
     setSavingDraft(true); setError("");
     const form = new FormData();
     form.append("Type", mode);
     form.append("Content", content || "");
+    if (editingDraftId) {
+      // Keep draft identity so backend can update instead of creating a new row.
+      form.append("DraftId", String(editingDraftId));
+      form.append("Id", String(editingDraftId));
+    }
     selectedAccounts.forEach(a => form.append("TargetAccountIds", a.pageIdentifier));
     [...new Set(selectedAccounts.map(a => a.platform))].forEach(p => form.append("Platforms", p));
     files.forEach(f => form.append("MediaFiles", f));
@@ -1177,9 +1213,17 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
       const res = await api.post("/post/draft", form, {
         headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
       });
+
+      const savedId = res?.data?.id ?? res?.data?.draftId ?? res?.data?.data?.id ?? null;
+      if (editingDraftId && savedId && String(savedId) !== String(editingDraftId)) {
+        // Fallback safety: if API still created a new record, remove old one to avoid duplicates.
+        try { await api.delete(`/post/draft/${editingDraftId}`); } catch { /* ignore cleanup failure */ }
+      }
+
       await loadDraftsFromApi();
-      setDraftNotice("Draft saved successfully.");
-      if (res.data?.id) setEditingDraftId(res.data.id);
+      onPosted?.({ draftSaved: true });
+      setDraftNotice(editingDraftId ? "Draft updated successfully." : "Draft saved successfully.");
+      setEditingDraftId(savedId ?? editingDraftId ?? null);
     } catch (e) {
       setError(e.message || "Failed to save draft.");
     } finally {
@@ -1716,11 +1760,16 @@ export default function PostHistory() {
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [hoveredPlatformFilter, setHoveredPlatformFilter] = useState(null);
   const [showCompose, setCompose] = useState(false);
-  const [composeInitialDraft, setComposeInitialDraft] = useState(null);
   const [editingPost, setEditing] = useState(null);
+  const [deletingDraft, setDeletingDraft] = useState(null);
+  const [deleteDraftLoading, setDeleteDraftLoading] = useState(false);
+  const [removingDraftId, setRemovingDraftId] = useState(null);
   const [deletingPost, setDeleting] = useState(null);
   const [deleteLoading, setDelLoad] = useState(false);
   const sortMenuRef = useRef(null);
+  const draftItemRefs = useRef(new Map());
+  const draftPrevRectsRef = useRef(new Map());
+  const hasDraftMeasurementsRef = useRef(false);
 
   const today = new Date();
   const [calYear, setCalYear]   = useState(today.getFullYear());
@@ -1742,7 +1791,6 @@ export default function PostHistory() {
   const [scheduled, setScheduled]           = useState([]);
   const [scheduledLoading, setSchedLoad]    = useState(false);
   const [history, setHistory]               = useState([]);
-  const [draftPosts, setDraftPosts]         = useState([]);
   const [historyLoading, setHistLoad]       = useState(false);
   const [historyPage, setHistoryPage]       = useState(1);
   const [historyTotal, setHistoryTotal]     = useState(0);
@@ -1761,10 +1809,15 @@ export default function PostHistory() {
   }, [scheduled, history, historyTotal, drafts, accountPicMap, effectiveBrand?.slug]);
 
   const openComposeForNew = () => {
-    setComposeInitialDraft(null);
     setResumingDraft(null);
     setCompose(true);
   };
+
+  const setDraftItemRef = useCallback((draftId, node) => {
+    const key = String(draftId);
+    if (node) draftItemRefs.current.set(key, node);
+    else draftItemRefs.current.delete(key);
+  }, []);
 
   const loadScheduled = useCallback(async () => {
     const requestSlug = effectiveBrand?.slug;
@@ -1809,6 +1862,7 @@ export default function PostHistory() {
       const drafts = Array.isArray(res.data) ? res.data : [];
       setDrafts(drafts);
       appCache.set(phCacheKey("drafts", requestSlug), drafts);
+      setDrafts(parseDraftList(res.data));
     } catch { /* silently fail */ }
     finally { if (activeSlugRef.current === requestSlug) setDraftsLoad(false); }
   }, [effectiveBrand?.slug]);
@@ -1881,10 +1935,23 @@ export default function PostHistory() {
     setScheduled(prev => prev.map(p => p.id === id ? { ...p, scheduledAt } : p));
   };
 
-  const deleteDraftById = async (id) => {
-    if (!window.confirm("Delete this draft?")) return;
-    try { await api.delete(`/post/draft/${id}`); setDrafts(prev => prev.filter(p => p.id !== id)); }
-    catch { setError("Failed to delete draft."); }
+  const deleteDraftById = async () => {
+    if (!deletingDraft?.id) return;
+    const draftId = deletingDraft.id;
+    setDeleteDraftLoading(true);
+    try {
+      await api.delete(`/post/draft/${draftId}`);
+      setRemovingDraftId(draftId);
+      await sleep(220);
+      setDrafts(prev => prev.filter(p => p.id !== draftId));
+      setDeletingDraft(null);
+    } catch {
+      setRemovingDraftId(null);
+      setError("Failed to delete draft.");
+    } finally {
+      setRemovingDraftId(null);
+      setDeleteDraftLoading(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -1919,9 +1986,75 @@ export default function PostHistory() {
   const filteredCompleted = filterByPlatform(completed);
   const filteredScheduled = filterByPlatform(_scheduled);
   const filteredDrafts    = filterByPlatform(_drafts);
+  const completed = history.filter(p => p.status === "Completed" || p.status === "Failed");
+  const allPosts  = [...scheduled, ...history];
+  const currentSortOptions = tab === "drafted"
+    ? DRAFT_SORT_OPTIONS
+    : tab === "scheduled"
+      ? SCHEDULED_SORT_OPTIONS
+      : POST_SORT_OPTIONS;
+  const activeSortKey = currentSortOptions.some(option => option.key === sortBy)
+    ? sortBy
+    : currentSortOptions[0].key;
+  const filteredCompleted = sortPosts(filterByPlatform(completed), activeSortKey);
+  const filteredScheduled = sortPosts(filterByPlatform(scheduled), activeSortKey);
+  const filteredDrafts    = sortDrafts(filterByPlatform(drafts), activeSortKey);
   const filteredAllPosts  = filterByPlatform(allPosts);
 
   const counts = { completed: completed.length, scheduled: _scheduled.length, drafted: _drafts.length };
+
+  useLayoutEffect(() => {
+    if (tab !== "drafted" || viewMode !== "table") return;
+
+    const nextRects = new Map();
+    filteredDrafts.forEach((draft) => {
+      const node = draftItemRefs.current.get(String(draft.id));
+      if (node) nextRects.set(String(draft.id), node.getBoundingClientRect());
+    });
+
+    const prevRects = draftPrevRectsRef.current;
+    if (hasDraftMeasurementsRef.current) {
+      nextRects.forEach((nextRect, id) => {
+        const node = draftItemRefs.current.get(id);
+        if (!node) return;
+
+        const prevRect = prevRects.get(id);
+        if (!prevRect) {
+          node.style.transition = "none";
+          node.style.opacity = "0";
+          node.style.transform = "translateY(12px) scale(0.98)";
+          requestAnimationFrame(() => {
+            if (!node.isConnected) return;
+            node.style.transition = "transform 420ms cubic-bezier(0.22, 1, 0.36, 1), opacity 320ms ease";
+            node.style.opacity = "1";
+            node.style.transform = "translateY(0) scale(1)";
+          });
+          return;
+        }
+
+        const deltaX = prevRect.left - nextRect.left;
+        const deltaY = prevRect.top - nextRect.top;
+        if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return;
+
+        node.style.transition = "none";
+        node.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+        requestAnimationFrame(() => {
+          if (!node.isConnected) return;
+          node.style.transition = "transform 520ms cubic-bezier(0.22, 1, 0.36, 1)";
+          node.style.transform = "translate(0, 0)";
+        });
+      });
+    }
+
+    hasDraftMeasurementsRef.current = true;
+    draftPrevRectsRef.current = nextRects;
+  }, [filteredDrafts, tab, viewMode]);
+
+  useEffect(() => {
+    if (tab === "drafted" && viewMode === "table") return;
+    hasDraftMeasurementsRef.current = false;
+    draftPrevRectsRef.current = new Map();
+  }, [tab, viewMode]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -2009,7 +2142,7 @@ export default function PostHistory() {
               className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 shadow-sm"
             >
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Sort by</span>
-              <span className="text-xs font-semibold text-gray-700">{(POST_SORT_OPTIONS.find(o => o.key === sortBy) || POST_SORT_OPTIONS[0]).label}</span>
+              <span className="text-xs font-semibold text-gray-700">{(currentSortOptions.find(o => o.key === activeSortKey) || currentSortOptions[0]).label}</span>
               <svg className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-300 ${sortMenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -2019,8 +2152,8 @@ export default function PostHistory() {
               className={`absolute right-0 top-full mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-20 origin-top-right transition-all duration-200 ${sortMenuOpen ? "opacity-100 scale-100 translate-y-0 pointer-events-auto" : "opacity-0 scale-95 -translate-y-1 pointer-events-none"}`}
             >
               <div role="listbox" aria-label="Sort posts" className="py-1">
-                {POST_SORT_OPTIONS.map(option => {
-                  const selected = sortBy === option.key;
+                {currentSortOptions.map(option => {
+                  const selected = activeSortKey === option.key;
                   return (
                     <button
                       key={option.key}
@@ -2070,11 +2203,19 @@ export default function PostHistory() {
               draftsLoading ? <LoadingCard /> :
               filteredDrafts.length === 0
                 ? <EmptyCard icon="✏️" msg={platformFilter === "All" ? "No drafts saved yet." : `No ${platformFilter} drafts.`} />
-                : <div className="space-y-2">
+                : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {filteredDrafts.map(post => (
-                      <DraftCard key={post.id} post={post}
-                        onDelete={deleteDraftById}
-                        onResume={(p) => { setResumingDraft(p); setCompose(true); }} />
+                      <div key={post.id} ref={(node) => setDraftItemRef(post.id, node)} className="will-change-transform">
+                        <div className={`transition-all duration-300 ease-out ${removingDraftId === post.id ? "pointer-events-none -translate-y-2 scale-95 opacity-0" : "translate-y-0 scale-100 opacity-100"}`}>
+                          <DraftCard post={post}
+                            onDelete={(p) => setDeletingDraft(p)}
+                            onEdit={(p) => { setResumingDraft(p); setCompose(true); }}
+                            isDeleteConfirmOpen={deletingDraft?.id === post.id}
+                            onCancelDelete={() => setDeletingDraft(null)}
+                            onConfirmDelete={deleteDraftById}
+                            deleteLoading={deleteDraftLoading} />
+                        </div>
+                      </div>
                     ))}
                   </div>
             )}
@@ -2119,7 +2260,11 @@ export default function PostHistory() {
         activeBrand={effectiveBrand}
         resumeDraft={resumingDraft}
         onClose={() => { setCompose(false); setResumingDraft(null); }}
-        onPosted={({ scheduled, draftId } = {}) => {
+        onPosted={({ scheduled, draftId, draftSaved } = {}) => {
+          if (draftSaved) {
+            loadDrafts();
+            setTab("drafted");
+          }
           if (draftId) setDrafts(prev => prev.filter(d => d.id !== draftId));
           setTimeout(refresh, 500);
           if (scheduled) setTab("scheduled");

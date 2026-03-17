@@ -1,11 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+﻿import React, { useState, useRef, useEffect } from "react";
 import { Bell, Search, Settings, Shield, User, LogOut, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ThemeChange from "../components/ui/ThemeChange";
 
 export default function Topbar({ userData }) {
   const [showSettings, setShowSettings] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
 
@@ -16,7 +15,6 @@ export default function Topbar({ userData }) {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowSettings(false);
-        setShowNotifications(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -60,37 +58,14 @@ export default function Topbar({ userData }) {
 
         {/* Action Icons */}
         <div className="flex items-center gap-1.5 ml-2 relative" ref={dropdownRef}>
-          <button
-            onClick={() => {
-              setShowNotifications((s) => !s);
-              setShowSettings(false);
-            }}
-            className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all relative"
-          >
+          <button className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all relative">
             <Bell size={17} />
             <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full border border-[var(--bg-card)]"></span>
           </button>
 
-          {/* Notifications Dropdown */}
-          {showNotifications && (
-            <div className="absolute top-10 right-0 w-72 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl shadow-xl py-2 z-[110] animate-in fade-in zoom-in-95 duration-150">
-              <div className="px-4 py-2 border-b border-[var(--border-color)]/50 mb-1">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Notifications</p>
-              </div>
-
-              <div className="px-4 py-3">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">No new alerts</p>
-                <p className="text-[9px] font-bold text-slate-400 mt-1">You’re all caught up.</p>
-              </div>
-            </div>
-          )}
-
           {/* Settings Trigger */}
           <button 
-            onClick={() => {
-              setShowSettings(!showSettings);
-              setShowNotifications(false);
-            }}
+            onClick={() => setShowSettings(!showSettings)}
             className={`p-2 rounded-lg transition-all ${showSettings ? 'bg-indigo-500/10 text-indigo-500' : 'text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10'}`}
           >
             <Settings size={17} className={`${showSettings ? 'rotate-90' : ''} transition-transform duration-300`} />

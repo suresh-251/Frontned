@@ -458,9 +458,13 @@
   flex: 0 0 312px;
   min-height: 420px;
   border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--kanban-accent) 18%, #dbe1ea);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--kanban-accent-bg) 55%, white) 0%, #ffffff 28%);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+  border: 1.5px solid color-mix(in srgb, var(--kanban-accent) 22%, #dbe1ea);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--kanban-accent-bg) 30%, #ffffff) 0%,
+    #ffffff 140px
+  );
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
   padding: 14px;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
@@ -476,8 +480,11 @@
   align-items: flex-start;
   gap: 12px;
   margin-bottom: 14px;
-  padding: 4px 2px 10px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 8px 6px 12px;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .kanban-column__label {
@@ -501,7 +508,7 @@
   height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  background: var(--kanban-accent-bg);
+  background: color-mix(in srgb, var(--kanban-accent-bg) 70%, #ffffff);
   color: var(--kanban-accent);
   font-size: 12px;
   font-weight: 800;

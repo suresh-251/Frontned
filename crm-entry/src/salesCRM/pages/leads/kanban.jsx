@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Calendar, User } from "lucide-react";
 import { STATUS_LIST, STATUS_META } from "./constants";
+import DatePicker from "react-datepicker";
 import { formatLeadSource, formatStatus, getFollowUpLabel, getInitials, getScoreTier, offsetDay, todayStr } from "./utils";
+import { parseDateTimeValue, toDateTimeValue } from "./shared";
 import { IX } from "./shared";
 
 export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDetails }) {
@@ -10,14 +12,20 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
   const [pendingFollowUpDrop, setPendingFollowUpDrop] = useState(null);
   const boardRef = useRef(null);
   const dragScrollRef = useRef({ direction: 0, rafId: null });
-  const followUpColumns = ["Past Follow-Ups", "Today", "Tomorrow", "Upcoming", "No Follow Up"];
-  const followUpMeta = {
+const followUpColumns = ["Past Follow-Ups", "Today", "Tomorrow", "Upcoming", "No Follow Up"];
+const followUpMeta = {
     "Past Follow-Ups": { color: "#dc2626", bg: "#fee2e2" },
     Today: { color: "#ea580c", bg: "#ffedd5" },
     Tomorrow: { color: "#16a34a", bg: "#dcfce7" },
     Upcoming: { color: "#2563eb", bg: "#dbeafe" },
     "No Follow Up": { color: "#64748b", bg: "#e2e8f0" },
-  };
+};
+
+const withDefaultTime = (dateStr) => {
+  if (!dateStr) return "";
+  const date = new Date(`${dateStr}T09:00:00`);
+  return toDateTimeValue(date);
+};
 
   const grouped = useMemo(() => {
     if (groupBy === "status") {
@@ -35,10 +43,11 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
       const today = todayStr();
       const tomorrow = offsetDay(1);
       leads.forEach((lead) => {
-        if (!lead.followUpDate) map["No Follow Up"].push(lead);
-        else if (lead.followUpDate < today) map["Past Follow-Ups"].push(lead);
-        else if (lead.followUpDate === today) map.Today.push(lead);
-        else if (lead.followUpDate === tomorrow) map.Tomorrow.push(lead);
+        const followUpDate = lead.followUpDate ? String(lead.followUpDate).split("T")[0] : "";
+        if (!followUpDate) map["No Follow Up"].push(lead);
+        else if (followUpDate < today) map["Past Follow-Ups"].push(lead);
+        else if (followUpDate === today) map.Today.push(lead);
+        else if (followUpDate === tomorrow) map.Tomorrow.push(lead);
         else map.Upcoming.push(lead);
       });
       return map;
@@ -153,12 +162,12 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
                   let nextValue = columnKey;
                   if (groupBy === "followUpDate") {
                     if (columnKey === "Past Follow-Ups") {
-                      setPendingFollowUpDrop({ leadId: draggedId, lane: columnKey, suggestedDate: offsetDay(-1), min: "", max: todayStr() });
+                      setPendingFollowUpDrop({ leadId: draggedId, lane: columnKey, suggestedDate: withDefaultTime(offsetDay(-1)), min: "", max: todayStr() });
                       stopAutoScroll();
                       return;
                     }
                     if (columnKey === "Upcoming") {
-                      setPendingFollowUpDrop({ leadId: draggedId, lane: columnKey, suggestedDate: offsetDay(3), min: offsetDay(2), max: "" });
+                      setPendingFollowUpDrop({ leadId: draggedId, lane: columnKey, suggestedDate: withDefaultTime(offsetDay(3)), min: offsetDay(2), max: "" });
                       stopAutoScroll();
                       return;
                     }
@@ -225,7 +234,16 @@ export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDe
               <button className="icon-btn modal-close" onClick={() => setPendingFollowUpDrop(null)}><IX s={15} /></button>
             </div>
             <div className="modal-body" style={{ padding: "14px", display: "grid" }}>
-              <input type="date" value={pendingFollowUpDrop.suggestedDate} min={pendingFollowUpDrop.min || undefined} max={pendingFollowUpDrop.max || undefined} className="kanban-followup-date-input" onChange={(event) => setPendingFollowUpDrop((current) => ({ ...current, suggestedDate: event.target.value }))} />
+              <DatePicker
+                selected={parseDateTimeValue(pendingFollowUpDrop.suggestedDate)}
+                onChange={(date) => setPendingFollowUpDrop((current) => ({ ...current, suggestedDate: toDateTimeValue(date) }))}
+                showTimeSelect
+                timeIntervals={15}
+                dateFormat="MMM d, yyyy h:mm aa"
+                minDate={pendingFollowUpDrop.min ? new Date(`${pendingFollowUpDrop.min}T00:00:00`) : undefined}
+                maxDate={pendingFollowUpDrop.max ? new Date(`${pendingFollowUpDrop.max}T23:59:59`) : undefined}
+                className="kanban-followup-date-input"
+              />
             </div>
             <div className="modal-footer">
               <button className="btn-ghost" onClick={() => setPendingFollowUpDrop(null)}>Cancel</button>
