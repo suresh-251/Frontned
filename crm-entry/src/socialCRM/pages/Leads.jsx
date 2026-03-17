@@ -1077,7 +1077,6 @@ useEffect(() => {
                                   {l.qualityGrade || "?"} ({l.qualityScore})
                                 </span>
                               )}
-                              </span>
                             </div>
                          </div>
                       </div>

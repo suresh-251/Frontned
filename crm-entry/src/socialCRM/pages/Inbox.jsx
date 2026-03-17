@@ -19,9 +19,9 @@ import {
 
 // ── Platform config ───────────────────────────────────────────────────────
 const PSTYLE = {
-  Facebook:  { bg: "bg-blue-100",  text: "text-blue-700",  Icon: FaFacebook  },
-  Instagram: { bg: "bg-pink-100",  text: "text-pink-600",  Icon: FaInstagram },
-  LinkedIn:  { bg: "bg-sky-100",   text: "text-sky-700",   Icon: FaLinkedin  },
+  Facebook:  { bg: "bg-blue-100",  text: "text-blue-700",  borderL: "border-l-blue-500",  borderB: "border-b-blue-400",  ring: "ring-blue-200",  Icon: FaFacebook  },
+  Instagram: { bg: "bg-pink-100",  text: "text-pink-600",  borderL: "border-l-pink-500",  borderB: "border-b-pink-400",  ring: "ring-pink-200",  Icon: FaInstagram },
+  LinkedIn:  { bg: "bg-sky-100",   text: "text-sky-700",   borderL: "border-l-sky-500",   borderB: "border-b-sky-400",   ring: "ring-sky-200",   Icon: FaLinkedin  },
 };
 const ps = (platform) => PSTYLE[platform] ?? PSTYLE.Facebook;
 
@@ -480,8 +480,8 @@ export default function Inbox() {
               <button
                 key={c.id}
                 onClick={() => openConvo(c)}
-                className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-blue-50/40 transition-all
-                  ${isActive ? "bg-blue-50 border-l-2 border-l-blue-600" : ""}`}
+                className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-blue-50/40 transition-all border-l-[3px]
+                  ${s.borderL} ${isActive ? `${s.bg}/40` : "border-opacity-50"}`}
               >
                 <div className="flex items-start gap-2.5">
                   {/* Avatar */}
@@ -558,10 +558,10 @@ export default function Inbox() {
 
       {/* ── Right Panel ──────────────────────────────────────────────── */}
       {active ? (
-        <div className="flex-1 bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden shadow-sm min-w-0">
+        <div className={`flex-1 bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden shadow-sm min-w-0 ring-1 ${pStyle.ring}`}>
 
           {/* Conversation header */}
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div className={`px-5 py-3 border-b-2 ${pStyle.borderB} flex items-center justify-between`}>
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-full ${pStyle.bg} flex items-center justify-center shrink-0`}>
                 {active.userAvatar ? (
@@ -653,7 +653,11 @@ export default function Inbox() {
                     <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                       isMe
                         ? "bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-br-sm"
-                        : "bg-white text-gray-800 rounded-bl-sm border border-gray-200 shadow-sm"
+                        : `bg-white text-gray-800 rounded-bl-sm border shadow-sm ${
+                            active?.platform === "Instagram" ? "border-pink-200" :
+                            active?.platform === "LinkedIn"  ? "border-sky-200"  :
+                            "border-blue-200"
+                          }`
                     }`}>
                       <p>{msg.messageText}</p>
                       <p className={`text-[10px] mt-1 ${isMe ? "text-blue-200 text-right" : "text-gray-400"}`}>

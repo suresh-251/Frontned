@@ -3,6 +3,7 @@ import api from "../api/apiClient";
 import { useBrand } from "../context/BrandContext";
 import { connectPlatform } from "../api/auth.api";
 import { saveDraft as apiSaveDraft } from "../api/unified.post.api";
+import { getBestPostingTimes } from "../api/analytics.api";
 import { useNavigate } from "react-router-dom";
 
 const POST_TYPES = [
@@ -125,6 +126,11 @@ function PlatformDropdown({ platform, accounts, selected, onToggle, onToggleAll 
                   onChange={() => onToggle(acc.pageIdentifier)}
                   className="w-3.5 h-3.5 accent-blue-600"
                 />
+                {acc.profilePictureUrl ? (
+                  <img src={acc.profilePictureUrl} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" />
+                ) : (
+                  <PlatformSvg p={platform} cls="w-4 h-4 shrink-0 text-gray-400" />
+                )}
                 <span className="text-sm text-gray-800 truncate flex-1">{acc.displayName || acc.pageIdentifier}</span>
                 {!acc.isActive && <span className="text-[10px] text-gray-400">inactive</span>}
               </label>
@@ -182,6 +188,8 @@ export default function CreatePost() {
 
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
+  const [bestTimes, setBestTimes] = useState(null);
+  const [bestTimesLoading, setBestTimesLoading] = useState(false);
 
   const [posting, setPosting]         = useState(false);
   const [error, setError]             = useState("");
@@ -210,10 +218,11 @@ export default function CreatePost() {
       const res = await api.get(`/brands/${activeBrand.slug}/accounts`);
       const raw = res.data.accounts ?? [];
       setAccounts(raw.map(a => ({
-        platform:       normPlatform(a.platform),
-        pageIdentifier: a.pageIdentifier,
-        displayName:    a.displayName,
-        isActive:       a.isActive,
+        platform:          normPlatform(a.platform),
+        pageIdentifier:    a.pageIdentifier,
+        displayName:       a.displayName,
+        profilePictureUrl: a.profilePictureUrl,
+        isActive:          a.isActive,
       })));
     } catch { setAccounts([]); }
     finally { setLoading(false); }
@@ -221,6 +230,18 @@ export default function CreatePost() {
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
   useEffect(() => { setFiles([]); }, [mode]);
+
+  // Fetch best posting times when scheduling is enabled
+  useEffect(() => {
+    if (!scheduleEnabled || bestTimes) return;
+    let cancelled = false;
+    setBestTimesLoading(true);
+    getBestPostingTimes(30)
+      .then(data => { if (!cancelled) setBestTimes(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setBestTimesLoading(false); });
+    return () => { cancelled = true; };
+  }, [scheduleEnabled]);
 
   // beforeunload — catch browser close / F5
   useEffect(() => {
@@ -508,6 +529,49 @@ export default function CreatePost() {
                 />
               )}
             </div>
+
+            {/* Best time suggestions */}
+            {scheduleEnabled && (
+              <div className="bg-white border border-blue-100 rounded-xl p-3">
+                <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  Suggested times (based on your engagement data)
+                </p>
+                {bestTimesLoading ? (
+                  <p className="text-xs text-gray-400 animate-pulse">Analyzing your best posting times...</p>
+                ) : bestTimes?.slots?.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {bestTimes.slots.slice(0, 6).map((slot, i) => {
+                      const applySlot = () => {
+                        const dayMap = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+                        const now = new Date();
+                        const targetDay = dayMap[slot.day] ?? 0;
+                        const diff = (targetDay - now.getDay() + 7) % 7 || 7;
+                        const target = new Date(now);
+                        target.setDate(now.getDate() + diff);
+                        target.setHours(slot.hour, 0, 0, 0);
+                        if (target <= now) target.setDate(target.getDate() + 7);
+                        const pad = n => String(n).padStart(2, "0");
+                        setScheduledAt(`${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T${pad(target.getHours())}:${pad(target.getMinutes())}`);
+                      };
+                      return (
+                        <button key={i} type="button" onClick={applySlot}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors group">
+                          <span className="text-[10px] font-bold text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded group-hover:bg-blue-200">
+                            {Math.round(slot.score)}
+                          </span>
+                          <span className="text-xs font-medium text-blue-800">
+                            {slot.day.slice(0, 3)} {slot.hour.toString().padStart(2, "0")}:00
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">No engagement data yet. Post a few times and check back!</p>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-gray-400">

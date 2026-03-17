@@ -59,3 +59,12 @@ export const syncAnalytics = async () => {
   const res = await api.post("/analytics/sync");
   return res.data;
 };
+
+/**
+ * Best posting times — ranked time slots based on historical engagement + reach.
+ * GET /api/analytics/brand/best-times?days=30
+ */
+export const getBestPostingTimes = async (days = 30) => {
+  const res = await api.get("/analytics/brand/best-times", { params: { days } });
+  return res.data;
+};
