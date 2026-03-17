@@ -1,15 +1,19 @@
 import { useEffect, useState } from "react";
 import { useBrand } from "../context/BrandContext";
 import api from "../api/apiClient";
+import { appCache } from "../utils/cache";
 import { connectPlatform } from "../api/auth.api";
 
 const subscribePage   = (pageId) => api.post(`/facebook/pages/${pageId}/subscribe`);
 const unsubscribePage = (pageId) => api.post(`/facebook/pages/${pageId}/unsubscribe`);
+const subsCacheKey    = (slug)   => `ph_subs_${slug ?? "none"}`;
 
 export default function PageSubscriptions() {
   const { activeBrand } = useBrand();
+  const slug = activeBrand?.slug ?? null;
 
   const [pages, setPages]               = useState([]);
+  const [dataSlug, setDataSlug]         = useState(null);
   const [loading, setLoading]           = useState(true);
   const [processing, setProcessing]     = useState(null);
   const [notification, setNotification] = useState(null);
@@ -19,20 +23,42 @@ export default function PageSubscriptions() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  const loadPages = async () => {
+  // Tracks current slug so in-flight requests from old brands are discarded
+  const activeSlugRef = useRef(slug);
+
+  const loadPages = async (requestSlug) => {
+    activeSlugRef.current = requestSlug; // mark this as the expected slug
     setLoading(true);
     try {
-      const res = await api.get(activeBrand?.slug ? `/brands/${activeBrand.slug}/accounts` : "/facebook/pages");
-      const all = activeBrand?.slug ? (res.data.accounts ?? []) : (res.data ?? []);
-      setPages(all.filter(a => (a.platform ?? "Facebook").toLowerCase() === "facebook"));
+      const res = await api.get(requestSlug ? `/brands/${requestSlug}/accounts` : "/facebook/pages");
+      if (activeSlugRef.current !== requestSlug) return; // brand changed mid-flight
+      const all = requestSlug ? (res.data.accounts ?? []) : (res.data ?? []);
+      const fb  = all.filter(a => (a.platform ?? "Facebook").toLowerCase() === "facebook");
+      setPages(fb);
+      setDataSlug(requestSlug);
+      if (requestSlug) appCache.set(subsCacheKey(requestSlug), fb);
     } catch {
-      setPages([]);
+      if (activeSlugRef.current === requestSlug) { setPages([]); setDataSlug(requestSlug); }
     } finally {
-      setLoading(false);
+      if (activeSlugRef.current === requestSlug) setLoading(false);
     }
   };
 
-  useEffect(() => { loadPages(); }, [activeBrand?.slug]);
+  useEffect(() => {
+    // Instant restore from cache
+    const cached = appCache.getStale(subsCacheKey(slug));
+    if (cached) {
+      setPages(cached.data);
+      setDataSlug(slug);
+      setLoading(false);
+    } else {
+      setPages([]);
+      setDataSlug(null);
+    }
+    // Always fetch fresh data
+    loadPages(slug);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
 
   const toggleSubscription = async (pageId, isSubscribed) => {
     setProcessing(pageId);
@@ -77,7 +103,7 @@ export default function PageSubscriptions() {
           </div>
         )}
 
-        {loading ? (
+        {(loading && dataSlug !== slug) ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
             <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3" />
             <p className="text-sm text-slate-400">Loading Facebook pages…</p>
@@ -119,14 +145,14 @@ export default function PageSubscriptions() {
                   <div key={pageId} className="px-5 py-4 hover:bg-slate-50/60 transition-colors">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-                          <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                          </svg>
-                        </div>
+                        <img
+                          src={page.profilePictureUrl || `https://graph.facebook.com/${pageId}/picture?type=large`}
+                          alt={name}
+                          className="w-10 h-10 rounded-xl object-cover flex-shrink-0 border border-slate-200"
+                        />
                         <div className="min-w-0">
                           <p className="font-semibold text-slate-800 text-sm truncate">{name}</p>
-                          <p className="text-xs text-slate-400 font-mono truncate">{pageId}</p>
+                          <p className="text-xs text-slate-400 truncate">{isSubscribed ? "Webhook active" : "Not subscribed"}</p>
                         </div>
                       </div>
 

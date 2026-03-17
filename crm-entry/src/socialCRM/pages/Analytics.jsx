@@ -1,26 +1,44 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  PieChart, Pie, Cell, BarChart, Bar, Legend
+  PieChart, Pie, Cell,
 } from "recharts";
-import { FiRefreshCw, FiTrendingUp, FiUsers, FiEye, FiHeart, FiMessageSquare, FiMousePointer, FiAward, FiDownloadCloud } from "react-icons/fi";
+import { FiRefreshCw, FiTrendingUp, FiUsers, FiEye, FiHeart, FiMessageSquare, FiAward, FiDownloadCloud, FiChevronLeft, FiChevronRight, FiImage, FiExternalLink } from "react-icons/fi";
 import { useBrand } from "../context/BrandContext";
 import useAnalytics from "../hooks/useAnalytics";
 
 // ── Colors ──────────────────────────────────────────────────────────────────
 const PLATFORM_COLORS = {
-  facebook: "#1877F2",
+  facebook:  "#1877F2",
   instagram: "#E1306C",
-  linkedin: "#0A66C2",
+  linkedin:  "#0A66C2",
 };
 const PIE_FALLBACK = ["#6366f1", "#10b981", "#f59e0b", "#ef4444"];
+
+const PLATFORMS = [
+  { value: "all",       label: "All Platforms" },
+  { value: "facebook",  label: "Facebook"      },
+  { value: "instagram", label: "Instagram"     },
+  { value: "linkedin",  label: "LinkedIn"      },
+];
 
 // ── Day filter options ───────────────────────────────────────────────────────
 const DAY_OPTIONS = [
   { label: "7 days",  value: 7  },
   { label: "14 days", value: 14 },
   { label: "30 days", value: 30 },
+];
+
+// ── Trend metric options (for main area chart) ────────────────────────────────
+const TREND_METRICS = [
+  { key: "totalEngagement",  label: "Engagement",  color: "#6366f1" },
+  { key: "totalReach",       label: "Reach",        color: "#10b981" },
+  { key: "totalImpressions", label: "Impressions",  color: "#8b5cf6" },
+  { key: "totalLikes",       label: "Likes",        color: "#ef4444" },
+  { key: "totalComments",    label: "Comments",     color: "#f59e0b" },
+  { key: "totalClicks",      label: "Clicks",       color: "#f97316" },
+  { key: "postsCount",       label: "Posts",        color: "#3b82f6" },
 ];
 
 // ── Formatters ───────────────────────────────────────────────────────────────
@@ -78,7 +96,7 @@ function ChartTooltip({ active, payload, label }) {
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2 mb-1">
           <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
-          <span className="text-slate-500 capitalize">{p.dataKey}:</span>
+          <span className="text-slate-500 capitalize">{p.name ?? p.dataKey}:</span>
           <span className="font-bold text-slate-800">{fmt(p.value)}</span>
         </div>
       ))}
@@ -86,18 +104,51 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-// ── Platform icon (inline svg) ───────────────────────────────────────────────
-function PlatformDot({ platform }) {
-  const color = PLATFORM_COLORS[platform?.toLowerCase()] ?? "#94a3b8";
-  return <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 flex-shrink-0" style={{ background: color }} />;
-}
-
 // ── Empty state ───────────────────────────────────────────────────────────────
 function Empty({ message }) {
   return (
-    <div className="flex flex-col items-center justify-center py-14 text-slate-400">
-      <FiTrendingUp size={32} className="mb-3 opacity-40" />
-      <p className="text-sm font-medium">{message}</p>
+    <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+      <FiTrendingUp size={28} className="mb-2 opacity-40" />
+      <p className="text-xs font-medium">{message}</p>
+    </div>
+  );
+}
+
+// ── Post image with broken-image fallback ────────────────────────────────────
+function getPostUrl(post) {
+  const p = post.platform?.toLowerCase();
+  if (p === "facebook" && post.postId?.includes("_")) {
+    const parts = post.postId.split("_");
+    return `https://www.facebook.com/${parts[0]}/posts/${parts[1]}`;
+  }
+  if (p === "instagram") return `https://www.instagram.com/p/${post.postId}/`;
+  if (p === "linkedin")  return `https://www.linkedin.com/feed/update/${post.postId}/`;
+  return null;
+}
+
+function PostImage({ post, platformColor }) {
+  const [imgError, setImgError] = useState(false);
+  const postUrl = getPostUrl(post);
+
+  if (!post.mediaUrl || imgError) {
+    return (
+      <div className="w-full h-40 bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center gap-2">
+        <FiImage size={28} className="text-slate-300" />
+        {postUrl ? (
+          <a href={postUrl} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
+            <FiExternalLink size={12} /> View on {post.platform}
+          </a>
+        ) : (
+          <span className="text-[10px] text-slate-400">Image unavailable</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full aspect-square bg-slate-100 overflow-hidden relative">
+      <img src={post.mediaUrl} alt="Post" className="w-full h-full object-cover" loading="lazy" onError={() => setImgError(true)} />
     </div>
   );
 }
@@ -106,9 +157,12 @@ function Empty({ message }) {
 // MAIN PAGE
 // ============================================================================
 export default function Analytics() {
-  const [days, setDays] = useState(7);
+  const [days, setDays]                       = useState(7);
+  const [trendMetric, setTrendMetric]         = useState("totalEngagement");
+  const [selectedPlatform, setSelectedPlatform] = useState("all");
   const { activeBrand } = useBrand();
-  const { summary, channels, loading, error, refresh, sync, syncing, syncResult } = useAnalytics(days);
+  const { summary, loading, error, refresh, sync, syncing, syncResult } = useAnalytics(days, selectedPlatform);
+  const postsScrollRef = useRef(null);
 
   if (!activeBrand) {
     return (
@@ -119,16 +173,21 @@ export default function Analytics() {
   }
 
   // ── Derived data ─────────────────────────────────────────────────────────
-  const daily    = summary?.dailyBreakdown    ?? [];
+  const daily     = summary?.dailyBreakdown    ?? [];
   const platforms = summary?.platformBreakdown ?? [];
   const topPosts  = summary?.topPosts          ?? [];
 
   // Pie chart data — engagement per platform
   const pieData = platforms.map((p, i) => ({
-    name: p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
+    name:  p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
     value: Number(p.totalEngagement) || 0,
     color: PLATFORM_COLORS[p.platform] ?? PIE_FALLBACK[i % PIE_FALLBACK.length],
   }));
+
+  // Filtered top posts
+  const filteredPosts = selectedPlatform === "all"
+    ? topPosts
+    : topPosts.filter(p => p.platform === selectedPlatform);
 
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] p-6">
@@ -143,7 +202,17 @@ export default function Analytics() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+
+          {/* Platform selector dropdown */}
+          <select value={selectedPlatform} onChange={(e) => setSelectedPlatform(e.target.value)}
+            className="px-3 py-2 text-xs font-bold bg-white border border-slate-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer"
+            style={selectedPlatform !== "all" ? { color: PLATFORM_COLORS[selectedPlatform], borderColor: PLATFORM_COLORS[selectedPlatform] + "80" } : {}}>
+            {PLATFORMS.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+
           {/* Day filter */}
           <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             {DAY_OPTIONS.map((opt) => (
@@ -161,30 +230,23 @@ export default function Analytics() {
             ))}
           </div>
 
-          {/* Sync from platforms */}
-          <button
-            onClick={sync}
-            disabled={syncing || loading}
-            title="Pull fresh metrics from Facebook / Instagram / LinkedIn"
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
-          >
+          {/* Sync */}
+          <button onClick={sync} disabled={syncing || loading}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-xs font-bold shadow-sm transition-all">
             <FiDownloadCloud size={13} className={syncing ? "animate-bounce" : ""} />
             {syncing ? "Syncing…" : "Sync"}
           </button>
 
           {/* Refresh */}
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 shadow-sm transition-all disabled:opacity-50"
-          >
+          <button onClick={refresh} disabled={loading}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 shadow-sm transition-all disabled:opacity-50">
             <FiRefreshCw size={13} className={loading ? "animate-spin" : ""} />
             Refresh
           </button>
         </div>
       </div>
 
-      {/* ── Sync result banner ───────────────────────────────────────────────── */}
+      {/* ── Sync result banner ────────────────────────────────────────────── */}
       {syncResult && (
         <div className={`mb-4 px-4 py-3 rounded-xl text-xs font-medium border ${
           syncResult.errors?.length > 0
@@ -203,18 +265,29 @@ export default function Analytics() {
         </div>
       )}
 
+      {/* ── Platform banner (when a specific platform is selected) ─────────── */}
+      {selectedPlatform !== "all" && (
+        <div className="mb-4 px-4 py-3 rounded-xl border flex items-center gap-3"
+          style={{ background: PLATFORM_COLORS[selectedPlatform] + "10", borderColor: PLATFORM_COLORS[selectedPlatform] + "40" }}>
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: PLATFORM_COLORS[selectedPlatform] }} />
+          <span className="text-xs font-bold capitalize" style={{ color: PLATFORM_COLORS[selectedPlatform] }}>
+            {selectedPlatform} — showing metrics for this platform
+          </span>
+        </div>
+      )}
+
       {/* ── KPI STAT CARDS ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
         {loading ? (
           Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
-            <StatCard icon={<FiTrendingUp size={18} />} label="Total Posts"       value={summary?.totalPosts}       color="blue"    />
-            <StatCard icon={<FiEye        size={18} />} label="Total Reach"       value={summary?.totalReach}       color="indigo"  />
-            <StatCard icon={<FiEye        size={18} />} label="Impressions"       value={summary?.totalImpressions} color="violet"  />
-            <StatCard icon={<FiHeart      size={18} />} label="Total Engagement"  value={summary?.totalEngagement}  color="rose"    />
-            <StatCard icon={<FiUsers      size={18} />} label="Total Leads"       value={summary?.totalLeads}       color="emerald" />
-            <StatCard icon={<FiMousePointer size={18}/>} label="Total Clicks"    value={summary?.totalClicks}      color="orange"  />
+            <StatCard icon={<FiTrendingUp  size={18} />} label="Total Posts"      value={summary?.totalPosts}       color="blue"    />
+            <StatCard icon={<FiEye         size={18} />} label="Total Reach"      value={summary?.totalReach}       color="indigo"  />
+            <StatCard icon={<FiEye         size={18} />} label="Impressions"      value={summary?.totalImpressions} color="violet"  />
+            <StatCard icon={<FiHeart       size={18} />} label="Engagement"       value={summary?.totalEngagement}  color="rose"    />
+            <StatCard icon={<FiMessageSquare size={18}/>} label="Comments"        value={summary?.totalComments}    color="orange"  />
+            <StatCard icon={<FiUsers       size={18} />} label="Total Leads"      value={summary?.totalLeads}       color="emerald" />
           </>
         )}
       </div>
@@ -228,9 +301,14 @@ export default function Analytics() {
             <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
               <FiTrendingUp className="text-blue-500" size={14} /> Engagement Trend
             </h3>
-            <span className="text-[10px] text-slate-400 font-semibold">Last {days} days</span>
+            <div className="flex items-center gap-3">
+              <select value={trendMetric} onChange={(e) => setTrendMetric(e.target.value)}
+                className="text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer">
+                {TREND_METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+              </select>
+              <span className="text-[10px] text-slate-400 font-semibold">Last {days} days</span>
+            </div>
           </div>
-
           <div className="p-4">
             {loading ? (
               <div className="h-52 flex items-center justify-center">
@@ -238,55 +316,27 @@ export default function Analytics() {
               </div>
             ) : daily.length === 0 ? (
               <Empty message="No trend data yet. Metrics sync runs every 15 minutes." />
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={daily} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gradEngagement" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="gradReach" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#10b981" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={fmtDate}
-                    tick={{ fontSize: 10, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tickFormatter={fmt}
-                    tick={{ fontSize: 10, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="totalEngagement"
-                    stroke="#6366f1"
-                    strokeWidth={2}
-                    fill="url(#gradEngagement)"
-                    dot={false}
-                    name="engagement"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="totalReach"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    fill="url(#gradReach)"
-                    dot={false}
-                    name="reach"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+            ) : (() => {
+              const activeMeta = TREND_METRICS.find(m => m.key === trendMetric) || TREND_METRICS[0];
+              return (
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={daily} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gradTrend" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor={activeMeta.color} stopOpacity={0.25} />
+                        <stop offset="95%" stopColor={activeMeta.color} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={fmt} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Area type="monotone" dataKey={activeMeta.key} stroke={activeMeta.color} strokeWidth={2}
+                      fill="url(#gradTrend)" dot={false} name={activeMeta.label.toLowerCase()} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              );
+            })()}
           </div>
         </div>
 
@@ -297,7 +347,6 @@ export default function Analytics() {
               <FiAward className="text-indigo-500" size={14} /> Platform Breakdown
             </h3>
           </div>
-
           <div className="p-4">
             {loading ? (
               <div className="h-52 flex items-center justify-center">
@@ -309,27 +358,19 @@ export default function Analytics() {
               <>
                 <ResponsiveContainer width="100%" height={160}>
                   <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={45}
-                      outerRadius={70}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
                       {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
+                        <Cell key={i} fill={entry.color} opacity={selectedPlatform === "all" || selectedPlatform === entry.name.toLowerCase() ? 1 : 0.25} />
                       ))}
                     </Pie>
                     <Tooltip formatter={(v) => fmt(v)} />
                   </PieChart>
                 </ResponsiveContainer>
-
-                {/* Legend */}
                 <div className="space-y-2 mt-2">
                   {pieData.map((p) => (
-                    <div key={p.name} className="flex items-center justify-between text-xs">
+                    <div key={p.name} className={`flex items-center justify-between text-xs transition-opacity ${
+                      selectedPlatform !== "all" && selectedPlatform !== p.name.toLowerCase() ? "opacity-30" : ""
+                    }`}>
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: p.color }} />
                         <span className="text-slate-600 font-semibold">{p.name}</span>
@@ -343,243 +384,102 @@ export default function Analytics() {
           </div>
         </div>
 
-        {/* Platform details table (8/12) */}
-        <div className="col-span-12 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiMessageSquare className="text-emerald-500" size={14} /> Platform Metrics
-            </h3>
-          </div>
-
-          {loading ? (
-            <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading…</div>
-          ) : platforms.length === 0 ? (
-            <Empty message="No platform metrics available." />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
-                  <tr>
-                    <th className="px-5 py-3">Platform</th>
-                    <th className="px-5 py-3 text-right">Posts</th>
-                    <th className="px-5 py-3 text-right">Likes</th>
-                    <th className="px-5 py-3 text-right">Comments</th>
-                    <th className="px-5 py-3 text-right">Shares</th>
-                    <th className="px-5 py-3 text-right">Reach</th>
-                    <th className="px-5 py-3 text-right">Impressions</th>
-                    <th className="px-5 py-3 text-right">Engagement</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {platforms.map((p) => (
-                    <tr key={p.platform} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <PlatformDot platform={p.platform} />
-                          <span className="text-sm font-bold text-slate-700 capitalize">{p.platform}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.postsCount)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalLikes)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalComments)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalShares)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalReach)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalImpressions)}</td>
-                      <td className="px-5 py-3 text-right">
-                        <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full">
-                          {fmt(p.totalEngagement)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Daily posts bar chart (4/12) */}
-        <div className="col-span-12 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiTrendingUp className="text-orange-500" size={14} /> Daily Posts
-            </h3>
-          </div>
-          <div className="p-4">
-            {loading ? (
-              <div className="h-44 flex items-center justify-center">
-                <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : daily.length === 0 ? (
-              <Empty message="No post data yet." />
-            ) : (
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={daily} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={fmtDate}
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                    allowDecimals={false}
-                  />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="postsCount" fill="#f97316" radius={[4, 4, 0, 0]} name="posts" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* ── Connected Channels table (full width) ─────────────────────────── */}
-        <div className="col-span-12 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiUsers className="text-blue-500" size={14} /> Connected Channels
-            </h3>
-            <span className="text-[10px] text-slate-400 font-semibold">Last {days} days · followers synced daily at 02:00 UTC</span>
-          </div>
-
-          {loading ? (
-            <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading channels…</div>
-          ) : channels.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 text-slate-400">
-              <FiUsers size={32} className="mb-3 opacity-40" />
-              <p className="text-sm font-medium">No connected channels yet.</p>
-              <p className="text-xs mt-1">Connect Facebook, Instagram or LinkedIn to see metrics here.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
-                  <tr>
-                    <th className="px-5 py-3">Connected Channel</th>
-                    <th className="px-5 py-3 text-right">Total Followers</th>
-                    <th className="px-5 py-3 text-right">New Followers</th>
-                    <th className="px-5 py-3 text-right">Reach</th>
-                    <th className="px-5 py-3 text-right">Engagement</th>
-                    <th className="px-5 py-3 text-right">Leads</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {channels.map((ch) => {
-                    const color = PLATFORM_COLORS[ch.platform?.toLowerCase()] ?? "#94a3b8";
-                    return (
-                      <tr key={ch.accountId} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-                            <div>
-                              <p className="text-sm font-bold text-slate-700">{ch.accountName || ch.accountId}</p>
-                              <p className="text-[10px] text-slate-400 capitalize">{ch.platform}</p>
-                            </div>
-                            {ch.isActive && (
-                              <span className="ml-1 text-[9px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">● active</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">
-                          {ch.totalFollowers != null ? fmt(ch.totalFollowers) : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-5 py-3 text-right text-sm font-semibold">
-                          {ch.newFollowers != null ? (
-                            <span className={ch.newFollowers >= 0 ? "text-emerald-600" : "text-rose-600"}>
-                              {ch.newFollowers >= 0 ? "+" : ""}{fmt(ch.newFollowers)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">
-                          {ch.totalReach > 0 ? fmt(ch.totalReach) : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          {ch.totalEngagement > 0 ? (
-                            <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full">
-                              {fmt(ch.totalEngagement)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">
-                          {ch.totalLeads > 0 ? fmt(ch.totalLeads) : <span className="text-slate-300 text-sm">0</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Top posts table (full width) */}
+        {/* Top posts — horizontal scrollable carousel (full width) */}
         <div className="col-span-12 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
               <FiAward className="text-yellow-500" size={14} /> Top Posts by Engagement
             </h3>
-            <span className="text-[10px] text-slate-400 font-semibold">Top 10 · last {days} days</span>
+            <span className="text-[10px] text-slate-400 font-semibold">
+              {selectedPlatform === "all" ? "All platforms" : <span className="capitalize">{selectedPlatform}</span>} · top 10 · last {days} days
+            </span>
           </div>
 
           {loading ? (
             <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading posts…</div>
-          ) : topPosts.length === 0 ? (
+          ) : filteredPosts.length === 0 ? (
             <Empty message="No post metrics yet. Metrics sync runs every 15 minutes." />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
-                  <tr>
-                    <th className="px-5 py-3">#</th>
-                    <th className="px-5 py-3">Platform</th>
-                    <th className="px-5 py-3">Post ID</th>
-                    <th className="px-5 py-3 text-right">Likes</th>
-                    <th className="px-5 py-3 text-right">Comments</th>
-                    <th className="px-5 py-3 text-right">Shares</th>
-                    <th className="px-5 py-3 text-right">Reach</th>
-                    <th className="px-5 py-3 text-right">Impressions</th>
-                    <th className="px-5 py-3 text-right">Engagement</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {topPosts.map((post, idx) => (
-                    <tr key={post.postId} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-3 text-xs font-bold text-slate-400">#{idx + 1}</td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <PlatformDot platform={post.platform} />
-                          <span className="text-xs font-bold text-slate-700 capitalize">{post.platform}</span>
+          ) : (() => {
+            const scroll = (dir) => {
+              if (postsScrollRef.current) postsScrollRef.current.scrollBy({ left: dir * 320, behavior: "smooth" });
+            };
+            return (
+              <div className="relative group">
+                <button onClick={() => scroll(-1)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/90 border border-slate-200 shadow-lg flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-all opacity-0 group-hover:opacity-100">
+                  <FiChevronLeft size={20} />
+                </button>
+                <button onClick={() => scroll(1)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/90 border border-slate-200 shadow-lg flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-all opacity-0 group-hover:opacity-100">
+                  <FiChevronRight size={20} />
+                </button>
+
+                <div ref={postsScrollRef} className="flex overflow-x-auto gap-4 p-4 scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                  {filteredPosts.map((post, idx) => {
+                    const platformColor = PLATFORM_COLORS[post.platform?.toLowerCase()] ?? "#94a3b8";
+                    return (
+                      <div key={post.postId} className="flex-shrink-0 w-[280px] bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                        {/* Post header */}
+                        <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-100">
+                          {post.pageProfilePictureUrl ? (
+                            <img src={post.pageProfilePictureUrl} alt={post.pageName || post.platform}
+                              className="w-8 h-8 rounded-full object-cover border-2" style={{ borderColor: platformColor }}
+                              onError={(e) => { e.target.style.display = "none"; e.target.nextElementSibling.style.display = "flex"; }} />
+                          ) : null}
+                          <span className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                            style={{ background: platformColor, display: post.pageProfilePictureUrl ? "none" : "flex" }}>
+                            {post.platform?.charAt(0).toUpperCase()}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-slate-700 truncate">{post.pageName || post.platform}</p>
+                            {post.createdAt && (
+                              <p className="text-[10px] text-slate-400">{new Date(post.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-400">#{idx + 1}</span>
                         </div>
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className="text-xs text-slate-500 font-mono truncate max-w-[120px] inline-block">
-                          {post.postId}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.likes)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.comments)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.shares)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.reach)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.impressions)}</td>
-                      <td className="px-5 py-3 text-right">
-                        <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full">
-                          {fmt(post.engagement)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+
+                        <PostImage post={post} platformColor={platformColor} />
+
+                        <div className="flex items-center gap-4 px-4 py-2.5 border-b border-slate-50">
+                          <div className="flex items-center gap-1 text-rose-500">
+                            <FiHeart size={14} />
+                            <span className="text-xs font-bold">{fmt(post.likes)}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-blue-500">
+                            <FiMessageSquare size={14} />
+                            <span className="text-xs font-bold">{fmt(post.comments)}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-emerald-500">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                            </svg>
+                            <span className="text-xs font-bold">{fmt(post.shares)}</span>
+                          </div>
+                          <div className="ml-auto">
+                            <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-[10px] px-2 py-0.5 rounded-full">
+                              {fmt(post.engagement)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="px-4 py-3 flex-1">
+                          <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
+                            {post.message || <span className="text-slate-400 italic">No caption</span>}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between px-4 py-2 bg-slate-50 text-[10px] font-semibold text-slate-400">
+                          <span><FiEye className="inline mr-1" size={11} />Reach: {fmt(post.reach)}</span>
+                          <span>Imp: {fmt(post.impressions)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
       </div>

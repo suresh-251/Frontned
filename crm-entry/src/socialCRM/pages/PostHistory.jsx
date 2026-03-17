@@ -4,6 +4,9 @@ import { BASE_URL } from "../api/apiClient";
 import { useBrand } from "../context/BrandContext";
 import { connectPlatform } from "../api/auth.api";
 import { reschedulePost } from "../api/unified.post.api";
+import { appCache } from "../utils/cache";
+
+const phCacheKey = (type, slug) => `ph_${type}_${slug}`;
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const POST_TYPES = [
@@ -321,14 +324,17 @@ function buildFallbackUrl(r) {
 }
 
 // Build a view link object from a StoredPostResult, always attempting a URL
-function buildViewLink(raw) {
+function buildViewLink(raw, picMap) {
   const r   = normResult(raw);
   const url = r.viewUrl || buildFallbackUrl(r);
   if (!url) return null;
+  const plat = r.platform || platformFromUrl(url) || normPlatform(r.accountId.split("_")[0]);
   return {
     url,
-    platform:    r.platform || platformFromUrl(url) || normPlatform(r.accountId.split("_")[0]),
-    accountName: r.accountName || r.accountId || "",
+    platform:    plat,
+    accountName: r.accountName || "",
+    profilePictureUrl: picMap?.[r.accountId]
+      || (plat?.toLowerCase() === "facebook" && r.accountId ? `https://graph.facebook.com/${r.accountId}/picture?type=small` : null),
   };
 }
 
@@ -419,13 +425,14 @@ function PostCard({ post, onEdit, onDelete }) {
             {viewLinks.map((link, i) => (
               <div key={i} className="flex items-center justify-between px-2.5 py-1.5 bg-white">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`text-[11px] font-semibold ${PLATFORM_ICON_COLOR[link.platform] ?? "text-gray-600"}`}>
-                    <PlatformSvg p={link.platform} cls="w-3.5 h-3.5 inline mr-0.5" />
-                    {link.platform}
-                  </span>
-                  {link.accountName && (
-                    <span className="text-[11px] text-gray-500 truncate">· {link.accountName}</span>
+                  {link.profilePictureUrl ? (
+                    <img src={link.profilePictureUrl} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <PlatformSvg p={link.platform} cls="w-3.5 h-3.5 flex-shrink-0" />
                   )}
+                  <span className={`text-[11px] font-semibold ${PLATFORM_ICON_COLOR[link.platform] ?? "text-gray-600"}`}>
+                    {link.accountName || link.platform}
+                  </span>
                 </div>
                 <a href={link.url} target="_blank" rel="noopener noreferrer"
                   className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors">
@@ -1426,7 +1433,7 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
 }
 
 // ── Post Table (Meta Business Suite style tabular view) ───────────────────────
-function PostTableRow({ post, onEdit, onDelete }) {
+function PostTableRow({ post, onEdit, onDelete, accountPicMap = {} }) {
   const platforms  = parsePlatforms(post.platforms);
   const [results, setResults] = useState(() => parseResults(post.postResultsJson).map(normResult));
   const [loadingInsights, setLoadingInsights] = useState(false);
@@ -1442,7 +1449,7 @@ function PostTableRow({ post, onEdit, onDelete }) {
   const hasMedia = post.hasMedia && (isImage || isVideo);
 
   // Build view links for ALL success results — always try to construct a URL
-  const viewLinks = successResults.map(buildViewLink).filter(Boolean);
+  const viewLinks = successResults.map(r => buildViewLink(r, accountPicMap)).filter(Boolean);
 
   const fetchInsights = async () => {
     if (loadingInsights) return;
@@ -1587,7 +1594,7 @@ function PostTableRow({ post, onEdit, onDelete }) {
   );
 }
 
-function PostTable({ posts, onEdit, onDelete }) {
+function PostTable({ posts, onEdit, onDelete, accountPicMap = {} }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
@@ -1605,7 +1612,7 @@ function PostTable({ posts, onEdit, onDelete }) {
           </thead>
           <tbody>
             {posts.map(post => (
-              <PostTableRow key={post.id} post={post} onEdit={onEdit} onDelete={onDelete} />
+              <PostTableRow key={post.id} post={post} onEdit={onEdit} onDelete={onDelete} accountPicMap={accountPicMap} />
             ))}
           </tbody>
         </table>
@@ -1719,6 +1726,19 @@ export default function PostHistory() {
   const [calYear, setCalYear]   = useState(today.getFullYear());
   const [calMonth, setCalMonth] = useState(today.getMonth());
 
+  // Per-brand cache: { [slug]: { scheduled, history, historyTotal, drafts, accountPicMap } }
+  const brandCacheRef = useRef({});
+  // Tracks the "current" slug so in-flight requests from old brands can be discarded
+  const activeSlugRef = useRef(effectiveBrand?.slug ?? null);
+
+  // Account profile picture lookup (pageIdentifier → profilePictureUrl)
+  const [accountPicMap, setAccountPicMap] = useState({});
+
+  // Track which brand slug the currently displayed data belongs to.
+  // When this differs from effectiveBrand?.slug (mid-transition), show empty state
+  // instead of the previous brand's stale posts.
+  const [dataSlug, setDataSlug]             = useState(effectiveBrand?.slug ?? null);
+
   const [scheduled, setScheduled]           = useState([]);
   const [scheduledLoading, setSchedLoad]    = useState(false);
   const [history, setHistory]               = useState([]);
@@ -1733,6 +1753,13 @@ export default function PostHistory() {
   const [error, setError]                   = useState("");
   const PAGE_SIZE = 20;
 
+  // Save current data to cache whenever it changes
+  useEffect(() => {
+    const slug = effectiveBrand?.slug;
+    if (!slug || (!history.length && !scheduled.length && !drafts.length)) return;
+    brandCacheRef.current[slug] = { scheduled, history, historyTotal, drafts, accountPicMap };
+  }, [scheduled, history, historyTotal, drafts, accountPicMap, effectiveBrand?.slug]);
+
   const openComposeForNew = () => {
     setComposeInitialDraft(null);
     setResumingDraft(null);
@@ -1740,40 +1767,104 @@ export default function PostHistory() {
   };
 
   const loadScheduled = useCallback(async () => {
-    if (!effectiveBrand?.slug) return;
+    const requestSlug = effectiveBrand?.slug;
+    if (!requestSlug) return;
     setSchedLoad(true); setError("");
     try {
       const res = await api.get("/post/scheduled");
+      if (activeSlugRef.current !== requestSlug) return; // brand changed mid-flight
       const data = res.data;
-      setScheduled(Array.isArray(data) ? data : (data?.posts ?? data?.items ?? []));
-    } catch { setError("Failed to load scheduled posts."); }
-    finally { setSchedLoad(false); }
+      const posts = Array.isArray(data) ? data : (data?.posts ?? data?.items ?? []);
+      setScheduled(posts);
+      appCache.set(phCacheKey("scheduled", requestSlug), posts);
+    } catch { if (activeSlugRef.current === requestSlug) setError("Failed to load scheduled posts."); }
+    finally { if (activeSlugRef.current === requestSlug) setSchedLoad(false); }
   }, [effectiveBrand?.slug]);
 
   const loadHistory = useCallback(async (page = 1) => {
-    if (!effectiveBrand?.slug) return;
+    const requestSlug = effectiveBrand?.slug;
+    if (!requestSlug) return;
     setHistLoad(true); setError("");
     try {
       const res  = await api.get("/post/history", { params: { page, pageSize: PAGE_SIZE } });
+      if (activeSlugRef.current !== requestSlug) return; // brand changed mid-flight
       const data = res.data;
-      if (Array.isArray(data)) { setHistory(data); setHistoryTotal(data.length); }
-      else { setHistory(data.posts ?? data.items ?? []); setHistoryTotal(data.total ?? data.totalCount ?? 0); }
+      const posts = Array.isArray(data) ? data : (data.posts ?? data.items ?? []);
+      const total = Array.isArray(data) ? data.length : (data.total ?? data.totalCount ?? 0);
+      setHistory(posts);
+      setHistoryTotal(total);
       setHistoryPage(page);
-    } catch { setError("Failed to load post history."); }
-    finally { setHistLoad(false); }
+      if (page === 1) appCache.set(phCacheKey("history", requestSlug), { posts, total });
+    } catch { if (activeSlugRef.current === requestSlug) setError("Failed to load post history."); }
+    finally { if (activeSlugRef.current === requestSlug) setHistLoad(false); }
   }, [effectiveBrand?.slug]);
 
   const loadDrafts = useCallback(async () => {
-    if (!effectiveBrand?.slug) return;
+    const requestSlug = effectiveBrand?.slug;
+    if (!requestSlug) return;
     setDraftsLoad(true);
     try {
       const res = await api.get("/post/drafts");
-      setDrafts(Array.isArray(res.data) ? res.data : []);
+      if (activeSlugRef.current !== requestSlug) return; // brand changed mid-flight
+      const drafts = Array.isArray(res.data) ? res.data : [];
+      setDrafts(drafts);
+      appCache.set(phCacheKey("drafts", requestSlug), drafts);
     } catch { /* silently fail */ }
-    finally { setDraftsLoad(false); }
+    finally { if (activeSlugRef.current === requestSlug) setDraftsLoad(false); }
   }, [effectiveBrand?.slug]);
 
-  useEffect(() => { loadScheduled(); loadHistory(1); loadDrafts(); }, [loadScheduled, loadHistory, loadDrafts]);
+  // On brand switch: update activeSlugRef FIRST (cancels in-flight requests),
+  // restore from cache instantly, then always fetch fresh data
+  useEffect(() => {
+    const slug = effectiveBrand?.slug;
+
+    // Must update activeSlugRef BEFORE any awaits so in-flight old-brand
+    // requests see the new slug and discard their responses
+    activeSlugRef.current = slug;
+
+    // Restore from in-memory cache first, then localStorage
+    const memCached   = slug ? brandCacheRef.current[slug] : null;
+    const lsScheduled = slug ? appCache.getStale(phCacheKey("scheduled", slug)) : null;
+    const lsHistory   = slug ? appCache.getStale(phCacheKey("history",   slug)) : null;
+    const lsDrafts    = slug ? appCache.getStale(phCacheKey("drafts",    slug)) : null;
+
+    if (memCached) {
+      setScheduled(memCached.scheduled);
+      setHistory(memCached.history);
+      setHistoryTotal(memCached.historyTotal);
+      setDrafts(memCached.drafts);
+      setAccountPicMap(memCached.accountPicMap || {});
+      setHistoryPage(1);
+      setDataSlug(slug);
+    } else if (lsScheduled || lsHistory || lsDrafts) {
+      if (lsScheduled) setScheduled(lsScheduled.data); else setScheduled([]);
+      if (lsHistory)   { setHistory(lsHistory.data.posts); setHistoryTotal(lsHistory.data.total); }
+      else             { setHistory([]); setHistoryTotal(0); }
+      if (lsDrafts)    setDrafts(lsDrafts.data); else setDrafts([]);
+      setHistoryPage(1);
+      setAccountPicMap({});
+      setDataSlug(slug);
+    } else {
+      setScheduled([]); setHistory([]); setDrafts([]);
+      setHistoryPage(1); setHistoryTotal(0); setAccountPicMap({});
+      setDataSlug(slug);
+    }
+
+    // Always fetch fresh data (cache shown above while this loads)
+    loadScheduled();
+    loadHistory(1);
+    loadDrafts();
+
+    if (slug) {
+      api.get(`/brands/${slug}/accounts`).then(res => {
+        if (activeSlugRef.current !== slug) return;
+        const accs = res.data?.accounts ?? [];
+        const map = {};
+        accs.forEach(a => { if (a.profilePictureUrl) map[a.pageIdentifier] = a.profilePictureUrl; });
+        setAccountPicMap(map);
+      }).catch(() => {});
+    }
+  }, [loadScheduled, loadHistory, loadDrafts]);
 
   const refresh = () => { loadScheduled(); loadHistory(historyPage); loadDrafts(); };
 
@@ -1816,14 +1907,21 @@ export default function PostHistory() {
     return posts.filter(post => getPostPlatforms(post).includes(platformFilter));
   }, [platformFilter]);
 
-  const completed = history.filter(p => p.status === "Completed" || p.status === "Failed");
-  const allPosts  = [...scheduled, ...history];
+  // Guard: don't render stale data from a previous brand during the transition frame
+  const dataReady    = dataSlug === effectiveBrand?.slug;
+  const _history     = dataReady ? history      : [];
+  const _scheduled   = dataReady ? scheduled    : [];
+  const _drafts      = dataReady ? drafts       : [];
+  const _historyTotal = dataReady ? historyTotal : 0;
+
+  const completed = _history.filter(p => p.status === "Completed" || p.status === "Failed");
+  const allPosts  = [..._scheduled, ..._history];
   const filteredCompleted = filterByPlatform(completed);
-  const filteredScheduled = filterByPlatform(scheduled);
-  const filteredDrafts    = filterByPlatform(drafts);
+  const filteredScheduled = filterByPlatform(_scheduled);
+  const filteredDrafts    = filterByPlatform(_drafts);
   const filteredAllPosts  = filterByPlatform(allPosts);
 
-  const counts = { completed: completed.length, scheduled: scheduled.length, drafted: drafts.length };
+  const counts = { completed: completed.length, scheduled: _scheduled.length, drafted: _drafts.length };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1964,7 +2062,7 @@ export default function PostHistory() {
               historyLoading ? <LoadingCard /> :
               filteredCompleted.length === 0
                 ? <EmptyCard icon="✅" msg={platformFilter === "All" ? "No published posts yet." : `No published ${platformFilter} posts yet.`} />
-                : <PostTable posts={filteredCompleted} onEdit={setEditing} onDelete={setDeleting} />
+                : <PostTable posts={filteredCompleted} onEdit={setEditing} onDelete={setDeleting} accountPicMap={accountPicMap} />
             )}
 
             {/* Drafted — card list */}
@@ -1995,13 +2093,13 @@ export default function PostHistory() {
             )}
 
             {/* Pagination */}
-            {tab === "completed" && historyTotal > PAGE_SIZE && (
+            {tab === "completed" && _historyTotal > PAGE_SIZE && (
               <div className="flex items-center justify-between text-xs text-gray-500 pt-1">
-                <span>{historyTotal} total posts</span>
+                <span>{_historyTotal} total posts</span>
                 <div className="flex gap-2">
                   <button disabled={historyPage <= 1} onClick={() => loadHistory(historyPage-1)} className="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40">← Prev</button>
                   <span className="px-3 py-1.5">Page {historyPage}</span>
-                  <button disabled={historyPage * PAGE_SIZE >= historyTotal} onClick={() => loadHistory(historyPage+1)} className="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40">Next →</button>
+                  <button disabled={historyPage * PAGE_SIZE >= _historyTotal} onClick={() => loadHistory(historyPage+1)} className="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40">Next →</button>
                 </div>
               </div>
             )}

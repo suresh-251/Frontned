@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useRef } from "react";
 import useFacebookLeads from "../hooks/useFacebookLeads";
+import { useBrand } from "../context/BrandContext";
+import { appCache } from "../utils/cache";
 import { getAvailablePages } from "../api/facebook.pages.api";
-import { getLeadForms, getLeadHistory } from "../api/facebook.leads.api";
+import { getLeadForms, getLeadHistory, editLeadRemark, deleteLeadRemark } from "../api/facebook.leads.api";
 import useUsers from "../hooks/useUsers";
 import * as XLSX from "xlsx";
 import * as signalR from "@microsoft/signalr";
@@ -14,8 +16,8 @@ import { useAuth } from "../../auth/AuthContext";
 import LeadAssignmentModal from "../components/facebook/LeadAssignmentModal";
 
 import {
-  FaUsers, FaTimesCircle, FaList, FaTh, FaSearch, FaSync, FaFileExport, FaFilter,
-  FaChevronDown, FaCheck, FaTimes, FaEye,
+  FaUsers, FaTimesCircle, FaList, FaTh, FaSearch, FaSync, FaFileExport,
+  FaChevronDown, FaCheck, FaTimes, FaEye, FaEdit, FaTrashAlt,
   FaChevronRight, FaChevronLeft, FaSpinner,
   FaCheckSquare, FaCalendarAlt, FaBuilding, FaUserPlus, FaHistory,
 } from "react-icons/fa";
@@ -194,10 +196,12 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, pageSiz
 export default function Leads() {
   const { user } = useAuth();
   const myUserId = user?.sub || user?.id || user?.userId || user?.uid;
+  const { activeBrand } = useBrand();
 
   const {
     leads,
     loading,
+    dataSlug,
     filters,
     reload,
     changeStatus,
@@ -227,9 +231,6 @@ export default function Leads() {
   const [selectedDeptIds, setSelectedDeptIds] = useState([]);   // current checkbox state
   const [appliedDeptIds, setAppliedDeptIds] = useState([]);     // last-saved server state
   const [applying, setApplying] = useState(false);
-  const [assignStartDate, setAssignStartDate] = useState("");
-  const [assignEndDate, setAssignEndDate] = useState("");
-  const [showTimeRange, setShowTimeRange] = useState(false);
   const [formLeadCount, setFormLeadCount] = useState(null); // preview count for dept assignment
 
   const [remarkMap, setRemarkMap] = useState({});
@@ -237,9 +238,15 @@ export default function Leads() {
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   // Multi-user/dept assignment modal
   const [assignModalLead, setAssignModalLead] = useState(null);
-  // Remark history for the details modal
+  // Remark history (inline popover in table)
   const [remarkHistory, setRemarkHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLeadId, setHistoryLeadId] = useState(null);
+  const [newRemarkText, setNewRemarkText] = useState("");
+  const [savingRemark, setSavingRemark] = useState(false);
+  const [editingRemarkId, setEditingRemarkId] = useState(null);
+  const [editingRemarkText, setEditingRemarkText] = useState("");
+  const historyPopRef = useRef();
   
   // UI & Selection States
   const [viewMode, setViewMode] = useState("list");
@@ -252,6 +259,7 @@ export default function Leads() {
   const [exportFriendlyLabels, setExportFriendlyLabels] = useState(true);
   const [filterFromDate, setFilterFromDate] = useState("");
   const [filterToDate, setFilterToDate] = useState("");
+  const [showDateRange, setShowDateRange] = useState(false);
 
   /* =========================
      INITIAL LOAD
@@ -309,8 +317,17 @@ useEffect(() => {
      LOAD PAGES & FORMS
      ========================= */
   useEffect(() => {
-    getAvailablePages().then(setPages);
-  }, []);
+    const slug = activeBrand?.slug;
+    const cacheKey = `ph_pages_${slug ?? "none"}`;
+    const cached = appCache.getStale(cacheKey);
+    if (cached) setPages(cached.data);
+    if (!appCache.isFresh(cacheKey)) {
+      getAvailablePages().then(pages => {
+        setPages(pages);
+        if (slug) appCache.set(cacheKey, pages);
+      });
+    }
+  }, [activeBrand?.slug]);
 
   useEffect(() => {
     getDepartments().then(setDepartments).catch(() => {});
@@ -330,13 +347,13 @@ useEffect(() => {
     const timer = setTimeout(() => {
       countFormLeads(
         filters.formId,
-        assignStartDate || null,
-        assignEndDate || null
+        filterFromDate || null,
+        filterToDate || null
       ).then(setFormLeadCount);
     }, 400);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.formId, assignStartDate, assignEndDate]);
+  }, [filters.formId, filterFromDate, filterToDate]);
 
   /* =========================
      SELECT LEADS LOGIC
@@ -360,7 +377,10 @@ useEffect(() => {
      ========================= */
   const getLeadDate = (l) => new Date(l.metaCreatedAt || l.syncedAt || l.createdAt);
 
-  const filteredLeads = leads.filter(l => {
+  // Guard: don't show stale data from a previous brand during transition
+  const _leads = dataSlug === activeBrand?.slug ? leads : [];
+
+  const filteredLeads = _leads.filter(l => {
     // 1. Search Query
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -496,8 +516,8 @@ useEffect(() => {
         const result = await assignByFormToDepartments(
           filters.formId,
           depts,
-          assignStartDate || null,
-          assignEndDate || null,
+          filterFromDate || null,
+          filterToDate || null,
         );
         const leadAssigned = result?.added ?? "?";
         Toast?.success(
@@ -540,19 +560,34 @@ useEffect(() => {
   };
 
   /* =========================
-     LOAD REMARK HISTORY WHEN DETAILS MODAL OPENS
+     LOAD REMARK HISTORY (inline popover)
      ========================= */
   useEffect(() => {
-    if (!selectedLead) {
+    if (!historyLeadId) {
       setRemarkHistory([]);
+      setNewRemarkText("");
+      setEditingRemarkId(null);
+      setEditingRemarkText("");
       return;
     }
     setHistoryLoading(true);
-    getLeadHistory(selectedLead.id)
+    getLeadHistory(historyLeadId)
       .then(data => setRemarkHistory(Array.isArray(data) ? data : []))
       .catch(() => setRemarkHistory([]))
       .finally(() => setHistoryLoading(false));
-  }, [selectedLead]);
+  }, [historyLeadId]);
+
+  // Close history popover on outside click
+  useEffect(() => {
+    if (!historyLeadId) return;
+    const handler = (e) => {
+      if (historyPopRef.current && !historyPopRef.current.contains(e.target)) {
+        setHistoryLeadId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [historyLeadId]);
 
   /* =========================
      RENDER
@@ -595,24 +630,19 @@ useEffect(() => {
         </div>
 
         {/* ── Filter Bar ── */}
-        <div className="flex items-center gap-4 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm flex-wrap">
-          <div className="flex items-center gap-2 text-sm">
-             <FaFilter className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-             <span className="text-gray-500 font-medium">Filters</span>
-          </div>
-
-          <FilterDropdown 
-            label="Page" 
-            options={pages.map(p => ({ label: p.name, value: p.pageId }))} 
-            value={filters.pageId} 
-            onChange={val => reload({ pageId: val, formId: "" })} 
+        <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm flex-wrap">
+          <FilterDropdown
+            label="Page"
+            options={pages.map(p => ({ label: p.name, value: p.pageId }))}
+            value={filters.pageId}
+            onChange={val => reload({ pageId: val, formId: "" })}
           />
-          
-          <FilterDropdown 
-            label="Form" 
-            options={forms.map(f => ({ label: f.name, value: f.id }))} 
-            value={filters.formId} 
-            onChange={val => reload({ formId: val })} 
+
+          <FilterDropdown
+            label="Form"
+            options={forms.map(f => ({ label: f.name, value: f.id }))}
+            value={filters.formId}
+            onChange={val => reload({ formId: val })}
             disabled={!filters.pageId}
           />
 
@@ -643,28 +673,44 @@ useEffect(() => {
             <FaCheck className="w-3 h-3" /> My Leads
           </button>
 
-          {/* Calendar Date Filter */}
-          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 ml-auto">
-             <FaCalendarAlt className="w-3.5 h-3.5 text-gray-400" />
-             <input 
-                type="date" 
-                value={filterFromDate} 
-                onChange={e => setFilterFromDate(e.target.value)} 
-                className="bg-transparent text-sm text-gray-600 focus:outline-none" 
-             />
-             <span className="text-gray-400 text-xs font-medium px-1">to</span>
-             <input 
-                type="date" 
-                value={filterToDate} 
-                onChange={e => setFilterToDate(e.target.value)} 
-                className="bg-transparent text-sm text-gray-600 focus:outline-none" 
-             />
-             {(filterFromDate || filterToDate) && (
-                <button onClick={() => { setFilterFromDate(""); setFilterToDate(""); }} className="ml-2 text-rose-500 hover:text-rose-700 p-1">
-                  <FaTimes className="w-3 h-3" />
-                </button>
-             )}
-          </div>
+          {/* Date Range Toggle */}
+          <button
+            onClick={() => setShowDateRange(p => !p)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-all ml-auto
+              ${showDateRange || filterFromDate || filterToDate
+                ? "bg-amber-50 border-amber-300 text-amber-700"
+                : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
+          >
+            <FaCalendarAlt className="w-3.5 h-3.5" />
+            {showDateRange ? "Hide Range" : "Show Range"}
+            {(filterFromDate || filterToDate) && !showDateRange && (
+              <span className="w-2 h-2 rounded-full bg-amber-500 ml-0.5" />
+            )}
+          </button>
+
+          {/* Date Range (collapsible) */}
+          {showDateRange && (
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+               <input
+                  type="date"
+                  value={filterFromDate}
+                  onChange={e => setFilterFromDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-600 focus:outline-none"
+               />
+               <span className="text-gray-400 text-xs font-medium px-1">to</span>
+               <input
+                  type="date"
+                  value={filterToDate}
+                  onChange={e => setFilterToDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-600 focus:outline-none"
+               />
+               {(filterFromDate || filterToDate) && (
+                  <button onClick={() => { setFilterFromDate(""); setFilterToDate(""); }} className="ml-1 text-rose-500 hover:text-rose-700 p-1">
+                    <FaTimes className="w-3 h-3" />
+                  </button>
+               )}
+            </div>
+          )}
         </div>
 
         {/* ── Department Assignment Panel (unified toggle) ── */}
@@ -696,22 +742,12 @@ useEffect(() => {
                 ))}
               </select>
 
-              {/* Time range toggle */}
-              <button
-                onClick={() => setShowTimeRange(p => !p)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all
-                  ${showTimeRange ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
-              >
-                <FaCalendarAlt className="w-3 h-3" />
-                {showTimeRange ? "Hide Range" : "Set Time Range"}
-              </button>
-
               {/* Lead count preview badge */}
               {filters.formId && formLeadCount !== null && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700">
                   <FaUsers className="w-3 h-3" />
                   {formLeadCount} lead{formLeadCount !== 1 ? "s" : ""}
-                  {(assignStartDate || assignEndDate) ? " in range" : " in form"}
+                  {(filterFromDate || filterToDate) ? " in range" : " in form"}
                 </span>
               )}
 
@@ -726,27 +762,6 @@ useEffect(() => {
               </button>
             </div>
           </div>
-
-          {/* Time range row */}
-          {showTimeRange && (
-            <div className="flex items-center gap-3 flex-wrap pl-1">
-              <span className="text-xs text-gray-500 font-medium">Time range (for assigns):</span>
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
-                <FaCalendarAlt className="w-3 h-3 text-gray-400" />
-                <input type="date" value={assignStartDate} onChange={e => setAssignStartDate(e.target.value)}
-                  className="bg-transparent text-sm text-gray-600 focus:outline-none" />
-                <span className="text-gray-400 text-xs px-1">to</span>
-                <input type="date" value={assignEndDate} onChange={e => setAssignEndDate(e.target.value)}
-                  className="bg-transparent text-sm text-gray-600 focus:outline-none" />
-                {(assignStartDate || assignEndDate) && (
-                  <button onClick={() => { setAssignStartDate(""); setAssignEndDate(""); }} className="ml-1 text-rose-400 hover:text-rose-600">
-                    <FaTimes className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-gray-400 italic">Only leads created within this range will be assigned.</p>
-            </div>
-          )}
 
           {/* Department checkbox grid */}
           {!filters.formId ? (
@@ -922,7 +937,7 @@ useEffect(() => {
                             <Avatar name={l.name || "?"} />
                             <div>
                               <p className="text-sm font-semibold text-gray-800">{l.name || "—"}</p>
-                              <p className="text-xs text-gray-400">ID #{l.id}</p>
+                              <p className="text-xs text-gray-400">{l.email || l.phone || l.platform || "Lead"}</p>
                             </div>
                           </div>
                         </td>
@@ -935,13 +950,18 @@ useEffect(() => {
                                 "bg-blue-50 text-blue-700 border-blue-200"}`}>
                               {l.platform || "Facebook"}
                             </span>
-                            {l.leadSource && (
+                            {/* {l.leadSource && (
                               <span className="text-[9px] text-gray-400 px-1">
                                 {l.leadSource === "WebhookRealtime" ? "⚡ Webhook" :
                                  l.leadSource === "ManualSync" ? "🔄 Synced" :
+                                 l.leadSource === "InstagramDirect" ? "IG Direct" :
+                                 l.leadSource === "FacebookLeadForm" ? "FB Lead Form" :
+                                 l.leadSource === "FacebookLeadCentre" ? "FB Lead Centre" :
+                                 l.leadSource === "LinkedInLead" ? "LinkedIn" :
+                                 l.leadSource === "ManualEntry" ? "Manual" :
                                  l.leadSource}
                               </span>
-                            )}
+                            )} */}
                             {l.qualityScore > 0 && (
                               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded w-fit
                                 ${l.qualityScore >= 70 ? "bg-green-100 text-green-700" :
@@ -1003,14 +1023,183 @@ useEffect(() => {
                         </td>
 
                         <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            placeholder="Add remark..."
-                            value={remarkMap[l.id] ?? l.remark ?? ""}
-                            onChange={e => setRemarkMap(prev => ({ ...prev, [l.id]: e.target.value }))}
-                            onBlur={() => handleSaveRemark(l)}
-                            className="w-[140px] px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white transition-colors"
-                          />
+                          <div className="relative">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                placeholder="Add remark..."
+                                value={remarkMap[l.id] ?? l.remark ?? ""}
+                                onChange={e => setRemarkMap(prev => ({ ...prev, [l.id]: e.target.value }))}
+                                onBlur={() => handleSaveRemark(l)}
+                                className="w-[120px] px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white transition-colors"
+                              />
+                              <button
+                                onClick={() => setHistoryLeadId(historyLeadId === l.id ? null : l.id)}
+                                className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${historyLeadId === l.id ? "bg-indigo-100 text-indigo-600" : "bg-gray-50 text-gray-400 hover:bg-indigo-50 hover:text-indigo-500"}`}
+                                title="Remark history"
+                              >
+                                <FaHistory className="w-3 h-3" />
+                              </button>
+                            </div>
+
+                            {/* Remarks Popover */}
+                            {historyLeadId === l.id && (() => {
+                              const remarks = remarkHistory.filter(h => h.remark);
+
+                              return (
+                              <div ref={historyPopRef} className="absolute z-50 top-full left-0 mt-1 w-80 bg-white border border-gray-200 rounded-xl shadow-xl p-3 space-y-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                                    <FaHistory className="w-3 h-3 text-indigo-400" /> Remarks
+                                  </span>
+                                  <button onClick={() => setHistoryLeadId(null)} className="text-gray-400 hover:text-gray-600">
+                                    <FaTimes className="w-3 h-3" />
+                                  </button>
+                                </div>
+
+                                {historyLoading ? (
+                                  <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                                    <FaSpinner className="w-3 h-3 animate-spin" /> Loading…
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div>
+                                      {remarks.length === 0 ? (
+                                        <p className="text-xs text-gray-400 italic">No remarks yet.</p>
+                                      ) : (
+                                        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                                          {remarks.map((h) => (
+                                            <div key={h.id} className="bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 group/remark">
+                                              <div className="flex items-center justify-between mb-0.5">
+                                                <span className="text-[10px] font-semibold text-indigo-600">
+                                                  {h.assignedToUserName || "System"}
+                                                </span>
+                                                <div className="flex items-center gap-1">
+                                                  {h.editedAt && (
+                                                    <span className="text-[9px] text-amber-500 italic">edited</span>
+                                                  )}
+                                                  <span className="text-[10px] text-gray-400">
+                                                    {new Date(h.assignedAt).toLocaleDateString()}
+                                                  </span>
+                                                </div>
+                                              </div>
+
+                                              {editingRemarkId === h.id ? (
+                                                <div className="flex gap-1 mt-1">
+                                                  <input
+                                                    type="text"
+                                                    autoFocus
+                                                    value={editingRemarkText}
+                                                    onChange={e => setEditingRemarkText(e.target.value)}
+                                                    onKeyDown={e => {
+                                                      if (e.key === "Escape") { setEditingRemarkId(null); setEditingRemarkText(""); }
+                                                      if (e.key === "Enter") document.getElementById(`save-edit-${h.id}`)?.click();
+                                                    }}
+                                                    className="flex-1 px-2 py-1 border border-indigo-300 rounded text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                                                  />
+                                                  <button
+                                                    id={`save-edit-${h.id}`}
+                                                    onClick={async () => {
+                                                      if (!editingRemarkText.trim()) return;
+                                                      try {
+                                                        await editLeadRemark(l.id, h.id, editingRemarkText.trim());
+                                                        setEditingRemarkId(null);
+                                                        setEditingRemarkText("");
+                                                        const updated = await getLeadHistory(l.id);
+                                                        setRemarkHistory(Array.isArray(updated) ? updated : []);
+                                                        Toast?.success("Remark updated");
+                                                      } catch { Toast?.error("Failed to update"); }
+                                                    }}
+                                                    className="px-2 py-1 text-[10px] font-semibold bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+                                                  >
+                                                    Save
+                                                  </button>
+                                                  <button
+                                                    onClick={() => { setEditingRemarkId(null); setEditingRemarkText(""); }}
+                                                    className="px-1.5 py-1 text-gray-400 hover:text-gray-600"
+                                                  >
+                                                    <FaTimes className="w-2.5 h-2.5" />
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <div className="flex items-start justify-between">
+                                                  <p className="text-xs text-gray-700 flex-1">{h.remark}</p>
+                                                  <div className="flex items-center gap-0.5 ml-2 opacity-0 group-hover/remark:opacity-100 transition-opacity flex-shrink-0">
+                                                    <button
+                                                      onClick={() => { setEditingRemarkId(h.id); setEditingRemarkText(h.remark); }}
+                                                      className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                      title="Edit remark"
+                                                    >
+                                                      <FaEdit className="w-2.5 h-2.5" />
+                                                    </button>
+                                                    <button
+                                                      onClick={async () => {
+                                                        if (!confirm("Delete this remark?")) return;
+                                                        try {
+                                                          await deleteLeadRemark(l.id, h.id);
+                                                          const updated = await getLeadHistory(l.id);
+                                                          setRemarkHistory(Array.isArray(updated) ? updated : []);
+                                                          Toast?.success("Remark deleted");
+                                                        } catch { Toast?.error("Failed to delete"); }
+                                                      }}
+                                                      className="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                                      title="Delete remark"
+                                                    >
+                                                      <FaTrashAlt className="w-2.5 h-2.5" />
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
+
+                                {/* Add new remark */}
+                                <div className="flex gap-1.5 pt-1 border-t border-gray-100">
+                                  <input
+                                    type="text"
+                                    placeholder="Add remark…"
+                                    value={newRemarkText}
+                                    onChange={e => setNewRemarkText(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === "Enter" && newRemarkText.trim()) {
+                                        e.target.blur();
+                                        document.getElementById(`save-remark-${l.id}`)?.click();
+                                      }
+                                    }}
+                                    className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50"
+                                  />
+                                  <button
+                                    id={`save-remark-${l.id}`}
+                                    disabled={!newRemarkText.trim() || savingRemark}
+                                    onClick={async () => {
+                                      if (!newRemarkText.trim()) return;
+                                      setSavingRemark(true);
+                                      try {
+                                        await assignLead(l.id, l.assignedToUserId ?? null, l.assignedToUserName ?? null, newRemarkText.trim());
+                                        setNewRemarkText("");
+                                        const updated = await getLeadHistory(l.id);
+                                        setRemarkHistory(Array.isArray(updated) ? updated : []);
+                                        Toast?.success("Remark saved");
+                                      } catch {
+                                        Toast?.error("Failed to save remark");
+                                      } finally {
+                                        setSavingRemark(false);
+                                      }
+                                    }}
+                                    className="px-2.5 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-95"
+                                  >
+                                    {savingRemark ? <FaSpinner className="w-3 h-3 animate-spin" /> : "Save"}
+                                  </button>
+                                </div>
+                              </div>
+                              );
+                            })()}
+                          </div>
                         </td>
                         
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
@@ -1062,7 +1251,6 @@ useEffect(() => {
                          <div className={`flex-1 min-w-0 ${isSelectMode ? "pr-6" : ""}`}>
                             <p className="text-sm font-semibold text-gray-800 truncate">{l.name || "—"}</p>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <p className="text-xs text-gray-400">ID #{l.id}</p>
                               <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border
                                 ${l.platform === "Instagram" ? "bg-pink-50 text-pink-600 border-pink-200" :
                                   l.platform === "LinkedIn" ? "bg-sky-50 text-sky-700 border-sky-200" :
@@ -1139,63 +1327,6 @@ useEffect(() => {
               <p className="text-sm font-medium text-gray-500">No additional form data available</p>
             </div>
           )}
-
-          {/* Remark History */}
-          <div className="border-t border-gray-100 pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <FaHistory className="w-3.5 h-3.5 text-indigo-400" />
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Remark History</h3>
-            </div>
-            {historyLoading ? (
-              <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
-                <FaSpinner className="w-3.5 h-3.5 animate-spin" /> Loading history…
-              </div>
-            ) : remarkHistory.filter(h => h.remark).length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No remarks recorded yet.</p>
-            ) : (
-              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                {remarkHistory.filter(h => h.remark).map(h => (
-                  <div key={h.id} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-semibold text-indigo-600">
-                        {h.assignedToUserName || "System"}
-                      </span>
-                      <span className="text-[10px] text-gray-400">
-                        {new Date(h.assignedAt).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-700">{h.remark}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Inline remark input */}
-            <div className="mt-3 flex gap-2">
-              <input
-                type="text"
-                placeholder="Add new remark…"
-                value={selectedLead ? (remarkMap[selectedLead.id] ?? selectedLead.remark ?? "") : ""}
-                onChange={e => selectedLead && setRemarkMap(prev => ({ ...prev, [selectedLead.id]: e.target.value }))}
-                className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50"
-              />
-              <button
-                onClick={async () => {
-                  if (!selectedLead) return;
-                  const remark = remarkMap[selectedLead.id];
-                  if (!remark || remark === (selectedLead.remark ?? "")) return;
-                  await assignLead(selectedLead.id, selectedLead.assignedToUserId ?? null, selectedLead.assignedToUserName ?? null, remark);
-                  // Refresh history
-                  const updated = await getLeadHistory(selectedLead.id);
-                  setRemarkHistory(Array.isArray(updated) ? updated : []);
-                  Toast?.success("Remark saved");
-                }}
-                className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors active:scale-95"
-              >
-                Save
-              </button>
-            </div>
-          </div>
 
           <div className="flex justify-end pt-2 border-t border-gray-100">
             <button

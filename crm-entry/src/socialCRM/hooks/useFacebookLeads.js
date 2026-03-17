@@ -94,6 +94,8 @@
 
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useBrand } from "../context/BrandContext";
+import { appCache } from "../utils/cache";
 import {
   getLeads,
   updateLeadStatus,
@@ -110,63 +112,84 @@ import {
   countFormLeads as countFormLeadsApi,
 } from "../api/facebook.leads.api";
  
+const EMPTY_FILTERS = { pageId: "", formId: "", status: "", departmentId: "" };
+const leadsCacheKey = (slug) => `ph_leads_${slug}`;
+
 export default function useFacebookLeads() {
-  const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(false);
- 
-  const [filters, setFilters] = useState({
-    pageId: "",
-    formId: "",
-    status: "",
-    departmentId: ""
+  const { activeBrand } = useBrand();
+  const slug = activeBrand?.slug ?? null;
+
+  // Initialize synchronously from cache so first render already has data
+  const [leads, setLeads] = useState(() => {
+    const cached = slug ? appCache.getStale(leadsCacheKey(slug)) : null;
+    return cached?.data ?? [];
   });
- 
-  const filtersRef = useRef(filters);
-  const leadsRef = useRef([]);
- 
-  useEffect(() => {
-    filtersRef.current = filters;
-  }, [filters]);
- 
-  useEffect(() => {
-    leadsRef.current = leads;
-  }, [leads]);
- 
+  const [loading, setLoading] = useState(false);
+  // Tracks which brand slug the currently displayed leads belong to
+  const [dataSlug, setDataSlug] = useState(slug);
+
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+
+  const filtersRef = useRef(EMPTY_FILTERS);
+  const leadsRef   = useRef(leads);
+  const slugRef    = useRef(slug);
+
+  useEffect(() => { filtersRef.current = filters; }, [filters]);
+  useEffect(() => { leadsRef.current   = leads;   }, [leads]);
+  useEffect(() => { slugRef.current    = slug;    }, [slug]);
+
   /* =========================
      CORE LOAD FUNCTION
      ========================= */
   const loadLeads = useCallback(async (override = {}, silent = false) => {
+    // Capture slug at request start — discard response if brand changes mid-flight
+    const requestSlug = slugRef.current;
+    if (!requestSlug) return;
     if (!silent) setLoading(true);
- 
+
     try {
-      const finalFilters = {
-        ...filtersRef.current,
-        ...override
-      };
- 
+      const finalFilters = { ...filtersRef.current, ...override };
       const data = await getLeads(finalFilters);
- 
-      // 🔥 Only update if actual data changed
+
+      if (slugRef.current !== requestSlug) return; // brand changed while in flight
+
       const currentData = JSON.stringify(leadsRef.current);
-      const newData = JSON.stringify(data);
- 
-      if (currentData !== newData) {
+      if (JSON.stringify(data) !== currentData) {
         setLeads(data);
+        appCache.set(leadsCacheKey(requestSlug), data);
       }
     } catch (err) {
-      console.error("Failed to load leads:", err);
+      if (slugRef.current === requestSlug) console.error("Failed to load leads:", err);
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && slugRef.current === requestSlug) setLoading(false);
     }
   }, []);
- 
+
   /* =========================
-     INITIAL LOAD
+     BRAND-SWITCH / INITIAL LOAD
      ========================= */
+  const prevSlugRef = useRef(slug);
   useEffect(() => {
-    loadLeads({}, false);
+    const isSwitch = prevSlugRef.current !== slug;
+    prevSlugRef.current = slug;
+
+    if (!slug) return;
+
+    const cached = appCache.getStale(leadsCacheKey(slug));
+
+    if (isSwitch) {
+      setFilters(EMPTY_FILTERS);
+      filtersRef.current = EMPTY_FILTERS;
+      setLeads(cached?.data ?? []);
+    } else if (cached) {
+      setLeads(cached.data ?? []);
+    }
+    setDataSlug(slug);
+
+    // Always fetch fresh data; show cached data silently while it loads
+    loadLeads({}, !!cached);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [slug]);
  
   /* =========================
      RELOAD (USED BY SIGNALR)
@@ -314,6 +337,7 @@ export default function useFacebookLeads() {
   return {
     leads,
     loading,
+    dataSlug,
     filters,
     setFilters,
     reload,

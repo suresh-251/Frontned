@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useBrand } from "../context/BrandContext";
+import { appCache } from "../utils/cache";
+
+const inboxCacheKey = (slug) => `ph_inbox_${slug ?? "none"}`;
 import {
   getConversations,
   getMessages,
@@ -14,7 +17,7 @@ import { useInboxHub } from "../hooks/useInboxHub";
 import {
   FaPaperPlane, FaPaperclip, FaSearch, FaChevronDown, FaCheck,
   FaEllipsisV, FaArchive, FaTimes, FaRedo, FaSpinner, FaInbox,
-  FaFacebook, FaInstagram, FaLinkedin,
+  FaFacebook, FaInstagram, FaLinkedin, FaSmile, FaReply,
 } from "react-icons/fa";
 
 // ── Platform config ───────────────────────────────────────────────────────
@@ -27,6 +30,41 @@ const ps = (platform) => PSTYLE[platform] ?? PSTYLE.Facebook;
 
 const PLATFORM_FILTERS = ["All", "Facebook", "Instagram", "LinkedIn"];
 const STATUS_FILTERS   = ["All", "Active", "Closed", "Archived"];
+
+// ── Emoji categories ──────────────────────────────────────────────────────
+const EMOJI_CATS = {
+  "😊 Smileys":  ["😀","😂","😊","🥰","😍","😘","🤗","😎","🤩","😇","😉","😜","🤔","😏","😌","🥺","😢","😭","😤","🤯","🥳","😴","🤮","🤢","😈","🤡","💀","👻","👽","🤖"],
+  "👍 Gestures": ["👍","👎","👏","🙌","🤝","✌️","🤞","🫶","❤️","🔥","💯","⭐","🎉","🎊","💪","🙏","💐","🌹","🌟","✨","💕","💖","💝","💗","💓","💞","💘","💌","❣️","♥️"],
+  "🎯 Objects":  ["📱","💻","📸","🎯","🏆","🎁","📦","📢","📌","📎","🔗","⏰","🗓️","📊","📈","💡","🛒","🏷️","🎨","🎬","🎶","☀️","🌙","⚡","🌈","🍕","☕","🍰","🎂","🍀"],
+};
+
+function EmojiPicker({ onSelect, onClose }) {
+  const ref = useRef(null);
+  const [cat, setCat] = useState(Object.keys(EMOJI_CATS)[0]);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [onClose]);
+  return (
+    <div ref={ref} className="absolute bottom-12 left-0 w-72 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 overflow-hidden">
+      <div className="flex gap-1 px-2 py-1.5 border-b border-gray-100 overflow-x-auto">
+        {Object.keys(EMOJI_CATS).map((c) => (
+          <button key={c} onClick={() => setCat(c)}
+            className={`text-xs px-2 py-1 rounded-lg whitespace-nowrap transition ${cat === c ? "bg-blue-100 text-blue-700 font-semibold" : "text-gray-500 hover:bg-gray-100"}`}>
+            {c}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-10 gap-0.5 p-2 max-h-36 overflow-y-auto">
+        {EMOJI_CATS[cat].map((e) => (
+          <button key={e} onClick={() => onSelect(e)}
+            className="w-7 h-7 flex items-center justify-center text-lg hover:bg-gray-100 rounded transition">{e}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function fmtTime(iso) {
@@ -98,6 +136,7 @@ export default function Inbox() {
   const { activeBrand } = useBrand();
 
   const [convos, setConvos]           = useState([]);
+  const [dataSlug, setDataSlug]       = useState(activeBrand?.slug ?? null);
   const [messages, setMessages]       = useState({});
   // msgMeta tracks { page, hasMore, loading } per conversation id
   const [msgMeta, setMsgMeta]         = useState({});
@@ -116,10 +155,17 @@ export default function Inbox() {
   const [search, setSearch]           = useState("");
   const [filterOpen, setFilterOpen]   = useState(false);
 
+  // Emoji, file upload, reply-to
+  const [emojiOpen, setEmojiOpen]     = useState(false);
+  const [replyTo, setReplyTo]         = useState(null); // { id, senderName, messageText }
+  const [attachment, setAttachment]   = useState(null);  // File object
+  const [attachPreview, setAttachPreview] = useState(null); // data URL for images
+
   const filterRef   = useRef(null);
   const bottomRef   = useRef(null);
   const topRef      = useRef(null);
   const textareaRef = useRef(null);
+  const fileRef     = useRef(null);
 
   // Helper: fetch + store messages for a conversation
   const fetchMessages = useCallback(async (convoId, page = 1, prepend = false) => {
@@ -153,6 +199,8 @@ export default function Inbox() {
       const items = data?.items ?? data;
       if (Array.isArray(items) && items.length > 0) {
         setConvos(items);
+        const slug = activeBrand?.slug;
+        if (slug) { appCache.set(inboxCacheKey(slug), items); setDataSlug(slug); }
         if (!active) {
           // Auto-select first conversation if none active
           const first = items[0];
@@ -178,7 +226,7 @@ export default function Inbox() {
     } finally {
       setLoadingConvos(false);
     }
-  }, [active, fetchMessages]);
+  }, [active, fetchMessages, activeBrand?.slug]);
 
   // ── Sync from Facebook/Instagram ──────────────────────────────────────
   const runSync = useCallback(async () => {
@@ -202,30 +250,54 @@ export default function Inbox() {
     }
   }, [syncing, reloadConvos]);
 
-  // Load conversations from API on mount, then auto-load messages for first
+  // Load conversations: instant cache restore on brand switch, then background refresh
   useEffect(() => {
+    const slug = activeBrand?.slug;
     let cancelled = false;
-    setLoadingConvos(true);
+
+    // 1. Clear per-conversation state so old brand's messages don't bleed through
+    setActive(null);
+    setMessages({});
+    setMsgMeta({});
+
+    // 2. Instant restore from cache
+    const cached = slug ? appCache.getStale(inboxCacheKey(slug)) : null;
+    if (cached) {
+      setConvos(cached.data);
+      setDataSlug(slug);
+      setLoadingConvos(false);
+    } else {
+      setConvos([]);
+      setDataSlug(null);
+      setLoadingConvos(true);
+    }
+
+    if (!slug) return;
+
+    // Always fetch fresh data (cache shown above while this loads)
+    setLoadingConvos(!cached);
     getConversations()
       .then(async (data) => {
         if (cancelled) return;
         const items = data?.items ?? data;
-        if (Array.isArray(items) && items.length > 0) {
-          setConvos(items);
-          const first = items[0];
+        const convList = Array.isArray(items) ? items : [];
+        setConvos(convList);
+        setDataSlug(slug);
+        if (slug) appCache.set(inboxCacheKey(slug), convList);
+        if (convList.length > 0) {
+          const first = convList[0];
           setActive(first);
           setLoadingMsgs(true);
           await fetchMessages(first.id, 1);
           if (!cancelled) setLoadingMsgs(false);
           try { await markConversationRead(first.id); } catch { /* offline */ }
-        } else {
-          setConvos([]);
         }
       })
-      .catch(() => { if (!cancelled) setConvos([]); })
+      .catch(() => { if (!cancelled) { setConvos([]); setDataSlug(slug); } })
       .finally(() => { if (!cancelled) setLoadingConvos(false); });
+
     return () => { cancelled = true; };
-  }, [activeBrand?.id, fetchMessages]);
+  }, [activeBrand?.slug, fetchMessages]);
 
   // Close filter dropdown on outside click
   useEffect(() => {
@@ -317,27 +389,38 @@ export default function Inbox() {
 
   // ── Send reply ────────────────────────────────────────────────────────
   const send = async () => {
-    if (!reply.trim() || !active || sending) return;
+    if ((!reply.trim() && !attachment) || !active || sending) return;
     const text = reply.trim();
+    const quotedText = replyTo ? `↩ ${replyTo.senderName}: "${replyTo.messageText?.slice(0, 80)}"\n\n${text}` : text;
     setReply("");
+    setReplyTo(null);
     setSending(true);
+
+    // If there's an attachment, upload first
+    let attachmentUrl = null;
+    if (attachment) {
+      // For now, convert to base64 data URL for inline sending (or you could upload to server)
+      attachmentUrl = attachPreview;
+      setAttachment(null);
+      setAttachPreview(null);
+    }
 
     const optimistic = {
       id: Date.now(),
       conversationId: active.id,
       senderName: "You",
-      messageText: text,
+      messageText: quotedText,
       direction: "Outgoing",
       status: "Sent",
       isRead: true,
       timestamp: new Date().toISOString(),
-      attachments: [],
+      attachments: attachmentUrl ? [{ id: Date.now(), fileType: "image", fileUrl: attachmentUrl }] : [],
     };
     setMessages((prev) => ({ ...prev, [active.id]: [...(prev[active.id] ?? []), optimistic] }));
     setConvos((prev) => prev.map((c) => (c.id === active.id ? { ...c, lastMessage: text } : c)));
 
     try {
-      const saved = await sendMessage(active.id, { messageText: text });
+      const saved = await sendMessage(active.id, { messageText: quotedText, attachmentUrl });
       setMessages((prev) => ({
         ...prev,
         [active.id]: (prev[active.id] ?? []).map((m) => (m.id === optimistic.id ? saved : m)),
@@ -346,13 +429,45 @@ export default function Inbox() {
     finally { setSending(false); }
   };
 
+  // ── File selection handler ──────────────────────────────────────────
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAttachment(file);
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setAttachPreview(ev.target.result);
+      reader.readAsDataURL(file);
+    } else {
+      setAttachPreview(null);
+    }
+    textareaRef.current?.focus();
+  };
+
+  // ── Emoji insertion ─────────────────────────────────────────────────
+  const insertEmoji = (emoji) => {
+    const ta = textareaRef.current;
+    if (!ta) { setReply((r) => r + emoji); return; }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const newVal = reply.slice(0, start) + emoji + reply.slice(end);
+    setReply(newVal);
+    requestAnimationFrame(() => {
+      ta.selectionStart = ta.selectionEnd = start + emoji.length;
+      ta.focus();
+    });
+  };
+
   const handleStatusChange = async (id, status) => {
     setConvos((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));
     try { await updateConversationStatus(id, status); } catch { /* offline */ }
   };
 
   // ── Filter ────────────────────────────────────────────────────────────
-  const filteredConvos = convos.filter(
+  // Guard: don't show stale convos from a previous brand during transition
+  const _convos = dataSlug === activeBrand?.slug ? convos : [];
+
+  const filteredConvos = _convos.filter(
     (c) =>
       (platFilter === "All" || c.platform === platFilter) &&
       (statFilter === "All" || c.status   === statFilter) &&
@@ -361,7 +476,7 @@ export default function Inbox() {
         c.lastMessage?.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const totalUnread = convos.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
+  const totalUnread = _convos.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
   const activeMsgs  = messages[active?.id] ?? [];
   const pStyle = ps(active?.platform);
   const PIcon  = pStyle.Icon;
@@ -370,7 +485,7 @@ export default function Inbox() {
     <div className="flex gap-4" style={{ height: "calc(100vh - 120px)" }}>
 
       {/* ── Left Panel ──────────────────────────────────────────────── */}
-      <div className="w-80 bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden shadow-sm shrink-0">
+      <div className="w-[420px] bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden shadow-sm shrink-0">
 
         {/* Header */}
         <div className="px-4 py-3 border-b border-gray-100">
@@ -531,7 +646,7 @@ export default function Inbox() {
           {!loadingConvos && filteredConvos.length === 0 && (
             <div className="py-10 flex flex-col items-center gap-3 px-4 text-center">
               <FaInbox size={28} className="text-gray-300" />
-              {convos.length === 0 ? (
+              {_convos.length === 0 ? (
                 <>
                   <p className="text-xs font-medium text-gray-500">No conversations yet</p>
                   <p className="text-[11px] text-gray-400 leading-relaxed">
@@ -625,13 +740,13 @@ export default function Inbox() {
               const prevMsg = activeMsgs[i - 1];
               const showName = !isMe && msg.senderName !== prevMsg?.senderName;
               return (
-                <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                <div key={msg.id} className={`group flex ${isMe ? "justify-end" : "justify-start"}`}>
                   {!isMe && (
                     <div className={`w-7 h-7 rounded-full ${pStyle.bg} flex items-center justify-center shrink-0 mr-2 mt-auto mb-0.5 text-[10px] font-bold ${pStyle.text}`}>
                       {msg.senderName?.[0] ?? "?"}
                     </div>
                   )}
-                  <div className="max-w-sm space-y-0.5">
+                  <div className="max-w-sm space-y-0.5 relative">
                     {showName && (
                       <p className="text-[10px] text-gray-400 pl-1">{msg.senderName}</p>
                     )}
@@ -659,13 +774,25 @@ export default function Inbox() {
                             "border-blue-200"
                           }`
                     }`}>
-                      <p>{msg.messageText}</p>
+                      <p className="whitespace-pre-wrap">{msg.messageText}</p>
                       <p className={`text-[10px] mt-1 ${isMe ? "text-blue-200 text-right" : "text-gray-400"}`}>
                         {fmtFull(msg.timestamp)}
                         {isMe && msg.status === "Read"      && " ✓✓"}
                         {isMe && msg.status === "Delivered" && " ✓"}
                       </p>
                     </div>
+
+                    {/* Reply button — appears on hover */}
+                    <button
+                      onClick={() => {
+                        setReplyTo({ id: msg.id, senderName: msg.senderName ?? "User", messageText: msg.messageText });
+                        textareaRef.current?.focus();
+                      }}
+                      className={`absolute ${isMe ? "-left-8" : "-right-8"} top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm text-gray-400 hover:text-blue-600 hover:border-blue-300 opacity-0 group-hover:opacity-100 transition-all`}
+                      title="Reply"
+                    >
+                      <FaReply size={10} />
+                    </button>
                   </div>
                 </div>
               );
@@ -683,10 +810,58 @@ export default function Inbox() {
 
           {/* Reply box */}
           <div className="px-5 py-3.5 border-t border-gray-100 bg-white">
+            {/* Reply-to quote */}
+            {replyTo && (
+              <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-blue-50 border-l-4 border-blue-500 rounded-r-lg">
+                <FaReply size={10} className="text-blue-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold text-blue-700">{replyTo.senderName}</p>
+                  <p className="text-[11px] text-gray-600 truncate">{replyTo.messageText}</p>
+                </div>
+                <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-gray-600">
+                  <FaTimes size={10} />
+                </button>
+              </div>
+            )}
+
+            {/* Attachment preview */}
+            {attachment && (
+              <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+                {attachPreview ? (
+                  <img src={attachPreview} alt="preview" className="w-12 h-12 object-cover rounded-lg border border-gray-200" />
+                ) : (
+                  <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center text-xs text-gray-500">
+                    📎
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-gray-700 truncate">{attachment.name}</p>
+                  <p className="text-[10px] text-gray-400">{(attachment.size / 1024).toFixed(1)} KB</p>
+                </div>
+                <button onClick={() => { setAttachment(null); setAttachPreview(null); }} className="text-gray-400 hover:text-red-500">
+                  <FaTimes size={12} />
+                </button>
+              </div>
+            )}
+
             <div className="flex gap-2 items-end">
-              <button className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl border border-gray-200 transition shrink-0 mb-0.5">
+              {/* Emoji button */}
+              <div className="relative">
+                <button onClick={() => setEmojiOpen((o) => !o)}
+                  className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-yellow-500 hover:bg-gray-100 rounded-xl border border-gray-200 transition shrink-0 mb-0.5">
+                  <FaSmile size={14} />
+                </button>
+                {emojiOpen && <EmojiPicker onSelect={(e) => insertEmoji(e)} onClose={() => setEmojiOpen(false)} />}
+              </div>
+
+              {/* Paperclip / file upload */}
+              <button onClick={() => fileRef.current?.click()}
+                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl border border-gray-200 transition shrink-0 mb-0.5">
                 <FaPaperclip size={13} />
               </button>
+              <input ref={fileRef} type="file" className="hidden" accept="image/*,video/*,.pdf,.doc,.docx"
+                onChange={handleFileSelect} />
+
               <textarea
                 ref={textareaRef}
                 value={reply}
@@ -702,7 +877,7 @@ export default function Inbox() {
               />
               <button
                 onClick={send}
-                disabled={!reply.trim() || sending}
+                disabled={(!reply.trim() && !attachment) || sending}
                 className="w-9 h-9 bg-gradient-to-br from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700
                   disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400
                   transition rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm mb-0.5"
