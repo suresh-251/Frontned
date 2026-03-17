@@ -45,19 +45,18 @@ const Login = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#6f6f6f] px-6 py-10 font-sans text-[16.5px]">
-      <div className="flex w-full max-w-4xl overflow-hidden rounded-md bg-white shadow-[0_25px_70px_rgba(0,0,0,0.25)]">
+    <div className="flex min-h-screen items-center justify-center bg-[#6f6f6f] px-6 py-10 font-['Manrope'] text-[16.5px]">
+      <div className="flex w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-[0_25px_70px_rgba(0,0,0,0.25)]">
         <div className="flex w-1/2 flex-col items-center justify-center bg-[#A8BBAA] px-10 py-12 text-center">
-          <img src={crmDiagram} alt="CRM diagram" className="mb-8 h-56 w-56" />
+          <img src={crmDiagram} alt="CRM diagram" className="mb-8 h-56 w-56 rounded-3xl" />
           <p className="text-xl font-semibold text-white">Customer Relationship Management</p>
           <p className="mt-3 text-lg font-medium text-white/90">
-            Manage leads, sales pipelines, HR, and social engagement in one place
+            Unify customer data, track every deal stage, and collaborate across Sales, HR, and Social in one workspace.
           </p>
         </div>
 
         <div className="flex w-1/2 flex-col items-center justify-center px-12 py-12">
-          <h1 className="text-4xl font-bold text-[#555]">CRM System</h1>
-          <p className="mt-5 text-lg font-medium text-[#777]">Welcome to CRM</p>
+          <p className="text-3xl font-bold text-[#555]">Welcome to CRM</p>
 
           {error && (
             <p className="mt-4 text-base font-medium text-rose-500">{error}</p>
@@ -71,7 +70,7 @@ const Login = () => {
             noValidate
             className="mt-10 w-full max-w-xs"
           >
-            <label className="block text-sm font-semibold uppercase tracking-wide text-[#888]">Users name or Email</label>
+            <label className="block text-sm font-semibold uppercase tracking-wide text-[#888]">Email</label>
             <input
               type="text"
               value={email}
@@ -122,7 +121,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="mt-6 w-full rounded-full bg-[#6b6b6b] py-3 text-lg font-semibold text-white shadow-[0_6px_16px_rgba(0,0,0,0.2)] transition-colors hover:bg-[#5d5d5d] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-6 w-full cursor-pointer rounded-full bg-[#6b6b6b] py-3 text-lg font-semibold text-white shadow-[0_6px_16px_rgba(0,0,0,0.2)] transition-colors hover:bg-[#5d5d5d] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
