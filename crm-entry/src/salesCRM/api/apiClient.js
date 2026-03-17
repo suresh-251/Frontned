@@ -1,9 +1,7 @@
 // src/api/apiClient.js
 import axios from "axios";
-const BASE_URL = window.location.hostname === "localhost"
-  ? "http://89.116.20.215:9096/api"
-  : "https://crm.metagensoft.com/api";
-
+//const BASE_URL = "http://89.116.20.215:9096/api"
+const BASE_URL = "https://crmsales.metagensoft.com/api";
 // Create Axios instance
 const apiClient = axios.create({
   baseURL: BASE_URL,
