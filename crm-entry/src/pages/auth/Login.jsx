@@ -45,9 +45,9 @@ const Login = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#6f6f6f] px-6 py-10 font-['Manrope'] text-[16.5px]">
-      <div className="flex w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-[0_25px_70px_rgba(0,0,0,0.25)]">
-        <div className="flex w-1/2 flex-col items-center justify-center bg-[#A8BBAA] px-10 py-12 text-center">
+    <div className="flex min-h-screen items-center justify-center bg-[#f3f4f6] px-6 py-10 font-['Manrope'] text-[16.5px]">
+      <div className="flex w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-[0_20px_60px_rgba(15,23,42,0.12)]">
+        <div className="flex w-1/2 flex-col items-center justify-center bg-gradient-to-br from-[#3f4a88] via-[#4c5aa3] to-[#5b6abf] px-10 py-12 text-center">
           <img src={crmDiagram} alt="CRM diagram" className="mb-8 h-56 w-56 rounded-3xl" />
           <p className="text-xl font-semibold text-white">Customer Relationship Management</p>
           <p className="mt-3 text-lg font-medium text-white/90">
@@ -56,7 +56,7 @@ const Login = () => {
         </div>
 
         <div className="flex w-1/2 flex-col items-center justify-center px-12 py-12">
-          <p className="text-3xl font-bold text-[#555]">Welcome to CRM</p>
+          <p className="text-3xl font-bold text-[#111827]">Welcome to CRM</p>
 
           {error && (
             <p className="mt-4 text-base font-medium text-rose-500">{error}</p>
@@ -70,30 +70,30 @@ const Login = () => {
             noValidate
             className="mt-10 w-full max-w-xs"
           >
-            <label className="block text-sm font-semibold uppercase tracking-wide text-[#888]">Email</label>
+            <label className="block text-sm font-semibold uppercase tracking-wide text-[#6b7280]">Email</label>
             <input
               type="text"
               value={email}
               autoComplete="username"
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-2 w-full border-b border-[#e2e2e2] pb-2 text-lg font-medium text-[#555] outline-none"
+              className="mt-1.5 w-full border-b border-[#e5e7eb] pb-2 text-lg font-medium text-[#111827] outline-none"
               disabled={loading}
             />
 
-            <label className="mt-6 block text-sm font-semibold uppercase tracking-wide text-[#888]">Password</label>
+            <label className="mt-6 block text-sm font-semibold uppercase tracking-wide text-[#6b7280]">Password</label>
             <div className="relative">
               <input
                 type={showPwd ? "text" : "password"}
                 value={password}
                 autoComplete="current-password"
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-2 w-full border-b border-[#e2e2e2] pb-2 pr-8 text-lg font-medium text-[#555] outline-none"
+                className="mt-1.5 w-full border-b border-[#e5e7eb] pb-2 pr-8 text-lg font-medium text-[#111827] outline-none"
                 disabled={loading}
               />
               <button
                 type="button"
                 onClick={() => setShowPwd((v) => !v)}
-                className="absolute right-0 top-1/2 -translate-y-1/2 text-[#9a9a9a] hover:text-[#6f6f6f]"
+                className="absolute right-0 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#6b7280]"
                 aria-label={showPwd ? "Hide password" : "Show password"}
                 tabIndex={-1}
               >
@@ -113,7 +113,7 @@ const Login = () => {
             </div>
 
             <div className="mt-3 flex items-center justify-end">
-              <a href="/forgot-password" className="text-sm font-semibold text-[#777] hover:text-[#555]">
+              <a href="/forgot-password" className="text-sm font-semibold text-[#6b7280] hover:text-[#4b5563]">
                 Forgot password?
               </a>
             </div>
@@ -121,15 +121,15 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="mt-6 w-full cursor-pointer rounded-full bg-[#6b6b6b] py-3 text-lg font-semibold text-white shadow-[0_6px_16px_rgba(0,0,0,0.2)] transition-colors hover:bg-[#5d5d5d] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-6 w-full cursor-pointer rounded-full bg-gradient-to-r from-[#3f4a88] via-[#4c5aa3] to-[#5b6abf] py-3 text-lg font-semibold text-white shadow-[0_12px_26px_rgba(63,74,136,0.35)] transition-colors hover:from-[#374074] hover:to-[#4a58a6] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
           </form>
 
-          <p className="mt-6 text-sm font-semibold text-[#888]">
+          <p className="mt-6 text-sm font-semibold text-[#6b7280]">
             New to CRM?
-            <a href="/register" className="ml-1 text-[#666] underline">
+            <a href="/register" className="ml-1 text-[#4f46e5] underline">
               Create Account
             </a>
           </p>

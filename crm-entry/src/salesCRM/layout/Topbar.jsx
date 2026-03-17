@@ -1,13 +1,8 @@
 import React, { useEffect } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
-import { CalendarDays } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { CalendarDays, Bell, Menu } from "lucide-react";
 
-const NAV_LINKS = [
-  { name: "Leads", path: "/crm/sales/leads" },
-  { name: "Deals", path: "/crm/sales/deals" },
-];
-
-export default function Topbar() {
+export default function Topbar({ onToggleSidebar }) {
   const navigate = useNavigate();
   const [scrolled, setScrolled] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
@@ -38,79 +33,48 @@ export default function Topbar() {
   return (
     <header
       style={{
-        position: "fixed",
+        position: "sticky",
         top: 0,
-        left: 0,
-        right: 0,
-        height: "64px",
+        zIndex: 120,
         background: "#ffffff",
         borderBottom: "1px solid #e5e7eb",
+        padding: "12px 24px",
         display: "flex",
         alignItems: "center",
-        padding: "0 24px",
-        zIndex: 200,
+        gap: 12,
         boxShadow: scrolled ? "0 2px 16px rgba(0,0,0,0.08)" : "none",
       }}
     >
-      <div
+      <button
+        type="button"
+        onClick={onToggleSidebar}
+        aria-label="Toggle sidebar"
         style={{
-          fontWeight: 800,
-          fontSize: "20px",
-          marginRight: "30px",
-          cursor: "pointer",
-        }}
-        onClick={() => navigate("/crm/sales/leads")}
-      >
-        Sales CRM
-      </div>
-
-      <ul
-        style={{
-          listStyle: "none",
-          display: "flex",
-          gap: "6px",
-          margin: 0,
-          padding: 0,
-        }}
-      >
-        {NAV_LINKS.map((link) => (
-          <li key={link.path}>
-            <NavLink
-              to={link.path}
-              end={link.path === "/crm/sales"}
-              style={({ isActive }) => ({
-                textDecoration: "none",
-                padding: "8px 14px",
-                borderRadius: "8px",
-                fontSize: "17px",
-                fontWeight: 600,
-                background: isActive ? "#eef2ff" : "transparent",
-                color: isActive ? "#5b4cf5" : "#6b7280",
-              })}
-            >
-              {link.name}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-
-      <div
-        style={{
-          marginLeft: "auto",
+          width: "36px",
+          height: "36px",
+          borderRadius: "10px",
+          border: "1px solid #e2e8f0",
+          background: "#ffffff",
+          color: "#475569",
           display: "flex",
           alignItems: "center",
-          gap: "12px",
+          justifyContent: "center",
+          cursor: "pointer",
         }}
       >
+        <Menu size={18} />
+      </button>
+      <div style={{ fontWeight: 700, fontSize: 16, color: "#111827" }}>Sales Overview</div>
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
         <button
           type="button"
           onClick={() => navigate("/crm/sales/calendar")}
           title="Calendar"
           aria-label="Open sales calendar"
           style={{
-            width: "40px",
-            height: "40px",
-            borderRadius: "12px",
+            width: "38px",
+            height: "38px",
+            borderRadius: "10px",
             border: "1px solid #e2e8f0",
             background: "#ffffff",
             color: "#475569",
@@ -118,10 +82,28 @@ export default function Topbar() {
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
-            boxShadow: "0 10px 20px rgba(15,23,42,0.05)",
           }}
         >
           <CalendarDays size={18} />
+        </button>
+        <button
+          type="button"
+          title="Notifications"
+          aria-label="Notifications"
+          style={{
+            width: "38px",
+            height: "38px",
+            borderRadius: "10px",
+            border: "1px solid #e2e8f0",
+            background: "#ffffff",
+            color: "#475569",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+          }}
+        >
+          <Bell size={18} />
         </button>
         <div ref={profileRef} style={{ position: "relative" }}>
           <button

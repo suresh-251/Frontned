@@ -7,6 +7,17 @@ export function LeadsPerformanceChart({ onClose, leads }) {
   const [tooltip, setTooltip] = useState(null);
   const [activeRange, setActiveRange] = useState("30");
   const [customRange, setCustomRange] = useState({ from: offsetDay(29), to: todayStr() });
+  const [customTouched, setCustomTouched] = useState(false);
+
+  useEffect(() => {
+    if (activeRange !== "custom") {
+      setCustomTouched(false);
+      return;
+    }
+    if (!customTouched) {
+      setCustomRange({ from: "", to: "" });
+    }
+  }, [activeRange, customTouched]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => setAnimated(true), 60);
@@ -97,11 +108,25 @@ export function LeadsPerformanceChart({ onClose, leads }) {
             <div className="chart-custom-range">
               <div className="chart-custom-range__field">
                 <label>From</label>
-                <input type="date" value={customRange.from} onChange={(event) => setCustomRange((current) => ({ ...current, from: event.target.value }))} />
+                <input
+                  type="date"
+                  value={customRange.from}
+                  onChange={(event) => {
+                    setCustomTouched(true);
+                    setCustomRange((current) => ({ ...current, from: event.target.value }));
+                  }}
+                />
               </div>
               <div className="chart-custom-range__field">
                 <label>To</label>
-                <input type="date" value={customRange.to} onChange={(event) => setCustomRange((current) => ({ ...current, to: event.target.value }))} />
+                <input
+                  type="date"
+                  value={customRange.to}
+                  onChange={(event) => {
+                    setCustomTouched(true);
+                    setCustomRange((current) => ({ ...current, to: event.target.value }));
+                  }}
+                />
               </div>
               <div className="chart-custom-range__summary">{rangeInfo.label}</div>
             </div>

@@ -1,23 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { jwtDecode } from "jwt-decode";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Loader2, RefreshCw, UserRound } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import DatePicker from "react-datepicker";
 import activitiesAPI from "../api/activities.api";
+import leadsAPI from "../api/leads.api";
 
 const HOUR_START = 7;
 const HOUR_END = 21;
 const HOUR_HEIGHT = 84;
 const RANGE_OPTIONS = [
-  { value: "today", label: "Today", days: 1 },
-  { value: "tomorrow", label: "Tomorrow", days: 1 },
-  { value: "3days", label: "3 days", days: 3 },
-  { value: "7days", label: "7 days", days: 7 },
-  { value: "custom", label: "Custom range", days: null },
+  { value: "day", label: "Day", days: 1 },
+  { value: "workweek", label: "Work week", days: 5 },
+  { value: "week", label: "Week", days: 7 },
 ];
 
 const pad = (value) => String(value).padStart(2, "0");
 const addDays = (date, days) => {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
+  return next;
+};
+const addMonths = (date, months) => {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
   return next;
 };
 const startOfDay = (date) => {
@@ -30,17 +35,71 @@ const endOfDay = (date) => {
   next.setHours(23, 59, 59, 999);
   return next;
 };
+const startOfWeek = (date) => {
+  const next = startOfDay(date);
+  const day = next.getDay();
+  next.setDate(next.getDate() - day);
+  return next;
+};
+const startOfWorkWeek = (date) => {
+  const next = startOfDay(date);
+  const day = next.getDay();
+  const diff = (day + 6) % 7;
+  next.setDate(next.getDate() - diff);
+  return next;
+};
+const endOfWeek = (date) => addDays(startOfWeek(date), 6);
+const endOfWorkWeek = (date) => addDays(startOfWorkWeek(date), 4);
+const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
+const endOfMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
 const toApiDateTime = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 const toInputDate = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const sameDay = (left, right) => startOfDay(left).getTime() === startOfDay(right).getTime();
 const fmtHeaderMonth = (date) => date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+const fmtMonthYear = (date) => date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 const fmtDayName = (date) => date.toLocaleDateString("en-US", { weekday: "short" });
 const fmtDayNumber = (date) => date.toLocaleDateString("en-US", { day: "numeric" });
+const fmtRangeHeader = (start, end) => {
+  if (sameDay(start, end)) {
+    return start.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  }
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  if (sameMonth) {
+    return `${start.toLocaleDateString("en-US", { month: "long" })} ${start.getDate()}–${end.getDate()}, ${start.getFullYear()}`;
+  }
+  return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+};
 const fmtTime = (value) => {
   if (!value) return "All day";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+};
+const fmtRangeHeaderSafe = (start, end) => {
+  if (sameDay(start, end)) {
+    return start.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  }
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  if (sameMonth) {
+    return `${start.toLocaleDateString("en-US", { month: "long" })} ${start.getDate()}-${end.getDate()}, ${start.getFullYear()}`;
+  }
+  return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+};
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const getMonthMatrix = (date) => {
+  const start = startOfWeek(startOfMonth(date));
+  const end = endOfWeek(endOfMonth(date));
+  const weeks = [];
+  let cursor = new Date(start);
+  while (cursor <= end) {
+    const week = [];
+    for (let i = 0; i < 7; i += 1) {
+      week.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+  return weeks;
 };
 const getUserId = () => {
   const token = localStorage.getItem("accessToken");
@@ -54,11 +113,11 @@ const getUserId = () => {
 };
 const activityTypeMeta = (type = "") => {
   const raw = String(type).toLowerCase();
-  if (raw.includes("task")) return { label: "Task", color: "#2563eb", background: "#dbeafe" };
-  if (raw.includes("meeting")) return { label: "Meeting", color: "#0f766e", background: "#ccfbf1" };
-  if (raw.includes("call")) return { label: "Call", color: "#7c3aed", background: "#ede9fe" };
-  if (raw.includes("email")) return { label: "Email", color: "#b45309", background: "#fef3c7" };
-  return { label: "Activity", color: "#475569", background: "#e2e8f0" };
+  if (raw.includes("task")) return { label: "Task", color: "#1d4ed8", background: "#e0f2fe" };
+  if (raw.includes("meeting")) return { label: "Meeting", color: "#0f766e", background: "#dcfce7" };
+  if (raw.includes("call")) return { label: "Call", color: "#0f4c81", background: "#e0f2fe" };
+  if (raw.includes("email")) return { label: "Email", color: "#a16207", background: "#fef9c3" };
+  return { label: "Activity", color: "#334155", background: "#f1f5f9" };
 };
 const parseActivityDate = (item) => {
   const value = item?.startTime || item?.activityDate || item?.dueDate || item?.createdAt || item?.date;
@@ -78,6 +137,7 @@ const layoutDayEvents = (items) => {
   const positioned = items.map((item) => {
     const date = parseActivityDate(item);
     const durationMinutes = getEventDurationMinutes(item);
+    const visualMinutes = 30;
     const endDate = date ? new Date(date.getTime() + durationMinutes * 60000) : null;
     const hour = date ? date.getHours() + (date.getMinutes() / 60) : HOUR_START;
     const normalizedHour = Math.max(HOUR_START, Math.min(HOUR_END - 0.25, hour));
@@ -87,7 +147,7 @@ const layoutDayEvents = (items) => {
       endDate,
       durationMinutes,
       top: (normalizedHour - HOUR_START) * HOUR_HEIGHT,
-      height: Math.max(58, (durationMinutes / 60) * HOUR_HEIGHT),
+      height: (visualMinutes / 60) * HOUR_HEIGHT,
       column: 0,
       columnCount: 1,
     };
@@ -134,52 +194,59 @@ const layoutDayEvents = (items) => {
 
 const getPresetDates = (mode, customStart, customEnd) => {
   const today = startOfDay(new Date());
-  if (mode === "today") return { start: today, end: endOfDay(today) };
-  if (mode === "tomorrow") {
-    const tomorrow = addDays(today, 1);
-    return { start: tomorrow, end: endOfDay(tomorrow) };
-  }
+  if (mode === "day") return { start: today, end: endOfDay(today) };
+  if (mode === "workweek") return { start: startOfWorkWeek(today), end: endOfDay(endOfWorkWeek(today)) };
+  if (mode === "week") return { start: startOfWeek(today), end: endOfDay(endOfWeek(today)) };
   if (mode === "custom") return { start: startOfDay(customStart), end: endOfDay(customEnd) };
   const days = RANGE_OPTIONS.find((item) => item.value === mode)?.days || 3;
   return { start: today, end: endOfDay(addDays(today, days - 1)) };
 };
 
-function EventCard({ item }) {
+function EventCard({ item, onEdit }) {
   const meta = activityTypeMeta(item?.type);
   const title = item?.subject || item?.title || meta.label;
   const description = item?.description || "";
   return (
     <div
       title={`${title}\n${fmtTime(item?.date)}${description ? `\n${description}` : ""}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onEdit(item);
+      }}
       style={{
         position: "absolute",
-        left: `${8 + ((item.column || 0) * item.eventWidth)}px`,
-        width: `${item.eventWidth - 10}px`,
-        borderRadius: 16,
-        padding: "10px 12px",
+        left: `${6 + ((item.column || 0) * item.eventWidth)}px`,
+        width: `${item.eventWidth - 12}px`,
+        borderRadius: 10,
+        padding: "4px 8px",
         background: meta.background,
         color: meta.color,
-        boxShadow: "0 12px 24px rgba(15, 23, 42, 0.08)",
+        border: "1px solid rgba(15, 23, 42, 0.08)",
+        boxShadow: "0 3px 8px rgba(15, 23, 42, 0.08)",
         overflow: "hidden",
+        cursor: "pointer",
       }}
     >
-      <div style={{ display: "inline-flex", alignItems: "center", padding: "4px 8px", borderRadius: 999, background: "rgba(255,255,255,0.64)", fontSize: 10.5, fontWeight: 800 }}>
-        {meta.label}
+      <div style={{ display: "grid", gap: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", padding: "1px 6px", borderRadius: 999, background: "rgba(255,255,255,0.8)", fontSize: 8.5, fontWeight: 800, whiteSpace: "nowrap" }}>
+          {meta.label}
+          </span>
+          <span style={{ fontSize: 10.5, fontWeight: 800, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {title}
+          </span>
+        </div>
+        <div style={{ fontSize: 9.5, fontWeight: 700, color: meta.color }}>{fmtTime(item?.date)}</div>
       </div>
-      <div style={{ marginTop: 8, fontSize: 13, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {title}
-      </div>
-      <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 700 }}>{fmtTime(item?.date)}</div>
-      {description ? <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.45, color: "#334155", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{description}</div> : null}
     </div>
   );
 }
 
-function DayColumn({ day, items, columnWidth }) {
+function DayColumn({ day, items, columnWidth, onCreateEvent, onEditEvent }) {
   const totalHeight = (HOUR_END - HOUR_START) * HOUR_HEIGHT;
 
   const positionedItems = layoutDayEvents(items).map((item) => {
-    const usableWidth = Math.max(120, columnWidth - 18);
+    const usableWidth = Math.max(120, columnWidth - 12);
     return {
       ...item,
       eventWidth: usableWidth / Math.max(1, item.columnCount || 1),
@@ -187,14 +254,22 @@ function DayColumn({ day, items, columnWidth }) {
   });
 
   return (
-    <div style={{ minWidth: columnWidth, width: columnWidth, borderRight: "1px solid #e2e8f0", background: "#ffffff" }}>
-      <div style={{ position: "relative", height: totalHeight }}>
+    <div style={{ minWidth: columnWidth, width: columnWidth, background: "#ffffff", position: "relative", boxSizing: "border-box", borderRight: "1px solid #e5e7eb" }}>
+      <div
+        style={{ position: "relative", height: totalHeight }}
+        onClick={(event) => {
+          const offsetY = event.nativeEvent.offsetY || 0;
+          onCreateEvent(day, offsetY);
+        }}
+      >
         {Array.from({ length: HOUR_END - HOUR_START }).map((_, index) => (
-          <div key={index} style={{ position: "absolute", left: 0, right: 0, top: index * HOUR_HEIGHT, height: HOUR_HEIGHT, borderBottom: "1px dashed #dbe4f0" }} />
+          <div key={index} style={{ position: "absolute", left: 0, right: 0, top: index * HOUR_HEIGHT, height: HOUR_HEIGHT, borderBottom: "1px dashed #dbe4f0" }}>
+            <div style={{ position: "absolute", left: 0, right: 0, top: HOUR_HEIGHT / 2, borderBottom: "1px dashed #e7edf6" }} />
+          </div>
         ))}
         {positionedItems.map((item) => (
           <div key={`${item.id}-${item.subject || item.title || item.date}`} style={{ position: "absolute", top: item.top, left: 0, right: 0, height: item.height }}>
-            <EventCard item={item} />
+            <EventCard item={item} onEdit={onEditEvent} />
           </div>
         ))}
       </div>
@@ -204,27 +279,41 @@ function DayColumn({ day, items, columnWidth }) {
 
 export default function CalendarPage() {
   const today = startOfDay(new Date());
-  const [rangeMode, setRangeMode] = useState("3days");
+  const [rangeMode, setRangeMode] = useState("workweek");
   const [anchorDate, setAnchorDate] = useState(today);
   const [customStart, setCustomStart] = useState(today);
   const [customEnd, setCustomEnd] = useState(addDays(today, 2));
   const [items, setItems] = useState([]);
+  const [localItems, setLocalItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [userOptions, setUserOptions] = useState([]);
+  const [userLoading, setUserLoading] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorValue, setEditorValue] = useState({
+    id: null,
+    title: "",
+    type: "Meeting",
+    date: today,
+    duration: 45,
+    description: "",
+  });
 
   const userId = useMemo(() => getUserId(), []);
+  const [selectedUserId, setSelectedUserId] = useState(userId);
   const { start, end } = useMemo(() => {
     if (rangeMode === "custom") return getPresetDates(rangeMode, customStart, customEnd);
-    const based = rangeMode === "today" || rangeMode === "tomorrow"
-      ? anchorDate
-      : anchorDate;
-    if (rangeMode === "today") return { start: startOfDay(based), end: endOfDay(based) };
-    if (rangeMode === "tomorrow") {
-      const tomorrow = addDays(startOfDay(based), 1);
-      return { start: tomorrow, end: endOfDay(tomorrow) };
+    if (rangeMode === "day") return { start: startOfDay(anchorDate), end: endOfDay(anchorDate) };
+    if (rangeMode === "workweek") {
+      const workStart = startOfWorkWeek(anchorDate);
+      return { start: workStart, end: endOfDay(endOfWorkWeek(anchorDate)) };
     }
-    const days = RANGE_OPTIONS.find((item) => item.value === rangeMode)?.days || 3;
-    return { start: startOfDay(based), end: endOfDay(addDays(startOfDay(based), days - 1)) };
+    if (rangeMode === "week") {
+      const weekStart = startOfWeek(anchorDate);
+      return { start: weekStart, end: endOfDay(addDays(weekStart, 6)) };
+    }
+    const days = RANGE_OPTIONS.find((item) => item.value === rangeMode)?.days || 7;
+    return { start: startOfDay(anchorDate), end: endOfDay(addDays(startOfDay(anchorDate), days - 1)) };
   }, [anchorDate, customEnd, customStart, rangeMode]);
 
   const dayColumns = useMemo(() => {
@@ -237,10 +326,38 @@ export default function CalendarPage() {
     return days;
   }, [end, start]);
 
+  useEffect(() => {
+    let active = true;
+    const loadUsers = async () => {
+      setUserLoading(true);
+      try {
+        const users = await leadsAPI.getSalesUsers();
+        if (!active) return;
+        const normalized = (users || [])
+          .map((user) => ({
+            ...user,
+            _id: Number(user?.userId || user?.id || user?.userID || 0) || null,
+          }))
+          .filter((user) => user._id);
+        setUserOptions(normalized);
+      } catch {
+        if (!active) return;
+        setUserOptions([]);
+      } finally {
+        if (active) setUserLoading(false);
+      }
+    };
+    loadUsers();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const loadCalendar = async () => {
-    if (!userId) {
+    const activeUserId = selectedUserId || userId;
+    if (!activeUserId) {
       setItems([]);
-      setError("Unable to identify the signed-in user for calendar data.");
+      setError("Select a user to load calendar activities.");
       setLoading(false);
       return;
     }
@@ -252,7 +369,7 @@ export default function CalendarPage() {
       const data = await activitiesAPI.getCalendar({
         startDate: toApiDateTime(startOfDay(start)),
         endDate: toApiDateTime(endOfDay(end)),
-        userId,
+        userId: activeUserId,
       });
       setItems(Array.isArray(data) ? data.map((item) => ({
         ...item,
@@ -268,32 +385,18 @@ export default function CalendarPage() {
 
   useEffect(() => {
     loadCalendar();
-  }, [end.getTime(), start.getTime(), userId]);
+  }, [end.getTime(), start.getTime(), userId, selectedUserId]);
 
-  const itemsByDay = useMemo(() => items.reduce((acc, item) => {
+  const combinedItems = useMemo(() => [...items, ...localItems], [items, localItems]);
+
+  const itemsByDay = useMemo(() => combinedItems.reduce((acc, item) => {
     const date = parseActivityDate(item);
     if (!date) return acc;
     const key = toInputDate(date);
     (acc[key] ||= []).push(item);
     acc[key].sort((left, right) => parseActivityDate(left) - parseActivityDate(right));
     return acc;
-  }, {}), [items]);
-
-  const todayItems = useMemo(() => items.filter((item) => {
-    const date = parseActivityDate(item);
-    return date ? sameDay(date, today) : false;
-  }), [items, today]);
-
-  const tomorrowItems = useMemo(() => items.filter((item) => {
-    const date = parseActivityDate(item);
-    return date ? sameDay(date, addDays(today, 1)) : false;
-  }), [items, today]);
-
-  const rangeSummary = [
-    { label: "Today", count: todayItems.length, accent: "#2563eb", bg: "#eff6ff" },
-    { label: "Tomorrow", count: tomorrowItems.length, accent: "#7c3aed", bg: "#f5f3ff" },
-    { label: "In Range", count: items.length, accent: "#0f766e", bg: "#ecfeff" },
-  ];
+  }, {}), [combinedItems]);
 
   const shiftRange = (direction) => {
     if (rangeMode === "custom") {
@@ -303,132 +406,291 @@ export default function CalendarPage() {
       return;
     }
 
-    const span = rangeMode === "today" || rangeMode === "tomorrow" ? 1 : (RANGE_OPTIONS.find((item) => item.value === rangeMode)?.days || 3);
+    const span = rangeMode === "day" ? 1 : (RANGE_OPTIONS.find((item) => item.value === rangeMode)?.days || 7);
     setAnchorDate((current) => addDays(current, direction * span));
   };
 
-  const columnWidth = dayColumns.length <= 3 ? 340 : 240;
+  const columnWidth = 240;
+  const gridTemplate = `76px repeat(${dayColumns.length}, ${columnWidth}px)`;
+  const gridTotalWidth = 76 + (dayColumns.length * columnWidth);
+  const monthMatrix = useMemo(() => getMonthMatrix(anchorDate), [anchorDate]);
+  const handleMiniDateClick = (day) => {
+    setAnchorDate(day);
+  };
+
+  const openEditor = (payload) => {
+    setEditorValue(payload);
+    setEditorOpen(true);
+  };
+
+  const handleCreateEvent = (day, offsetY) => {
+    const hoursFromStart = Math.min(HOUR_END - HOUR_START, Math.max(0, offsetY / HOUR_HEIGHT));
+    const hours = Math.floor(hoursFromStart);
+    const minutes = Math.round((hoursFromStart - hours) * 60 / 15) * 15;
+    const start = new Date(day);
+    start.setHours(HOUR_START + hours, minutes, 0, 0);
+    openEditor({
+      id: null,
+      title: "",
+      type: "Meeting",
+      date: start,
+      duration: 45,
+      description: "",
+    });
+  };
+
+  const handleEditEvent = (item) => {
+    const baseDate = parseActivityDate(item) || new Date();
+    openEditor({
+      id: item.id ?? `local-${baseDate.getTime()}`,
+      title: item.subject || item.title || "",
+      type: activityTypeMeta(item?.type).label,
+      date: baseDate,
+      duration: getEventDurationMinutes(item),
+      description: item.description || "",
+    });
+  };
+
+  const handleSaveEvent = () => {
+    const start = editorValue.date instanceof Date ? editorValue.date : new Date(editorValue.date);
+    const end = new Date(start.getTime() + Number(editorValue.duration || 45) * 60000);
+    const localId = editorValue.id || `local-${start.getTime()}`;
+    const nextItem = {
+      id: localId,
+      title: editorValue.title || "New Event",
+      type: editorValue.type || "Meeting",
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      description: editorValue.description || "",
+    };
+    setLocalItems((current) => {
+      const filtered = current.filter((item) => item.id !== localId);
+      return [...filtered, nextItem];
+    });
+    setEditorOpen(false);
+  };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 22, alignItems: "start" }}>
-      <section style={{ border: "1px solid #dbe4f0", borderRadius: 28, background: "#ffffff", boxShadow: "0 24px 50px rgba(15, 23, 42, 0.06)", overflow: "hidden" }}>
-        <div style={{ padding: "22px 24px 18px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", letterSpacing: "0.12em", textTransform: "uppercase" }}>Follow-up Scheduler</div>
-            <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 10, color: "#0f172a" }}>
-              <CalendarDays size={20} />
-              <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800 }}>{fmtHeaderMonth(start)}</h1>
-            </div>
+    <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
+      <aside style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "#ffffff", padding: 16, position: "sticky", top: 92, height: "fit-content" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>{fmtMonthYear(anchorDate)}</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" onClick={() => setAnchorDate(addMonths(anchorDate, -1))} style={miniBtnStyle}><ChevronLeft size={14} /></button>
+            <button type="button" onClick={() => setAnchorDate(addMonths(anchorDate, 1))} style={miniBtnStyle}><ChevronRight size={14} /></button>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 8 }}>
+          {WEEKDAY_LABELS.map((label) => (
+            <div key={label} style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textAlign: "center" }}>{label}</div>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+            {monthMatrix.flat().map((day) => {
+            const inMonth = day.getMonth() === anchorDate.getMonth();
+            const inRange = day >= startOfDay(start) && day <= endOfDay(end);
+            const isToday = sameDay(day, today);
+            return (
+              <button
+                key={day.toISOString()}
+                type="button"
+                onClick={() => handleMiniDateClick(day)}
+                style={{
+                  height: 28,
+                  borderRadius: 6,
+                  border: "none",
+                  background: inRange ? "#dbeafe" : "transparent",
+                  color: isToday ? "#1d4ed8" : inMonth ? "#1f2937" : "#cbd5f5",
+                  fontSize: 11,
+                  fontWeight: isToday ? 700 : 600,
+                  cursor: "pointer",
+                }}
+              >
+                {day.getDate()}
+              </button>
+            );
+          })}
+        </div>
+
+      </aside>
+
+      <section style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "#ffffff", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <CalendarDays size={18} />
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>Calendar</div>
+            <div style={{ fontSize: 13, color: "#6b7280" }}>{fmtRangeHeaderSafe(start, end)}</div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <select
+              value={selectedUserId || userId || ""}
+              onChange={(event) => setSelectedUserId(event.target.value ? Number(event.target.value) : null)}
+              style={{ ...selectStyle, minWidth: 160 }}
+              disabled={userLoading}
+            >
+              <option value="">{userLoading ? "Loading users..." : "Select user"}</option>
+              {userId ? <option value={userId}>My activities</option> : null}
+              {userOptions.map((user) => (
+                <option key={user._id} value={user._id}>{user.name || user.email || `User ${user._id}`}</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => { setAnchorDate(today); setCustomStart(today); setCustomEnd(addDays(today, 2)); }} style={navBtnStyle}>Today</button>
+            <button type="button" onClick={() => shiftRange(-1)} style={navIconStyle}><ChevronLeft size={16} /></button>
+            <button type="button" onClick={() => shiftRange(1)} style={navIconStyle}><ChevronRight size={16} /></button>
             <select value={rangeMode} onChange={(event) => setRangeMode(event.target.value)} style={selectStyle}>
               {RANGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            {rangeMode === "custom" ? (
-              <>
-                <input type="date" value={toInputDate(customStart)} onChange={(event) => setCustomStart(new Date(`${event.target.value}T00:00:00`))} style={inputStyle} />
-                <input type="date" value={toInputDate(customEnd)} onChange={(event) => setCustomEnd(new Date(`${event.target.value}T00:00:00`))} style={inputStyle} />
-              </>
-            ) : null}
-            <button type="button" onClick={() => shiftRange(-1)} style={navBtnStyle}><ChevronLeft size={16} /></button>
-            <button type="button" onClick={() => { setAnchorDate(today); setCustomStart(today); setCustomEnd(addDays(today, 2)); }} style={{ ...navBtnStyle, minWidth: 88 }}>Today</button>
-            <button type="button" onClick={() => shiftRange(1)} style={navBtnStyle}><ChevronRight size={16} /></button>
-            <button type="button" onClick={loadCalendar} style={navBtnStyle} title="Refresh calendar">
+            <button type="button" onClick={loadCalendar} style={navIconStyle} title="Refresh calendar">
               {loading ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={16} />}
             </button>
           </div>
         </div>
 
-        <div style={{ padding: 20 }}>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-            {rangeSummary.map((item) => (
-              <div key={item.label} style={{ minWidth: 134, borderRadius: 18, padding: "14px 16px", background: item.bg, color: item.accent }}>
-                <div style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>{item.label}</div>
-                <div style={{ marginTop: 8, fontSize: 28, fontWeight: 800 }}>{item.count}</div>
-              </div>
-            ))}
-          </div>
+        {error ? <div style={{ ...errorStyle, margin: 16 }}>{error}</div> : null}
 
-          {error ? <div style={errorStyle}>{error}</div> : null}
-
-          <div style={{ border: "1px solid #e2e8f0", borderRadius: 24, overflow: "hidden", background: "#fcfdff" }}>
-            <div style={{ display: "grid", gridTemplateColumns: `76px repeat(${dayColumns.length}, minmax(${columnWidth}px, 1fr))`, borderBottom: "1px solid #e2e8f0" }}>
-              <div style={{ padding: "16px 10px", fontSize: 12, fontWeight: 800, color: "#64748b", borderRight: "1px solid #e2e8f0" }}>IST</div>
+        <div style={{ borderTop: "1px solid #e5e7eb", background: "#ffffff" }}>
+          <div style={{ maxHeight: "68vh", overflow: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: gridTemplate, borderBottom: "1px solid #e5e7eb", position: "sticky", top: 0, zIndex: 2, background: "#ffffff", width: gridTotalWidth }}>
+              <div style={{ padding: "12px 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", borderRight: "1px solid #e5e7eb", boxSizing: "border-box" }}>IST</div>
               {dayColumns.map((day) => (
-                <div key={day.toISOString()} style={{ padding: "14px 14px 12px", borderRight: "1px solid #e2e8f0", background: sameDay(day, today) ? "#f8fbff" : "#ffffff" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: sameDay(day, today) ? "#4f46e5" : "#64748b" }}>{fmtDayName(day)}</div>
-                  <div style={{ marginTop: 2, fontSize: 28, fontWeight: 800, color: sameDay(day, today) ? "#4f46e5" : "#0f172a", lineHeight: 1 }}>{fmtDayNumber(day)}</div>
+                <div key={day.toISOString()} style={{ padding: "10px 12px", borderRight: "1px solid #e5e7eb", background: sameDay(day, today) ? "#eff6ff" : "#ffffff", boxSizing: "border-box" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: sameDay(day, today) ? "#2563eb" : "#6b7280" }}>{fmtDayName(day)}</div>
+                  <div style={{ marginTop: 2, fontSize: 20, fontWeight: 700, color: sameDay(day, today) ? "#2563eb" : "#111827", lineHeight: 1 }}>{fmtDayNumber(day)}</div>
                 </div>
               ))}
             </div>
 
-            <div style={{ maxHeight: "68vh", overflow: "auto" }}>
-              <div style={{ display: "grid", gridTemplateColumns: `76px repeat(${dayColumns.length}, minmax(${columnWidth}px, 1fr))` }}>
-                <div style={{ position: "relative", borderRight: "1px solid #e2e8f0", background: "#ffffff" }}>
-                  {Array.from({ length: HOUR_END - HOUR_START }).map((_, index) => {
-                    const hour = HOUR_START + index;
-                    return (
-                      <div key={hour} style={{ height: HOUR_HEIGHT, borderBottom: "1px dashed #dbe4f0", padding: "8px 10px", fontSize: 12, fontWeight: 700, color: "#64748b" }}>
-                        {hour > 12 ? `${hour - 12}pm` : `${hour}am`}
-                      </div>
-                    );
-                  })}
-                </div>
-                {dayColumns.map((day) => (
-                  <DayColumn key={day.toISOString()} day={day} items={itemsByDay[toInputDate(day)] || []} columnWidth={columnWidth} />
-                ))}
+            <div style={{ display: "grid", gridTemplateColumns: gridTemplate, width: gridTotalWidth }}>
+              <div style={{ position: "relative", borderRight: "1px solid #e5e7eb", background: "#ffffff", boxSizing: "border-box" }}>
+                {Array.from({ length: HOUR_END - HOUR_START }).map((_, index) => {
+                  const hour = HOUR_START + index;
+                  return (
+                    <div key={hour} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid #f1f5f9", padding: "6px 8px", fontSize: 11, fontWeight: 600, color: "#9ca3af", boxSizing: "border-box" }}>
+                      {hour > 12 ? `${hour - 12}pm` : `${hour}am`}
+                    </div>
+                  );
+                })}
               </div>
+              {dayColumns.map((day) => (
+                <DayColumn
+                  key={day.toISOString()}
+                  day={day}
+                  items={itemsByDay[toInputDate(day)] || []}
+                  columnWidth={columnWidth}
+                  onCreateEvent={handleCreateEvent}
+                  onEditEvent={handleEditEvent}
+                />
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      <aside style={{ border: "1px solid #dbe4f0", borderRadius: 28, background: "#ffffff", boxShadow: "0 24px 50px rgba(15, 23, 42, 0.06)", overflow: "hidden", position: "sticky", top: 92 }}>
-        <div style={{ padding: "20px 22px", borderBottom: "1px solid #e2e8f0" }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em" }}>Quick Glance</div>
-          <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>Upcoming Follow-ups</div>
-          <div style={{ marginTop: 6, fontSize: 13, color: "#64748b" }}>{items.length} item{items.length === 1 ? "" : "s"} across this view</div>
-        </div>
-        <div style={{ maxHeight: "calc(100vh - 220px)", overflowY: "auto", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-          {!items.length ? (
-            <div style={{ border: "1px dashed #dbe4f0", borderRadius: 18, padding: 20, color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>
-              No follow-ups are scheduled in this range.
+      {editorOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 400,
+            padding: 16,
+          }}
+          onClick={() => setEditorOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "#ffffff",
+              borderRadius: 16,
+              padding: 18,
+              boxShadow: "0 24px 60px rgba(15, 23, 42, 0.2)",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Calendar Event</div>
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              <input
+                type="text"
+                value={editorValue.title}
+                onChange={(event) => setEditorValue((prev) => ({ ...prev, title: event.target.value }))}
+                placeholder="Event title"
+                style={modalInputStyle}
+              />
+              <select
+                value={editorValue.type}
+                onChange={(event) => setEditorValue((prev) => ({ ...prev, type: event.target.value }))}
+                style={modalInputStyle}
+              >
+                <option>Meeting</option>
+                <option>Task</option>
+                <option>Call</option>
+                <option>Email</option>
+              </select>
+              <DatePicker
+                selected={editorValue.date}
+                onChange={(date) => setEditorValue((prev) => ({ ...prev, date }))}
+                showTimeSelect
+                timeIntervals={15}
+                dateFormat="MMM d, yyyy h:mm aa"
+                className="calendar-modal-datepicker"
+                customInput={<input style={modalInputStyle} />}
+              />
+              <input
+                type="number"
+                min="15"
+                step="15"
+                value={editorValue.duration}
+                onChange={(event) => setEditorValue((prev) => ({ ...prev, duration: event.target.value }))}
+                style={modalInputStyle}
+                placeholder="Duration (minutes)"
+              />
+              <textarea
+                value={editorValue.description}
+                onChange={(event) => setEditorValue((prev) => ({ ...prev, description: event.target.value }))}
+                placeholder="Notes"
+                style={{ ...modalInputStyle, minHeight: 90, resize: "vertical" }}
+              />
             </div>
-          ) : items.map((item) => {
-            const meta = activityTypeMeta(item?.type);
-            return (
-              <div key={`${item?.id}-${item?.subject || item?.title || item?.date}`} style={{ border: "1px solid #e2e8f0", borderRadius: 20, padding: 16, background: "#fcfdff" }}>
-                <div style={{ display: "inline-flex", alignItems: "center", padding: "5px 10px", borderRadius: 999, background: meta.background, color: meta.color, fontSize: 11.5, fontWeight: 800 }}>
-                  {meta.label}
-                </div>
-                <div style={{ marginTop: 10, fontSize: 14, fontWeight: 800, color: "#0f172a", lineHeight: 1.4 }}>
-                  {item?.subject || item?.title || meta.label}
-                </div>
-                <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                  <div style={metaRowStyle}><Clock3 size={14} /><span>{fmtTime(item?.date)}</span></div>
-                  {item?.assignedUserId ? <div style={metaRowStyle}><UserRound size={14} /><span>User #{item.assignedUserId}</span></div> : null}
-                  {item?.priority ? <div style={metaRowStyle}><CalendarDays size={14} /><span>Priority: {item.priority}</span></div> : null}
-                  {item?.description ? <div style={{ marginTop: 2, fontSize: 12.5, color: "#475569", lineHeight: 1.6 }}>{item.description}</div> : null}
-                </div>
-              </div>
-            );
-          })}
+            <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" style={modalGhostStyle} onClick={() => setEditorOpen(false)}>Cancel</button>
+              <button type="button" style={modalPrimaryStyle} onClick={handleSaveEvent}>Save</button>
+            </div>
+          </div>
         </div>
-      </aside>
+      ) : null}
     </div>
   );
 }
 
 const navBtnStyle = {
-  minWidth: 40,
-  height: 40,
-  borderRadius: 12,
-  border: "1px solid #dbe4f0",
+  minWidth: 70,
+  height: 34,
+  borderRadius: 6,
+  border: "1px solid #e5e7eb",
   background: "#ffffff",
-  color: "#334155",
-  fontSize: 13,
-  fontWeight: 700,
+  color: "#374151",
+  fontSize: 12.5,
+  fontWeight: 600,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
+
+const navIconStyle = {
+  width: 34,
+  height: 34,
+  borderRadius: 6,
+  border: "1px solid #e5e7eb",
+  background: "#ffffff",
+  color: "#6b7280",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -436,28 +698,64 @@ const navBtnStyle = {
 };
 
 const selectStyle = {
-  minWidth: 132,
-  height: 40,
-  borderRadius: 12,
-  border: "1px solid #dbe4f0",
+  minWidth: 90,
+  height: 34,
+  borderRadius: 6,
+  border: "1px solid #e5e7eb",
   background: "#ffffff",
-  color: "#334155",
-  fontSize: 13,
-  fontWeight: 700,
-  padding: "0 12px",
+  color: "#374151",
+  fontSize: 12.5,
+  fontWeight: 600,
+  padding: "0 8px",
   outline: "none",
 };
 
-const inputStyle = {
-  height: 40,
-  borderRadius: 12,
-  border: "1px solid #dbe4f0",
+const miniBtnStyle = {
+  width: 26,
+  height: 26,
+  borderRadius: 6,
+  border: "1px solid #e5e7eb",
   background: "#ffffff",
-  color: "#334155",
+  color: "#6b7280",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
+
+const modalInputStyle = {
+  width: "100%",
+  height: 38,
+  borderRadius: 8,
+  border: "1px solid #e5e7eb",
+  padding: "0 10px",
+  fontSize: 13,
+  color: "#111827",
+  outline: "none",
+};
+
+const modalGhostStyle = {
+  height: 36,
+  borderRadius: 8,
+  border: "1px solid #e5e7eb",
+  padding: "0 12px",
+  background: "#ffffff",
+  color: "#374151",
   fontSize: 13,
   fontWeight: 600,
-  padding: "0 12px",
-  outline: "none",
+  cursor: "pointer",
+};
+
+const modalPrimaryStyle = {
+  height: 36,
+  borderRadius: 8,
+  border: "1px solid #2563eb",
+  padding: "0 14px",
+  background: "#2563eb",
+  color: "#ffffff",
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer",
 };
 
 const errorStyle = {
@@ -469,13 +767,4 @@ const errorStyle = {
   fontSize: 13,
   fontWeight: 600,
   padding: "12px 14px",
-};
-
-const metaRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 12.5,
-  fontWeight: 600,
-  color: "#475569",
 };

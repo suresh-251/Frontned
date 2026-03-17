@@ -1,11 +1,40 @@
 import { AVATAR_COLORS, CSV_FIELD_MAP, LEAD_SOURCE_OPTIONS, STATUS_LIST } from "./constants";
 
+const parseValidDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  if (date.getUTCFullYear() < 1901) return null;
+  return date;
+};
+
+const toDateOnly = (value) => {
+  const date = parseValidDate(value);
+  if (!date) return "";
+  return date.toISOString().split("T")[0];
+};
+
 export const fmtDate = (dateString) => {
   if (!dateString) return "-";
-  return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
+  const date = parseValidDate(dateString) || new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
+  });
+};
+
+export const fmtDateTime = (dateString) => {
+  if (!dateString) return "-";
+  const date = parseValidDate(dateString);
+  if (!date) return "-";
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 };
 
@@ -15,12 +44,23 @@ export const offsetDay = (days) => new Date(Date.now() + days * 86400000).toISOS
 
 export function getFollowUpLabel(dateStr) {
   if (!dateStr) return null;
+  const dateOnly = toDateOnly(dateStr);
+  if (!dateOnly) return null;
   const today = todayStr();
   const tomorrow = offsetDay(1);
-  if (dateStr < today) return { label: fmtDate(dateStr), type: "overdue" };
-  if (dateStr === today) return { label: "Today", type: "today" };
-  if (dateStr === tomorrow) return { label: "Tomorrow", type: "tomorrow" };
-  return { label: fmtDate(dateStr), type: "normal" };
+  const displayTime = (() => {
+    const date = parseValidDate(dateStr);
+    if (!date) return "";
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    if (hours === 0 && minutes === 0) return "";
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  })();
+  const withTime = (label) => (displayTime ? `${label} · ${displayTime}` : label);
+  if (dateOnly < today) return { label: withTime(fmtDate(dateStr)), type: "overdue" };
+  if (dateOnly === today) return { label: withTime("Today"), type: "today" };
+  if (dateOnly === tomorrow) return { label: withTime("Tomorrow"), type: "tomorrow" };
+  return { label: withTime(fmtDate(dateStr)), type: "normal" };
 }
 
 export function formatStatus(status = "") {
@@ -122,7 +162,7 @@ export function leadToUpdatePayload(lead = {}) {
     description: lead.description || "",
     whatsappEnabled: !!lead.whatsappEnabled,
     assignedToUserId: Number(lead.assignedToUserId || 0),
-    nextFollowUpAt: lead.nextFollowUpAt || (lead.followUpDate ? `${lead.followUpDate}T00:00:00.000Z` : null),
+    nextFollowUpAt: lead.nextFollowUpAt || normalizeFollowUpDateTime(lead.followUpDate),
   };
 }
 
@@ -162,8 +202,8 @@ export function createLeadRecord(lead, index = 0) {
     avatarBg: AVATAR_COLORS[index % AVATAR_COLORS.length],
     createdDate: lead.createdAt ? lead.createdAt.split("T")[0] : todayStr(),
     createdAt: lead.createdAt || null,
-    followUpDate: lead.nextFollowUpAt ? lead.nextFollowUpAt.split("T")[0] : "",
-    nextFollowUpAt: lead.nextFollowUpAt || null,
+    followUpDate: parseValidDate(lead.nextFollowUpAt) ? lead.nextFollowUpAt : "",
+    nextFollowUpAt: parseValidDate(lead.nextFollowUpAt) ? lead.nextFollowUpAt : null,
     lastContacted: lead.lastContactedAt ? lead.lastContactedAt.split("T")[0] : "",
     respondedTo: "",
     address: lead.address || lead.street || addressParts.join(", "),
@@ -187,3 +227,14 @@ export function normalizeLeads(apiLeads = []) {
           : [];
   return items.map((lead, index) => createLeadRecord(lead, index));
 }
+const normalizeFollowUpDateTime = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const valid = parseValidDate(raw);
+  if (!valid) return null;
+  if (raw.includes("T")) {
+    return raw.length === 16 ? `${raw}:00` : raw;
+  }
+  return `${raw}T00:00:00`;
+};

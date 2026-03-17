@@ -39,6 +39,18 @@ const SEARCH_FIELD_OPTIONS = [
   { value: "address", label: "Address" },
 ];
 
+const normalizeFollowUpDateTime = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (raw.includes("T")) {
+    return raw.length === 16 ? `${raw}:00` : raw;
+  }
+  return `${raw}T00:00:00`;
+};
+
+const isRealDate = (date) => date && !Number.isNaN(date.getTime()) && date.getUTCFullYear() > 1900;
+
 function SortIcon({ sortBy, sortDir, col }) {
   return <span className="sort-ico">{sortBy === col ? (sortDir === "asc" ? <IChevU s={9} /> : <IChevD s={9} />) : <span className="sort-both"><IChevU s={8} /><IChevD s={8} /></span>}</span>;
 }
@@ -47,9 +59,10 @@ function formatFilterChipDate(value) {
   if (!value) return "";
   const raw = String(value).trim();
   const dateOnly = raw.includes("T") ? raw.split("T")[0] : raw.split(" ")[0];
-  const parsed = new Date(`${dateOnly}T00:00:00`);
+  const parsed = new Date(raw.includes("T") ? raw : `${dateOnly}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return dateOnly || raw;
-  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const hasTime = raw.includes("T") && !raw.endsWith("T00:00:00") && !raw.endsWith("T00:00");
+  return parsed.toLocaleDateString("en-US", hasTime ? { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", year: "numeric" });
 }
 
 function sameFilterDay(a, b) {
@@ -139,7 +152,19 @@ export default function Leads() {
   const [sortBy, setSortBy] = useState("createdDate");
   const [sortDir, setSortDir] = useState("desc");
   const [selected, setSelected] = useState(new Set());
-  const [visibleCols, setVisibleCols] = useState(ALL_COLUMNS.map((column) => column.key));
+  const [visibleCols, setVisibleCols] = useState(() => {
+    try {
+      const raw = localStorage.getItem(VISIBLE_COLUMNS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      const allowed = new Set(ALL_COLUMNS.map((column) => column.key));
+      if (Array.isArray(parsed) && parsed.length) {
+        return parsed.filter((key) => allowed.has(key));
+      }
+    } catch {
+      return ALL_COLUMNS.map((column) => column.key);
+    }
+    return ALL_COLUMNS.map((column) => column.key);
+  });
   const [rowsPerPage, setRowsPerPage] = useState(30);
   const [page, setPage] = useState(1);
   const [wrapText, setWrapText] = useState(false);
@@ -282,7 +307,7 @@ export default function Leads() {
     if (!existing) return;
     const normalizedValue = field === "status" ? sanitizeStatus(value) : value;
     let nextLead = { ...existing, [field]: normalizedValue };
-    if (field === "followUpDate") nextLead = { ...nextLead, nextFollowUpAt: value ? `${value}T00:00:00.000Z` : null };
+    if (field === "followUpDate") nextLead = { ...nextLead, nextFollowUpAt: normalizeFollowUpDateTime(value) };
     if (field === "assignee") {
       const selectedUser = salesUsers.find((user) => getSalesUserLabel(user) === value);
       nextLead = {
@@ -296,7 +321,7 @@ export default function Leads() {
       if (field === "status") {
         await leadsAPI.bulkUpdateStatus([id], normalizedValue);
       }
-      else if (field === "followUpDate") await leadsAPI.update(id, { nextFollowUpAt: value ? `${value}T00:00:00.000Z` : null });
+      else if (field === "followUpDate") await leadsAPI.update(id, { nextFollowUpAt: normalizeFollowUpDateTime(value) });
       else if (field === "source") await leadsAPI.update(id, { ...leadToUpdatePayload(nextLead), source: value });
       else if (field === "assignee") {
         const userId = Number(nextLead.assignedToUserId || 0);
@@ -418,7 +443,8 @@ export default function Leads() {
       if ((filters.createdDateFrom || filters.createdDateTo) && !leadCreatedAt) return false;
     }
     if (filters.followUpDateFrom || filters.followUpDateTo) {
-      const leadFollowUpAt = lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) : lead.followUpDate ? new Date(`${lead.followUpDate}T00:00:00`) : null;
+      const rawFollowUp = lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) : lead.followUpDate ? new Date(lead.followUpDate) : null;
+      const leadFollowUpAt = isRealDate(rawFollowUp) ? rawFollowUp : null;
       if (filters.followUpDateFrom && leadFollowUpAt && leadFollowUpAt < new Date(filters.followUpDateFrom)) return false;
       if (filters.followUpDateTo && leadFollowUpAt && leadFollowUpAt > new Date(filters.followUpDateTo)) return false;
       if ((filters.followUpDateFrom || filters.followUpDateTo) && !leadFollowUpAt) return false;
