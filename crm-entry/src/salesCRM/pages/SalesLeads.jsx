@@ -4,10 +4,14 @@
  * Uses brand-free /api/leads/* endpoints — no active Social CRM brand required.
  */
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+// Legacy screen note:
+// AppRouter.jsx currently routes to pages/Leads.jsx, so this file is not part
+// of the active Sales CRM experience.
 import useAssignedLeads from "../../socialCRM/hooks/useAssignedLeads";
 import { getDepartments } from "../../hr_CRM/api/hr.dept";
 import { getAdminUsers } from "../../api/admin/users.api";
 import { jwtDecode } from "jwt-decode";
+import { getAccessToken } from "../../utils/authStorage";
 import * as XLSX from "xlsx";
 import {
   Users, Eye, X, Search, ChevronLeft, ChevronRight,
@@ -67,7 +71,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, pageSiz
 const useSalesRole = () => {
   return useMemo(() => {
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) return { isManager: false, id: null };
       const decoded = jwtDecode(token);
       const ROLE_CLAIM = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
@@ -303,7 +307,7 @@ export default function SalesLeads() {
                           <Avatar name={l.name} />
                           <div>
                             <p className="text-sm font-semibold text-gray-800">{l.name || "—"}</p>
-                            <p className="text-xs text-gray-400">ID #{l.id}</p>
+                            <p className="text-xs text-gray-400">{l.email || l.phone || "Lead"}</p>
                           </div>
                         </div>
                       </td>
@@ -419,7 +423,7 @@ export default function SalesLeads() {
                     <Avatar name={viewLead.name} />
                     <div>
                       <p className="font-semibold text-gray-800">{viewLead.name || "—"}</p>
-                      <p className="text-xs text-gray-400">ID #{viewLead.id}</p>
+                      <p className="text-xs text-gray-400">{viewLead.email || viewLead.phone || "Lead details"}</p>
                     </div>
                   </div>
                   {[
@@ -480,7 +484,7 @@ export default function SalesLeads() {
                   <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                     <p className="text-xs text-gray-400 mb-1">Lead</p>
                     <p className="font-semibold text-gray-800">{selectedLead.name}</p>
-                    <p className="text-xs text-gray-400">ID #{selectedLead.id}</p>
+                    <p className="text-xs text-gray-400">{selectedLead.email || selectedLead.phone || "Selected lead"}</p>
                   </div>
 
                   <div className="relative" ref={dropdownRef}>
@@ -507,7 +511,7 @@ export default function SalesLeads() {
                               className="w-full px-4 py-3 text-left hover:bg-blue-50 flex items-center justify-between border-b last:border-0 border-gray-50 transition-colors">
                               <div>
                                 <p className="text-sm font-medium text-gray-700">{emp.username}</p>
-                                <p className="text-xs text-gray-400">ID #{emp.userId}</p>
+                                <p className="text-xs text-gray-400">{emp.email || emp.role || "Sales User"}</p>
                               </div>
                               <ChevronRight className="w-3 h-3 text-gray-300" />
                             </button>
@@ -521,7 +525,7 @@ export default function SalesLeads() {
                         <Check className="w-4 h-4 text-emerald-500" />
                         <div>
                           <p className="text-sm font-semibold text-emerald-700">{empSearchQuery}</p>
-                          <p className="text-xs text-emerald-500">UID: {targetUserId}</p>
+                          <p className="text-xs text-emerald-500">{searchableEmployees.find((emp) => Number(emp.userId) === Number(targetUserId))?.email || "Ready to assign"}</p>
                         </div>
                       </div>
                     )}

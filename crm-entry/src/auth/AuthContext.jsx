@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
+import { clearAccessToken, getAccessToken, hasPersistentAccessToken, setAccessToken as persistAccessToken } from "../utils/authStorage";
  
 const AuthContext = createContext(null);
  
@@ -25,7 +26,7 @@ export const AuthProvider = ({ children }) => {
  
     const initAuth = async () => {
  
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
  
       if (!token) {
         setLoading(false);
@@ -87,13 +88,14 @@ export const AuthProvider = ({ children }) => {
   --------------------------------------------------
   */
  
-  const setSession = (token) => {
+  const setSession = (token, options = {}) => {
+    const { persist = hasPersistentAccessToken() } = options;
  
     if (!token || token.split(".").length !== 3) {
       throw new Error("Invalid JWT");
     }
  
-    localStorage.setItem("accessToken", token);
+    persistAccessToken(token, persist);
     setAccessToken(token);
  
     const decoded = jwtDecode(token);
@@ -122,7 +124,8 @@ export const AuthProvider = ({ children }) => {
  
   const logout = () => {
  
-    localStorage.clear();
+    clearAccessToken();
+    localStorage.removeItem("salesCrmToken");
  
     setAccessToken(null);
     setUser(null);

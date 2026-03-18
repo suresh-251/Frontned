@@ -1912,6 +1912,23 @@ export default function PostHistory() {
     setCompose(true);
   };
 
+  const handleSchedulePostClick = (event) => {
+    event.currentTarget.animate(
+      [
+        { transform: "translateY(0) scale(1)" },
+        { transform: "translateY(-8px) scale(1.05)" },
+        { transform: "translateY(0) scale(0.97)" },
+        { transform: "translateY(-2px) scale(1.01)" },
+        { transform: "translateY(0) scale(1)" },
+      ],
+      { duration: 460, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" }
+    );
+
+    window.setTimeout(() => {
+      openComposeForNew();
+    }, 210);
+  };
+
   const setDraftItemRef = useCallback((draftId, node) => {
     const key = String(draftId);
     if (node) draftItemRefs.current.set(key, node);
@@ -2318,7 +2335,23 @@ export default function PostHistory() {
             {tab === "scheduled" && (
               scheduledLoading ? <LoadingCard /> :
               filteredScheduled.length === 0
-                ? <EmptyCard icon="🗓" msg={platformFilter === "All" ? "No scheduled posts." : `No scheduled ${platformFilter} posts.`} />
+                ? (
+                  <div className="bg-white rounded-xl border border-gray-200 min-h-[48vh] flex items-center justify-center p-5">
+                    <div className="text-center space-y-3">
+                      <button
+                        type="button"
+                        onClick={handleSchedulePostClick}
+                        className="px-6 py-3 text-sm font-semibold text-white rounded-xl shadow-md hover:brightness-95 transition-all active:scale-95"
+                        style={{ backgroundColor: "#57b7cd" }}
+                      >
+                        Schedule Post
+                      </button>
+                      <p className="text-sm text-gray-500">
+                        {platformFilter === "All" ? "No scheduled posts." : `No scheduled ${platformFilter} posts.`}
+                      </p>
+                    </div>
+                  </div>
+                )
                 :
               <div className="space-y-2">
                 {filteredScheduled.map(post => (

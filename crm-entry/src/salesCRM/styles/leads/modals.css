@@ -2012,18 +2012,24 @@ cursor:pointer;
 }
 
 
-.chart-modal { width: min(760px, 92vw); border-radius: 18px; }
-.chart-modal__header { padding: 14px 16px 12px; gap: 10px; }
+.chart-modal { width: min(680px, 90vw); border-radius: 16px; }
+.chart-modal__header { padding: 10px 12px 9px; gap: 8px; }
 .chart-modal__icon { width: 32px; height: 32px; border-radius: 10px; }
 .chart-modal__title { font-size: 14px; }
 .chart-modal__subtitle { margin-top: 1px; font-size: 11px; }
-.chart-range-tabs { padding: 2px; border-radius: 10px; }
-.chart-range-tab { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
+.chart-range-tabs { padding: 2px; border-radius: 9px; }
+.chart-range-tab { padding: 3px 8px; font-size: 10px; border-radius: 7px; }
 .chart-modal__close { width: 30px; height: 30px; border-radius: 8px; }
-.chart-summary-grid { gap: 8px; padding: 12px 16px 0; }
-.chart-summary-card { padding: 10px 12px; border-radius: 12px; }
+.chart-summary-grid { gap: 6px; padding: 8px 12px 0; }
+.chart-summary-card { padding: 8px 10px; border-radius: 10px; }
 .chart-summary-label { font-size: 10px; }
-.chart-summary-value { font-size: 18px; }
+.chart-summary-value { font-size: 16px; }
+.chart-canvas-wrap { padding: 8px 8px 10px; }
+.chart-svg { border-radius: 14px; }
+.chart-custom-range { padding: 8px 12px 0; gap: 8px; }
+.chart-custom-range__field label { font-size: 10px; margin-bottom: 4px; }
+.chart-custom-range__field input { padding: 7px 9px; font-size: 11px; }
+.chart-custom-range__summary { padding-top: 2px; font-size: 11px; }
 .followup-picker--compact { border-radius: 12px; }
 .followup-picker--compact .followup-quick { gap: 4px; padding: 6px 6px 4px; }
 .followup-picker--compact .followup-quick button { padding: 4px 7px; font-size: 10px; border-radius: 7px; }

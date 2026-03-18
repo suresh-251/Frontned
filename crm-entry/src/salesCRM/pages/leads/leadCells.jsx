@@ -10,14 +10,14 @@ export function StatusCell({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const menuRef = useRef(null);
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 188, maxHeight: 260 });
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0, maxHeight: 260 });
   const meta = STATUS_META[value] || {};
 
   const getMenuPos = (rect) => {
     const preferredHeight = 260;
     const gap = 8;
     const viewportPadding = 12;
-    const minWidth = Math.max(188, rect.width);
+    const minWidth = Math.max(0, rect.width);
     const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
     const availableAbove = rect.top - viewportPadding;
     const openBelow = availableBelow >= 180 || availableBelow >= availableAbove;
@@ -55,17 +55,15 @@ export function StatusCell({ value, onChange }) {
   return (
     <div className="status-cell" ref={ref}>
       <button className="status-pill" style={{ color: meta.color }} onClick={() => setOpen((current) => !current)}>
-        <span className="status-dot" style={{ background: meta.color }} />
         <span className="status-pill-label">{formatStatus(value)}</span>
         <span className="status-pill-caret"><IChevD s={9} c={meta.color} /></span>
       </button>
       {open && createPortal(
-        <div className="status-menu" ref={menuRef} style={{ position: "fixed", top: menuPos.top, left: menuPos.left, minWidth: menuPos.width, maxHeight: menuPos.maxHeight, overflowY: "auto", zIndex: 5000, display: "grid", gap: 2, background: "#ffffff", border: "1.5px solid #e5e7eb", borderRadius: 12, boxShadow: "0 18px 30px rgba(15, 23, 42, 0.14)", padding: 6, overscrollBehavior: "contain" }}>
+        <div className="status-menu" ref={menuRef} style={{ position: "fixed", top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight, overflowY: "auto", zIndex: 5000, display: "grid", gap: 2, background: "#ffffff", border: "1.5px solid #e5e7eb", borderRadius: 12, boxShadow: "0 18px 30px rgba(15, 23, 42, 0.14)", padding: 4, overscrollBehavior: "contain" }}>
           {STATUS_LIST.map((status) => {
             const currentMeta = STATUS_META[status];
             return (
               <button key={status} className={`status-opt ${value === status ? "status-opt--on" : ""}`} onClick={() => { onChange(status); setOpen(false); }}>
-                <span className="status-opt-dot" style={{ background: currentMeta.color }} />
                 <span style={{ color: currentMeta.color }}>{formatStatus(status)}</span>
               </button>
             );
@@ -98,6 +96,90 @@ export function SourceCell({ value, onChange }) {
             </button>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+export function AssigneeCell({ value, options = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const menuRef = useRef(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 172, maxHeight: 280 });
+
+  const getMenuPos = (rect) => {
+    const preferredHeight = 280;
+    const gap = 8;
+    const viewportPadding = 12;
+    const minWidth = Math.max(164, Math.min(184, rect.width + 10));
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const availableAbove = rect.top - viewportPadding;
+    const openBelow = availableBelow >= 190 || availableBelow >= availableAbove;
+    const maxHeight = Math.max(160, Math.min(preferredHeight, openBelow ? availableBelow - gap : availableAbove - gap));
+    const top = openBelow ? Math.max(viewportPadding, rect.bottom + gap) : Math.max(viewportPadding, rect.top - maxHeight - gap);
+    const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - minWidth - viewportPadding);
+    return { top, left, width: minWidth, maxHeight };
+  };
+
+  useEffect(() => {
+    if (!open || !ref.current) return;
+    setMenuPos(getMenuPos(ref.current.getBoundingClientRect()));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event) => {
+      if (ref.current?.contains(event.target) || menuRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const reposition = () => {
+      if (!ref.current) return;
+      setMenuPos(getMenuPos(ref.current.getBoundingClientRect()));
+    };
+    document.addEventListener("mousedown", close);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]);
+
+  return (
+    <div className="assignee-cell" ref={ref}>
+      <button className="assignee-pill" onClick={() => setOpen((current) => !current)}>
+        <span className="assignee-pill__label">{value || "Unassigned"}</span>
+        <span className="assignee-pill-caret"><IChevD s={9} c="#64748b" /></span>
+      </button>
+      {open && createPortal(
+        <div
+          className="assignee-menu"
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            top: menuPos.top,
+            left: menuPos.left,
+            minWidth: menuPos.width,
+            maxHeight: menuPos.maxHeight,
+            overflowY: "auto",
+            zIndex: 5000,
+          }}
+        >
+          {options.map((option) => (
+            <button
+              key={option}
+              className={`assignee-opt ${value === option ? "assignee-opt--on" : ""}`}
+              onClick={() => {
+                onChange(option);
+                setOpen(false);
+              }}
+            >
+              <span>{option}</span>
+            </button>
+          ))}
+        </div>,
+        document.body
       )}
     </div>
   );

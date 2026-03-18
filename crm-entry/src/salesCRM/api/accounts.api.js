@@ -12,18 +12,12 @@ const accountsAPI = {
   },
 
   create: async (data) => {
-    const res = await apiClient.post('/Accounts', {
-      ...data,
-      createdAt: new Date().toISOString()
-    });
+    const res = await apiClient.post('/Accounts', data);
     return res.data;
   },
 
   update: async (id, data) => {
-    const res = await apiClient.put(`/Accounts/${id}`, {
-      id,
-      ...data
-    });
+    const res = await apiClient.patch(`/Accounts/${id}`, data);
     return res.data;
   },
 

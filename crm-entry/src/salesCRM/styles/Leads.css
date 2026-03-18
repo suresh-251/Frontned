@@ -1,3 +1,12 @@
+/* Sales Leads style entrypoint
+   Import order matters:
+   1. base layout
+   2. controls/toolbar
+   3. table
+   4. panels/kanban
+   5. responsive overrides
+   6. modal layers
+*/
 @import "./leads/base.css";
 @import "./leads/controls.css";
 @import "./leads/table.css";
