@@ -9,9 +9,10 @@ import api from "./apiClient";
  * Full brand analytics summary — totals + daily breakdown + platform breakdown + top posts.
  * GET /api/analytics/brand/summary?days=7
  */
-export const getBrandSummary = async (days = 7, platform = null) => {
+export const getBrandSummary = async (days = 7, platform = null, sortBy = "engagement") => {
   const params = { days };
   if (platform && platform !== "all") params.platform = platform;
+  if (sortBy && sortBy !== "engagement") params.sortBy = sortBy;
   const res = await api.get("/analytics/brand/summary", { params });
   return res.data;
 };

@@ -32,38 +32,41 @@ function TopbarBrandSwitcher() {
   return (
     <div className="flex items-center gap-1 relative" ref={ref}>
       <button onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200 transition-all">
+        className="flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all"
+        style={{ background: "var(--primary-light)", border: "1px solid var(--border-color)" }}>
         {activeBrand ? (
           <>
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-linear-to-br from-blue-600 to-purple-600">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md"
+              style={{ background: `linear-gradient(135deg, var(--logo-gradient-from), var(--logo-gradient-to))` }}>
               {getBrandLogoSrc(activeBrand)
                 ? <img src={getBrandLogoSrc(activeBrand)} alt={activeBrand.name} className="w-5 h-5 object-cover" />
                 : <span className="text-white text-[9px] font-bold">{initials(activeBrand.name)}</span>}
             </div>
-            <span className="max-w-27.5 truncate text-sm font-semibold text-indigo-800">{activeBrand.name}</span>
+            <span className="max-w-27.5 truncate text-sm font-semibold" style={{ color: "var(--primary-text)" }}>{activeBrand.name}</span>
             <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
           </>
         ) : (
           <span className="text-sm font-medium text-yellow-700">No Brand</span>
         )}
-        <svg className={`w-3.5 h-3.5 text-indigo-500 transition-transform duration-300 ease-out ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={`w-3.5 h-3.5 transition-transform duration-300 ease-out ${open ? "rotate-180" : ""}`} style={{ color: "var(--primary-text)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       <button onClick={() => navigate("/crm/socialmedia/brands")}
         title="Add new brand"
-        className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 hover:border-indigo-400 transition-all">
+        className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed transition-all"
+        style={{ borderColor: "var(--primary)", color: "var(--primary-text)" }}>
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Your Brands</p>
-            <button onClick={() => { setOpen(false); navigate("/crm/socialmedia/brands"); }} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Manage</button>
+        <div className="absolute top-full right-0 mt-2 w-72 rounded-2xl shadow-2xl z-50 overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)" }}>
+          <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border-color)", background: "var(--bg-hover)" }}>
+            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Your Brands</p>
+            <button onClick={() => { setOpen(false); navigate("/crm/socialmedia/brands"); }} className="text-xs font-medium" style={{ color: "var(--primary-text)" }}>Manage</button>
           </div>
           <div
             className={needsBrandScroll
@@ -72,16 +75,20 @@ function TopbarBrandSwitcher() {
             }
             style={needsBrandScroll ? { scrollbarWidth: "thin", scrollbarGutter: "stable both-edges" } : undefined}
           >
-            {brands.length === 0 && <p className="px-4 py-3 text-sm text-gray-500 text-center">No brands yet</p>}
+            {brands.length === 0 && <p className="px-4 py-3 text-sm text-center" style={{ color: "var(--text-secondary)" }}>No brands yet</p>}
             {brands.map(b => (
               <button key={b.slug} onClick={() => handleSwitch(b.slug)}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-all text-left ${b.isActive ? "bg-blue-50" : ""}`}>
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-linear-to-br from-blue-600 to-purple-600">
+                className="w-full flex items-center gap-3 px-4 py-2.5 transition-all text-left"
+                style={{ background: b.isActive ? "var(--primary-light)" : "transparent" }}
+                onMouseEnter={(e) => { if (!b.isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { if (!b.isActive) e.currentTarget.style.background = "transparent"; }}>
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg"
+                  style={{ background: `linear-gradient(135deg, var(--logo-gradient-from), var(--logo-gradient-to))` }}>
                   {getBrandLogoSrc(b) ? <img src={getBrandLogoSrc(b)} alt={b.name} className="w-7 h-7 object-cover" /> : <span className="text-white text-[10px] font-bold">{initials(b.name)}</span>}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{b.name}</p>
-                  {b.description && <p className="text-xs text-gray-500 truncate">{b.description}</p>}
+                  <p className="text-sm font-semibold truncate" style={{ color: "var(--text-main)" }}>{b.name}</p>
+                  {b.description && <p className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>{b.description}</p>}
                 </div>
                 {b.isActive && <span className="text-[10px] bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full">Active</span>}
               </button>
@@ -112,8 +119,10 @@ function UserMenu() {
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(!open)}
-        className="flex h-10 items-center gap-2 rounded-xl p-1.5 hover:bg-gray-100 transition">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-linear-to-br from-purple-500 to-pink-500">
+        className="flex h-10 items-center gap-2 rounded-xl p-1.5 transition"
+        style={{ color: "var(--text-main)" }}>
+        <div className="flex h-8 w-8 items-center justify-center rounded-full"
+          style={{ background: `linear-gradient(135deg, var(--logo-gradient-from), var(--logo-gradient-to))` }}>
           <span className="text-white text-sm font-bold">{initials}</span>
         </div>
         <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -122,14 +131,15 @@ function UserMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-900 truncate">{userName}</p>
-            {auth?.user?.email && <p className="text-xs text-gray-500 truncate">{auth.user.email}</p>}
+        <div className="absolute right-0 mt-2 w-56 rounded-2xl shadow-2xl z-50 overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)" }}>
+          <div className="px-4 py-3" style={{ background: "var(--bg-hover)", borderBottom: "1px solid var(--border-color)" }}>
+            <p className="text-sm font-semibold truncate" style={{ color: "var(--text-main)" }}>{userName}</p>
+            {auth?.user?.email && <p className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>{auth.user.email}</p>}
           </div>
           <div className="py-1">
             <button onClick={() => { setOpen(false); navigate("/crm/socialmedia/settings"); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors"
+              style={{ color: "var(--text-main)" }}>
               <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
@@ -198,7 +208,7 @@ export default function Topbar() {
   }, [activeBrand?.id]);
 
   return (
-    <div className="bg-white px-5 border-b border-gray-200 shadow-sm shrink-0 z-30 h-[57px] flex items-center">
+    <div className="px-5 shadow-sm shrink-0 z-30 h-[57px] flex items-center" style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border-color)" }}>
       <div className="flex items-center justify-between gap-4 w-full">
 
         {/* Left: search */}
@@ -208,7 +218,8 @@ export default function Topbar() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input type="text" placeholder="Search..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-200" />
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg focus:outline-none focus:ring-1"
+              style={{ background: "var(--bg-input)", border: "1px solid var(--border-color)", color: "var(--text-main)" }} />
           </div>
         </div>
 
@@ -220,7 +231,8 @@ export default function Topbar() {
           <button
             onClick={() => { setUnread(0); navigate("/crm/socialmedia/inbox"); }}
             title="Inbox messages"
-            className="relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition">
+            className="relative w-9 h-9 flex items-center justify-center rounded-xl transition"
+            style={{ color: "var(--text-secondary)" }}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
@@ -235,7 +247,8 @@ export default function Topbar() {
           <button
             onClick={() => { setNewLeads(0); navigate("/crm/socialmedia/leads"); }}
             title="New leads"
-            className="relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition">
+            className="relative w-9 h-9 flex items-center justify-center rounded-xl transition"
+            style={{ color: "var(--text-secondary)" }}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>

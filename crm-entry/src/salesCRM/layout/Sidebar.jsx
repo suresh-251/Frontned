@@ -1,5 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { CalendarDays, LayoutGrid, Layers } from "lucide-react";
+import ThemeToggle from "../../components/ThemeToggle";
+import nafaLogo from "../../assets/nafa.png";
 
 const navItems = [
   { label: "Leads", path: "/crm/sales/leads", Icon: LayoutGrid },
@@ -9,15 +11,24 @@ const navItems = [
 
 export default function Sidebar() {
   return (
-    <div className="w-56 bg-white border-r border-gray-200 flex flex-col min-h-screen">
-      <div className="p-6 border-b border-gray-200">
+    <div
+      className="w-56 flex flex-col min-h-screen"
+      style={{
+        background: "var(--bg-sidebar)",
+        borderRight: "1px solid var(--border-color)",
+      }}
+    >
+      <div className="p-6" style={{ borderBottom: "1px solid var(--border-color)" }}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-500 rounded-xl flex items-center justify-center text-white font-bold">
-            S
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden"
+            style={{ background: `linear-gradient(135deg, var(--logo-gradient-from), var(--logo-gradient-to))` }}
+          >
+            <img src={nafaLogo} alt="NaFa" className="w-10 h-10 object-cover" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Sales CRM</h2>
-            <p className="text-xs text-gray-500">Pipeline workspace</p>
+            <h2 className="text-lg font-bold" style={{ color: "var(--text-main)" }}>Sales CRM</h2>
+            <p className="text-xs" style={{ color: "var(--text-secondary)" }}>Pipeline workspace</p>
           </div>
         </div>
       </div>
@@ -27,12 +38,11 @@ export default function Sidebar() {
           <NavLink
             key={path}
             to={path}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                isActive
-                  ? "bg-indigo-50 text-indigo-600 font-semibold shadow-sm"
-                  : "text-gray-700 hover:bg-gray-50"
-              }`
+            className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all"
+            style={({ isActive }) =>
+              isActive
+                ? { background: "var(--primary-light)", color: "var(--primary-text)", fontWeight: 600, boxShadow: "var(--shadow-sm)" }
+                : { color: "var(--text-secondary)" }
             }
           >
             <Icon size={18} />
@@ -41,6 +51,10 @@ export default function Sidebar() {
         ))}
       </nav>
 
+      {/* Theme toggle at bottom */}
+      <div className="p-4" style={{ borderTop: "1px solid var(--border-color)" }}>
+        <ThemeToggle />
+      </div>
     </div>
   );
 }

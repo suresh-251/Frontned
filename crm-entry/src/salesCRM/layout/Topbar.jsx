@@ -36,13 +36,13 @@ export default function Topbar({ onToggleSidebar }) {
         position: "sticky",
         top: 0,
         zIndex: 120,
-        background: "#ffffff",
-        borderBottom: "1px solid #e5e7eb",
+        background: "var(--bg-card)",
+        borderBottom: "1px solid var(--border-color)",
         padding: "12px 24px",
         display: "flex",
         alignItems: "center",
         gap: 12,
-        boxShadow: scrolled ? "0 2px 16px rgba(0,0,0,0.08)" : "none",
+        boxShadow: scrolled ? "var(--shadow-md)" : "none",
       }}
     >
       <button
@@ -53,9 +53,9 @@ export default function Topbar({ onToggleSidebar }) {
           width: "36px",
           height: "36px",
           borderRadius: "10px",
-          border: "1px solid #e2e8f0",
-          background: "#ffffff",
-          color: "#475569",
+          border: "1px solid var(--border-color)",
+          background: "var(--bg-card)",
+          color: "var(--text-secondary)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -64,7 +64,7 @@ export default function Topbar({ onToggleSidebar }) {
       >
         <Menu size={18} />
       </button>
-      <div style={{ fontWeight: 700, fontSize: 16, color: "#111827" }}>Sales Overview</div>
+      <div style={{ fontWeight: 700, fontSize: 16, color: "var(--text-main)" }}>Sales Overview</div>
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
         <button
           type="button"
@@ -75,9 +75,9 @@ export default function Topbar({ onToggleSidebar }) {
             width: "38px",
             height: "38px",
             borderRadius: "10px",
-            border: "1px solid #e2e8f0",
-            background: "#ffffff",
-            color: "#475569",
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-card)",
+            color: "var(--text-secondary)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -94,9 +94,9 @@ export default function Topbar({ onToggleSidebar }) {
             width: "38px",
             height: "38px",
             borderRadius: "10px",
-            border: "1px solid #e2e8f0",
-            background: "#ffffff",
-            color: "#475569",
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-card)",
+            color: "var(--text-secondary)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -113,7 +113,7 @@ export default function Topbar({ onToggleSidebar }) {
               height: "36px",
               borderRadius: "50%",
               border: "none",
-              background: "linear-gradient(135deg,#5b4cf5,#8b5cf6)",
+              background: "linear-gradient(135deg, var(--logo-gradient-from), var(--logo-gradient-to))",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -133,10 +133,10 @@ export default function Topbar({ onToggleSidebar }) {
                 right: 0,
                 top: "calc(100% + 10px)",
                 minWidth: "150px",
-                background: "#fff",
-                border: "1px solid #e5e7eb",
+                background: "var(--bg-card)",
+                border: "1px solid var(--border-color)",
                 borderRadius: "12px",
-                boxShadow: "0 18px 34px rgba(15,23,42,0.14)",
+                boxShadow: "var(--shadow-md)",
                 padding: "8px",
                 zIndex: 240,
               }}
@@ -149,7 +149,7 @@ export default function Topbar({ onToggleSidebar }) {
                   padding: "10px 12px",
                   border: "none",
                   borderRadius: "8px",
-                  background: "#fff5f5",
+                  background: "var(--primary-light)",
                   color: "#dc2626",
                   fontWeight: 600,
                   cursor: "pointer",

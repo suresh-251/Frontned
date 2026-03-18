@@ -1,25 +1,29 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import { FacebookPageProvider } from "../context/FacebookPageContext";
+import { applyTheme, getStoredTheme } from "../../components/ThemeToggle";
 
 export default function DashboardLayout() {
   const [collapsed, setCollapsed] = useState(false);
 
+  useEffect(() => {
+    applyTheme(getStoredTheme());
+  }, []);
+
   return (
     <FacebookPageProvider>
-      <div className="flex h-screen overflow-hidden">
-        {/* Sidebar — fixed, never scrolls the page */}
+      <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-body)" }}>
+        {/* Sidebar */}
         <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
 
         {/* Right side: topbar + scrollable content */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Topbar — fixed at top, never moves */}
           <Topbar />
 
           {/* Scrollable content area */}
-          <main className="flex-1 overflow-y-auto bg-gray-50">
+          <main className="flex-1 overflow-y-auto" style={{ background: "var(--bg-body)" }}>
             <div className="p-6">
               <Outlet />
             </div>

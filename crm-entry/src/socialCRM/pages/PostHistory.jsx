@@ -5,6 +5,7 @@ import { useBrand } from "../context/BrandContext";
 import { connectPlatform } from "../api/auth.api";
 import { reschedulePost } from "../api/unified.post.api";
 import { appCache } from "../utils/cache";
+import toast from "react-hot-toast";
 
 const phCacheKey = (type, slug) => `ph_${type}_${slug}`;
 
@@ -720,57 +721,64 @@ function PostPreview({ platform, content, mode, brandName, filePreviewUrls }) {
   const initial = (brandName || "B").charAt(0).toUpperCase();
 
   if (platform === "Instagram") return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden text-xs shadow-sm">
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100">
+        <div className="w-8 h-8 bg-linear-to-br from-pink-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-xs">{initial}</div>
+        <span className="font-semibold text-gray-900 text-xs">{brandName || "your_brand"}</span>
+      </div>
       <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
-        {previewUrl ? <img src={previewUrl} alt="preview" className="w-full h-full object-cover" /> : <span className="text-gray-300 text-4xl">🖼️</span>}
+        {previewUrl ? <img src={previewUrl} alt="preview" className="w-full h-full object-cover" /> : <span className="text-gray-300 text-5xl">🖼️</span>}
       </div>
-      <div className="p-2.5">
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <div className="w-5 h-5 bg-linear-to-br from-pink-500 to-purple-600 rounded-full" />
-          <span className="font-semibold text-gray-900 text-[10px]">{brandName || "your_brand"}</span>
+      <div className="px-3 py-2.5">
+        <div className="flex gap-4 mb-2 text-gray-600">
+          <span className="text-base">❤️</span><span className="text-base">💬</span><span className="text-base">✈️</span>
+          <span className="ml-auto text-base">🔖</span>
         </div>
-        <p className="text-gray-700 leading-relaxed line-clamp-3 text-[10px]">{content || <span className="text-gray-300">Caption will appear here…</span>}</p>
-      </div>
-      <div className="px-2.5 py-1.5 border-t border-gray-100 flex gap-3 text-gray-400 text-[9px]">
-        <span>❤️ Like</span><span>💬 Comment</span><span>✈️ Share</span>
+        <p className="text-xs font-semibold text-gray-900 mb-0.5">42 likes</p>
+        <p className="text-xs text-gray-700 leading-relaxed line-clamp-4">
+          <span className="font-semibold">{brandName || "your_brand"} </span>
+          {content || <span className="text-gray-300">Caption will appear here…</span>}
+        </p>
+        <p className="text-[10px] text-gray-400 mt-1 uppercase">Just now</p>
       </div>
     </div>
   );
 
   if (platform === "LinkedIn") return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden text-xs shadow-sm">
-      <div className="p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-xs">{initial}</div>
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="p-3.5">
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm">{initial}</div>
           <div>
-            <p className="font-semibold text-gray-900 text-[10px]">{brandName || "Your Company"}</p>
-            <p className="text-gray-400 text-[9px]">Company · Just now · 🌐</p>
+            <p className="font-semibold text-gray-900 text-xs">{brandName || "Your Company"}</p>
+            <p className="text-gray-400 text-[10px]">1,234 followers · Just now · 🌐</p>
           </div>
         </div>
-        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap line-clamp-5 text-[10px]">{content || <span className="text-gray-300">Post content…</span>}</p>
-        {previewUrl && mode !== "Document" && <div className="mt-2 rounded-lg overflow-hidden bg-gray-100 aspect-video"><img src={previewUrl} alt="preview" className="w-full h-full object-cover" /></div>}
+        <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap line-clamp-6">{content || <span className="text-gray-300">Post content…</span>}</p>
+        {previewUrl && mode !== "Document" && <div className="mt-3 rounded-lg overflow-hidden bg-gray-100 aspect-video"><img src={previewUrl} alt="preview" className="w-full h-full object-cover" /></div>}
+        {mode === "Document" && <div className="mt-3 rounded-lg bg-gray-100 p-4 flex items-center gap-3 border"><span className="text-2xl">📄</span><span className="text-xs font-medium text-gray-600">Document preview</span></div>}
       </div>
-      <div className="px-3 py-1.5 border-t border-gray-100 flex gap-3 text-gray-400 text-[9px]">
-        <span>👍 Like</span><span>💬 Comment</span><span>🔁 Repost</span>
+      <div className="px-3.5 py-2 border-t border-gray-100 flex justify-between text-gray-500 text-[11px] font-medium">
+        <span>👍 Like</span><span>💬 Comment</span><span>🔁 Repost</span><span>✈️ Send</span>
       </div>
     </div>
   );
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden text-xs shadow-sm">
-      <div className="p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs">{initial}</div>
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="p-3.5">
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">{initial}</div>
           <div>
-            <p className="font-semibold text-gray-900 text-[10px]">{brandName || "Your Page"}</p>
-            <p className="text-gray-400 text-[9px]">Just now · 🌐</p>
+            <p className="font-semibold text-gray-900 text-xs">{brandName || "Your Page"}</p>
+            <p className="text-gray-400 text-[10px]">Just now · 🌐</p>
           </div>
         </div>
-        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap line-clamp-5 text-[10px]">{content || <span className="text-gray-300">Post content…</span>}</p>
-        {previewUrl && (mode === "Image" || mode === "Carousel") && <div className="mt-2 rounded-lg overflow-hidden bg-gray-100"><img src={previewUrl} alt="preview" className="w-full object-cover max-h-40" /></div>}
-        {previewUrl && (mode === "Video" || mode === "Reel") && <div className="mt-2 rounded-lg overflow-hidden bg-black aspect-video flex items-center justify-center"><span className="text-white text-2xl">▶</span></div>}
+        <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap line-clamp-6">{content || <span className="text-gray-300">Post content…</span>}</p>
+        {previewUrl && (mode === "Image" || mode === "Carousel") && <div className="mt-3 rounded-lg overflow-hidden bg-gray-100"><img src={previewUrl} alt="preview" className="w-full object-cover max-h-52" /></div>}
+        {previewUrl && (mode === "Video" || mode === "Reel" || mode === "Story") && <div className="mt-3 rounded-lg overflow-hidden bg-black aspect-video flex items-center justify-center"><span className="text-white text-3xl">▶</span></div>}
       </div>
-      <div className="px-3 py-1.5 border-t border-gray-100 flex gap-3 text-gray-400 text-[9px]">
+      <div className="px-3.5 py-2 border-t border-gray-100 flex justify-between text-gray-500 text-[11px] font-medium">
         <span>👍 Like</span><span>💬 Comment</span><span>↗️ Share</span>
       </div>
     </div>
@@ -1042,8 +1050,9 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
   const [savingDraft, setSavingDraft]     = useState(false);
   const [results, setResults]             = useState(null);
   const [error, setError]                 = useState("");
-  const [showPreview, setShowPreview]     = useState(false);
   const [previewPlatform, setPreviewPl]   = useState("Facebook");
+  const [previewConfirmed, setPreviewConfirmed] = useState(false);
+  const [accountsExpanded, setAccountsExpanded] = useState(false);
   const [filePreviewUrls, setPreviewUrls] = useState([]);
   const [drafts, setDrafts]               = useState([]);
   const [editingDraftId, setEditingDraftId] = useState(null);
@@ -1100,7 +1109,8 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
   const selectedAccounts = accounts.filter(a => selected.has(a.pageIdentifier));
   const accountsMap = new Map(accounts.map(a => [a.pageIdentifier, a]));
   const previewPlatforms = selectedAccounts.length > 0 ? [...new Set(selectedAccounts.map(a => a.platform))] : ["Facebook","Instagram","LinkedIn"];
-  const handleFileChange = (e) => setFiles(currentType?.multi ? Array.from(e.target.files) : e.target.files[0] ? [e.target.files[0]] : []);
+  const handleFileChange = (e) => { setFiles(currentType?.multi ? Array.from(e.target.files) : e.target.files[0] ? [e.target.files[0]] : []); setPreviewConfirmed(false); };
+  const handleContentChange = (e) => { setContent(e.target.value); setPreviewConfirmed(false); };
 
   const minDateTime = (() => {
     const d = new Date(Date.now() + 2 * 60000);
@@ -1118,6 +1128,7 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
     setSelected(new Set());
     setResults(null);
     setError("");
+    setPreviewConfirmed(false);
     setEditingDraftId(null);
     setDraftNotice("");
   };
@@ -1178,7 +1189,6 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
       const res = await api.post("/post", form, {
         headers: { "Content-Type": "multipart/form-data", "X-Brand-Id": activeBrand?.slug },
       });
-      setResults(res.data);
       if (editingDraftId) {
         try { await api.delete(`/post/draft/${editingDraftId}`); } catch { /* ok */ }
         setDrafts(prev => prev.filter(d => d.id !== editingDraftId));
@@ -1186,9 +1196,27 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
       }
       if (!scheduleEnabled) { setContent(""); setFiles([]); setSelected(new Set()); }
       onPosted?.({ scheduled: scheduleEnabled, draftId: resumeDraft?.id });
+      setPosting(false);
+      onClose();
+
+      // Show toast notifications instead of inline results
+      const data = res.data;
+      if (data?.scheduled || scheduleEnabled) {
+        toast(data?.message || `Post scheduled for ${new Date(scheduledAt).toLocaleString()}`, { icon: "📅" });
+      } else if (Array.isArray(data)) {
+        data.forEach(r => {
+          const name = r.targetAccountName || r.accountName || r.AccountName || r.targetAccountId || "";
+          if (r.success ?? r.Success) {
+            toast.success(`Published to ${name}`);
+          } else {
+            toast.error(`Failed: ${name} — ${r.message || r.status || "Unknown error"}`);
+          }
+        });
+      } else {
+        toast.success("Post submitted successfully!");
+      }
     } catch (e) {
       setError(e.message || "Failed to post. Please try again.");
-    } finally {
       setPosting(false);
     }
   };
@@ -1235,11 +1263,11 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Centered dialog */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+      {/* Centered dialog — wider to fit always-visible preview */}
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 shrink-0">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
               <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1249,63 +1277,88 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
             <h2 className="text-sm font-bold text-gray-900">Compose Post</h2>
             {activeBrand && <span className="text-xs text-gray-400">· {activeBrand.name}</span>}
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowPreview(v => !v)}
-              className={`text-xs px-2.5 py-1 rounded-lg font-medium border transition-colors ${showPreview ? "bg-blue-50 text-blue-600 border-blue-200" : "text-gray-500 border-gray-200 hover:bg-gray-50"}`}>
-              {showPreview ? "Hide Preview" : "Preview"}
-            </button>
-            <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        {/* Body */}
+        {/* Body — form + always-visible preview */}
         <div className="flex-1 overflow-hidden flex min-h-0">
 
           {/* Form */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
-            {/* Accounts */}
+            {/* Compact account selector — Zoho/Sprout style */}
             <div className="bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
-              <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
-                <span className="text-xs font-semibold text-gray-600">Post to</span>
-                {selected.size > 0 && <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-medium">{selected.size} selected</span>}
-              </div>
-              {accountsLoading ? (
-                <div className="p-4 text-center text-xs text-gray-400 animate-pulse">Loading accounts…</div>
-              ) : accounts.length === 0 ? (
-                <div className="p-4 text-center text-xs text-gray-500">No accounts. <button onClick={() => connectPlatform("facebook")} className="text-blue-600 underline">Connect Facebook</button></div>
-              ) : (
-                <div className="p-2 space-y-3">
-                  {Object.entries(byPlatform).map(([platform, pAccounts]) => {
-                    const meta = PLATFORM_META[platform] ?? PLATFORM_META.Facebook;
-                    const allChecked = pAccounts.every(a => selected.has(a.pageIdentifier));
-                    return (
-                      <div key={platform}>
-                        <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg ${meta.bg}`}>
-                          <PlatformSvg p={platform} cls={`w-3 h-3 ${meta.color}`} />
-                          <span className={`text-[10px] font-bold ${meta.color}`}>{meta.label}</span>
-                          <button onClick={() => togglePlatform(pAccounts, !allChecked)} className={`ml-auto text-[10px] ${meta.color} hover:underline`}>
-                            {allChecked ? "Deselect all" : "Select all"}
-                          </button>
-                        </div>
-                        <div className="mt-0.5 space-y-0.5 pl-1">
-                          {pAccounts.map(acc => (
-                            <label key={acc.pageIdentifier} className="flex items-center gap-2 px-2 py-1.5 hover:bg-white rounded-lg cursor-pointer">
-                              <input type="checkbox" checked={selected.has(acc.pageIdentifier)} onChange={() => toggle(acc.pageIdentifier)} className="w-3.5 h-3.5 accent-blue-600" />
-                              <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${meta.badge}`}>{meta.icon}</span>
-                              <span className="text-xs text-gray-800 truncate">{acc.displayName || acc.pageIdentifier}</span>
-                              {!acc.isActive && <span className="ml-auto text-[10px] text-gray-400">inactive</span>}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
+              <button type="button" onClick={() => setAccountsExpanded(v => !v)}
+                className="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-100 transition-colors">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-semibold text-gray-600">Post to</span>
+                  {selected.size > 0 ? (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {[...new Set(selectedAccounts.map(a => a.platform))].map(p => {
+                        const count = selectedAccounts.filter(a => a.platform === p).length;
+                        const meta = PLATFORM_META[p] ?? PLATFORM_META.Facebook;
+                        return (
+                          <span key={p} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${meta.badge}`}>
+                            <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p} ({count})
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-gray-400">Select accounts…</span>
+                  )}
                 </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {selected.size > 0 && <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-medium">{selected.size}</span>}
+                  <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${accountsExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+              {accountsExpanded && (
+                accountsLoading ? (
+                  <div className="p-3 text-center text-xs text-gray-400 animate-pulse">Loading accounts…</div>
+                ) : accounts.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-gray-500">No accounts. <button onClick={() => connectPlatform("facebook")} className="text-blue-600 underline">Connect Facebook</button></div>
+                ) : (
+                  <div className="px-2 pb-2 space-y-1.5 border-t border-gray-100 pt-2">
+                    {Object.entries(byPlatform).map(([platform, pAccounts]) => {
+                      const meta = PLATFORM_META[platform] ?? PLATFORM_META.Facebook;
+                      const allChecked = pAccounts.every(a => selected.has(a.pageIdentifier));
+                      return (
+                        <div key={platform}>
+                          <div className="flex items-center gap-1.5 px-1.5 py-1">
+                            <PlatformSvg p={platform} cls={`w-3 h-3 ${meta.color}`} />
+                            <span className={`text-[10px] font-bold ${meta.color}`}>{meta.label}</span>
+                            <button onClick={() => togglePlatform(pAccounts, !allChecked)} className={`ml-auto text-[10px] ${meta.color} hover:underline`}>
+                              {allChecked ? "Deselect" : "All"}
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-1 pl-1">
+                            {pAccounts.map(acc => {
+                              const isChecked = selected.has(acc.pageIdentifier);
+                              return (
+                                <label key={acc.pageIdentifier}
+                                  className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-pointer text-[11px] border transition-all ${
+                                    isChecked ? `${meta.badge} border-current` : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                                  }`}>
+                                  <input type="checkbox" checked={isChecked} onChange={() => toggle(acc.pageIdentifier)} className="hidden" />
+                                  <PlatformSvg p={platform} cls="w-2.5 h-2.5" />
+                                  <span className="font-medium truncate max-w-28">{acc.displayName || acc.pageIdentifier}</span>
+                                  {isChecked && <span className="text-[9px]">✓</span>}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
               )}
             </div>
 
@@ -1356,41 +1409,51 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
               {draftNotice && <p className="text-[10px] text-blue-600 mt-2">{draftNotice}</p>}
             </div>
 
-            {/* Post type */}
-            <div>
-              <p className="text-xs font-semibold text-gray-500 mb-1.5">Post Type</p>
-              <div className="flex flex-wrap gap-1">
-                {POST_TYPES.map(t => (
-                  <button key={t.key} onClick={() => setMode(t.key)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${mode === t.key ? "bg-blue-50 text-blue-600 border-blue-400" : "bg-gray-50 text-gray-600 border-transparent hover:bg-gray-100"}`}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              {currentType?.platforms && <p className="mt-1 text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded-md inline-block">⚠️ Only: {currentType.platforms.join(", ")}</p>}
-            </div>
+            {/* Zoho-style unified compose box */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <textarea rows={4} placeholder="What would you like to share?" value={content} onChange={handleContentChange}
+                className="w-full text-sm text-gray-900 resize-none p-3 focus:outline-none placeholder-gray-400 border-none" />
 
-            {/* Caption */}
-            <textarea rows={4} placeholder="What would you like to share?" value={content} onChange={e => setContent(e.target.value)}
-              className="w-full text-sm text-gray-900 resize-none border border-gray-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-blue-300 placeholder-gray-400" />
-
-            {mode === "Document" && (
-              <input type="text" placeholder="Document title (required)" value={documentTitle} onChange={e => setDocTitle(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
-            )}
-
-            {currentType?.needsMedia && (
-              <label className="block cursor-pointer">
-                <div className={`border-2 border-dashed rounded-xl p-4 text-center transition-all ${files.length > 0 ? "border-green-400 bg-green-50" : "border-gray-200 hover:border-blue-400 hover:bg-blue-50"}`}>
-                  {files.length > 0 ? (
-                    <div><p className="text-green-600 font-medium text-sm">✓ {files.length === 1 ? files[0].name : `${files.length} files`}</p><p className="text-xs text-gray-400">Click to change</p></div>
-                  ) : (
-                    <div><div className="text-2xl mb-1">{mode === "Document" ? "📄" : (mode === "Video" || mode === "Reel") ? "🎥" : "🖼️"}</div><p className="text-xs text-gray-500">{mode === "Carousel" ? "Select multiple images" : `Select ${mode.toLowerCase()} file`}</p></div>
-                  )}
+              {mode === "Document" && (
+                <div className="px-3 pb-2">
+                  <input type="text" placeholder="Document title (required)" value={documentTitle} onChange={e => setDocTitle(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                 </div>
-                <input type="file" accept={currentType.accept} multiple={currentType.multi} onChange={handleFileChange} className="hidden" />
-              </label>
-            )}
+              )}
+
+              <div className="border-t border-gray-100 px-3 py-2 flex items-center gap-1 flex-wrap">
+                {POST_TYPES.filter(t => t.needsMedia !== false || t.key === "Text").map(t => {
+                  const icon = { Text: "📝", Image: "🖼️", Carousel: "🎠", Video: "🎥", Reel: "🎬", Story: "⚡", Document: "📄" }[t.key] ?? "📎";
+                  const isActive = mode === t.key;
+                  return (
+                    <button key={t.key} title={t.key}
+                      onClick={() => { setMode(prev => prev === t.key && t.key !== "Text" ? "Text" : t.key); setPreviewConfirmed(false); }}
+                      className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all border ${isActive ? "bg-blue-50 text-blue-700 border-blue-300 shadow-sm" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-gray-300"}`}>
+                      <span className="text-sm">{icon}</span>
+                      <span>{t.key}</span>
+                    </button>
+                  );
+                })}
+                {currentType?.platforms && (
+                  <span className="ml-1 text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">⚠️ {currentType.platforms.join(", ")} only</span>
+                )}
+              </div>
+
+              {currentType?.needsMedia && (
+                <div className="px-3 pb-3">
+                  <label className="block cursor-pointer">
+                    <div className={`border-2 border-dashed rounded-lg p-3 text-center transition-all ${files.length > 0 ? "border-green-400 bg-green-50" : "border-gray-200 hover:border-blue-400 hover:bg-blue-50"}`}>
+                      {files.length > 0 ? (
+                        <div><p className="text-green-600 font-medium text-sm">✓ {files.length === 1 ? files[0].name : `${files.length} files`}</p><p className="text-[10px] text-gray-400">Click to change</p></div>
+                      ) : (
+                        <p className="text-xs text-gray-500">{mode === "Carousel" ? "Drop images here or click to select" : `Drop ${mode.toLowerCase()} file here or click to select`}</p>
+                      )}
+                    </div>
+                    <input type="file" accept={currentType.accept} multiple={currentType.multi} onChange={handleFileChange} className="hidden" />
+                  </label>
+                </div>
+              )}
+            </div>
 
             {error && <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-lg text-xs">⚠️ {error}</div>}
 
@@ -1416,60 +1479,47 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
                     className="px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-xl font-medium hover:bg-yellow-100 disabled:opacity-50 transition-all text-xs">
                     {savingDraft ? "Saving…" : "💾 Save Draft"}
                   </button>
-                  <button onClick={submit} disabled={posting || !selected.size}
-                    className="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm">
-                    {posting ? (<><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>{scheduleEnabled ? "Scheduling…" : "Posting…"}</>) : scheduleEnabled ? "📅 Schedule" : "🚀 Post Now"}
-                  </button>
+                  {!previewConfirmed ? (
+                    <button onClick={() => setPreviewConfirmed(true)} disabled={!selected.size || (!content.trim() && !files.length)}
+                      className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm">
+                      👁️ Review & Post
+                    </button>
+                  ) : (
+                    <button onClick={submit} disabled={posting || !selected.size}
+                      className="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-xs shadow-sm animate-pulse-once">
+                      {posting ? (<><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>{scheduleEnabled ? "Scheduling…" : "Posting…"}</>) : scheduleEnabled ? "📅 Confirm & Schedule" : "🚀 Confirm & Post"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
-
-            {results && (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                {results.scheduled ? (
-                  <div className="p-3 flex items-start gap-2 bg-blue-50"><span className="text-xl">📅</span><div><p className="font-semibold text-blue-800 text-sm">Post Scheduled!</p><p className="text-xs text-blue-600 mt-0.5">{results.message}</p></div></div>
-                ) : (
-                  <>
-                    <div className="px-3 py-2 border-b border-gray-100"><h3 className="font-semibold text-gray-900 text-xs">Post Results</h3></div>
-                    <div className="divide-y divide-gray-100">
-                      {(Array.isArray(results) ? results : []).map(r => (
-                        <div key={r.targetAccountId} className={`flex items-center justify-between px-3 py-2 ${r.success ? "" : "bg-red-50"}`}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{r.success ? "✅" : "❌"}</span>
-                            <div>
-                              <p className="text-xs font-medium text-gray-900">{accountsMap.get(r.targetAccountId)?.displayName || r.targetAccountName || r.targetAccountId}</p>
-                              <p className={`text-[10px] ${r.success ? "text-green-600" : "text-red-600"}`}>{r.message || r.status}</p>
-                            </div>
-                          </div>
-                          {r.success && r.viewPostUrl && <a href={r.viewPostUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-[10px] font-medium hover:underline">View →</a>}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
           </div>
 
-          {/* Preview panel (optional) */}
-          {showPreview && (
-            <div className="w-60 border-l border-gray-200 bg-gray-50/80 p-3 overflow-y-auto shrink-0">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Preview</p>
-              <div className="flex flex-wrap gap-1 mb-3">
-                {previewPlatforms.map(p => {
-                  const meta = PLATFORM_META[p] ?? PLATFORM_META.Facebook;
-                  return (
-                    <button key={p} onClick={() => setPreviewPl(p)}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all border ${previewPlatform === p ? `${meta.badge} border-transparent` : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"}`}>
-                      <PlatformSvg p={p} cls="w-2.5 h-2.5" />{p.slice(0,2).toUpperCase()}
-                    </button>
-                  );
-                })}
-              </div>
-              <PostPreview platform={previewPlatform} content={content} mode={mode} brandName={activeBrand?.name} filePreviewUrls={filePreviewUrls} />
-              <p className="mt-2 text-[10px] text-gray-400 text-center">Preview may differ</p>
+          {/* Always-visible preview panel */}
+          <div className="w-80 border-l border-gray-200 bg-gray-50/80 p-4 overflow-y-auto shrink-0 flex flex-col">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-3">Live Preview</p>
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {previewPlatforms.map(p => {
+                const meta = PLATFORM_META[p] ?? PLATFORM_META.Facebook;
+                return (
+                  <button key={p} onClick={() => setPreviewPl(p)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all border ${previewPlatform === p ? `${meta.badge} border-transparent shadow-sm` : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"}`}>
+                    <PlatformSvg p={p} cls="w-3 h-3" />{p}
+                  </button>
+                );
+              })}
             </div>
-          )}
+            <div className="flex-1">
+              <PostPreview platform={previewPlatform} content={content} mode={mode} brandName={activeBrand?.name} filePreviewUrls={filePreviewUrls} />
+            </div>
+            {previewConfirmed && (
+              <div className="mt-3 flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                <span className="text-green-600 text-sm">✓</span>
+                <span className="text-[11px] font-medium text-green-700">Preview reviewed — ready to post</span>
+              </div>
+            )}
+            <p className="mt-2 text-[10px] text-gray-400 text-center">Preview may differ from actual post</p>
+          </div>
         </div>
       </div>
     </div>
@@ -1477,20 +1527,41 @@ function ComposeModal({ activeBrand, onClose, onPosted, resumeDraft }) {
 }
 
 // ── Post Table (Meta Business Suite style tabular view) ───────────────────────
-function PostTableRow({ post, onEdit, onDelete, accountPicMap = {} }) {
+function PostTableRow({ post, onEdit, onDelete, onRetried, accountPicMap = {} }) {
   const platforms  = parsePlatforms(post.platforms);
   const [results, setResults] = useState(() => parseResults(post.postResultsJson).map(normResult));
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [insightsFetched, setInsightsFetched] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   // Re-sync if parent data changes
   useEffect(() => { setResults(parseResults(post.postResultsJson).map(normResult)); }, [post.postResultsJson]);
 
   const successResults = results.filter(r => r.success);
+  const failedResults = results.filter(r => !r.success);
   const totalReach = results.reduce((s, r) => s + (r.reach ?? 0), 0);
   const isImage = ["Image","Carousel"].includes(post.postType);
   const isVideo = ["Video","Reel","Story"].includes(post.postType);
   const hasMedia = post.hasMedia && (isImage || isVideo);
+
+  const retryFailed = async () => {
+    if (retrying || !failedResults.length) return;
+    setRetrying(true);
+    try {
+      const res = await api.post(`/post/history/${post.id}/retry`);
+      const retryResults = Array.isArray(res.data) ? res.data : [];
+      retryResults.forEach(r => {
+        const name = r.targetAccountName || r.accountName || r.targetAccountId || "";
+        if (r.success ?? r.Success) toast.success(`Retry succeeded: ${name}`);
+        else toast.error(`Retry failed: ${name} — ${r.message || "Unknown error"}`);
+      });
+      onRetried?.();
+    } catch (e) {
+      toast.error(e?.response?.data?.error || "Retry failed");
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   // Build view links for ALL success results — always try to construct a URL
   const viewLinks = successResults.map(r => buildViewLink(r, accountPicMap)).filter(Boolean);
@@ -1549,11 +1620,24 @@ function PostTableRow({ post, onEdit, onDelete, accountPicMap = {} }) {
       {/* Platforms */}
       <td className="px-4 py-3">
         <div className="flex flex-col gap-1">
-          {platforms.map(p => (
-            <span key={p} className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit ${PLATFORM_COLORS[p] ?? "bg-gray-100 text-gray-600"}`}>
-              <PlatformSvg p={p} cls="w-3 h-3" />{p}
-            </span>
-          ))}
+          {platforms.map(p => {
+            const platAccounts = results.filter(r => normPlatform(r.platform) === p).map(r => r.accountName).filter(Boolean);
+            return (
+              <div key={p} className="relative group/plat w-fit">
+                <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit cursor-default ${PLATFORM_COLORS[p] ?? "bg-gray-100 text-gray-600"}`}>
+                  <PlatformSvg p={p} cls="w-3 h-3" />{p}
+                </span>
+                {platAccounts.length > 0 && (
+                  <div className="absolute left-0 bottom-full mb-1 hidden group-hover/plat:block z-50">
+                    <div className="bg-gray-900 text-white text-[10px] rounded-lg px-2.5 py-1.5 shadow-lg whitespace-nowrap">
+                      {platAccounts.map((name, i) => <div key={i}>{name}</div>)}
+                    </div>
+                    <div className="w-2 h-2 bg-gray-900 rotate-45 ml-3 -mt-1" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </td>
 
@@ -1562,15 +1646,30 @@ function PostTableRow({ post, onEdit, onDelete, accountPicMap = {} }) {
         <span className="text-xs text-gray-600">{fmtLocal(post.processedAt ?? post.scheduledAt)}</span>
       </td>
 
-      {/* Status */}
+      {/* Status — per-platform */}
       <td className="px-4 py-3">
-        {post.status === "Completed"
-          ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">✓ Published</span>
-          : <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">✗ Failed</span>
-        }
-        {post.status === "Failed" && post.errorMessage && (
-          <p className="text-[10px] text-red-400 mt-0.5 max-w-30 truncate" title={post.errorMessage}>{post.errorMessage}</p>
-        )}
+        <div className="flex flex-col gap-1">
+          {results.length > 0 ? results.map((r, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              {r.success
+                ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full">✓ {r.accountName || r.platform}</span>
+                : <>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">✗ {r.accountName || r.platform}</span>
+                    <button onClick={retryFailed} disabled={retrying}
+                      className="text-[9px] font-semibold text-blue-600 hover:text-blue-800 hover:underline disabled:opacity-50">
+                      {retrying ? "Retrying…" : "Retry"}</button>
+                  </>
+              }
+            </div>
+          )) : (
+            post.status === "Completed"
+              ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">✓ Published</span>
+              : <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">✗ Failed</span>
+          )}
+          {post.status === "Failed" && post.errorMessage && results.length === 0 && (
+            <p className="text-[10px] text-red-400 mt-0.5 max-w-30 truncate" title={post.errorMessage}>{post.errorMessage}</p>
+          )}
+        </div>
       </td>
 
       {/* View on Platform */}
@@ -1638,7 +1737,7 @@ function PostTableRow({ post, onEdit, onDelete, accountPicMap = {} }) {
   );
 }
 
-function PostTable({ posts, onEdit, onDelete, accountPicMap = {} }) {
+function PostTable({ posts, onEdit, onDelete, onRetried, accountPicMap = {} }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
@@ -1656,7 +1755,7 @@ function PostTable({ posts, onEdit, onDelete, accountPicMap = {} }) {
           </thead>
           <tbody>
             {posts.map(post => (
-              <PostTableRow key={post.id} post={post} onEdit={onEdit} onDelete={onDelete} accountPicMap={accountPicMap} />
+              <PostTableRow key={post.id} post={post} onEdit={onEdit} onDelete={onDelete} onRetried={onRetried} accountPicMap={accountPicMap} />
             ))}
           </tbody>
         </table>
@@ -2190,7 +2289,7 @@ export default function PostHistory() {
               historyLoading ? <LoadingCard /> :
               filteredCompleted.length === 0
                 ? <EmptyCard icon="✅" msg={platformFilter === "All" ? "No published posts yet." : `No published ${platformFilter} posts yet.`} />
-                : <PostTable posts={filteredCompleted} onEdit={setEditing} onDelete={setDeleting} accountPicMap={accountPicMap} />
+                : <PostTable posts={filteredCompleted} onEdit={setEditing} onDelete={setDeleting} onRetried={refresh} accountPicMap={accountPicMap} />
             )}
 
             {/* Drafted — card list */}
@@ -2243,13 +2342,13 @@ export default function PostHistory() {
         )}
       </div>
 
-      {/* FAB */}
+      {/* FAB
       <button onClick={openComposeForNew} title="Compose post"
         className="fixed bottom-6 right-6 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center z-40">
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
         </svg>
-      </button>
+      </button> */}
 
       {showCompose && <ComposeModal
         activeBrand={effectiveBrand}

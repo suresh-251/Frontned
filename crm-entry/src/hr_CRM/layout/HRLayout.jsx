@@ -135,8 +135,8 @@ export default function HRLayout() {
   const NAME_CLAIM = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name";
 
   useEffect(() => {
-    // Theme Init
-    const savedTheme = localStorage.getItem("hr-crm-theme") || "light";
+    // Theme Init — shared key with sales/social CRM
+    const savedTheme = localStorage.getItem("crm-theme") || localStorage.getItem("hr-crm-theme") || "light";
     document.documentElement.setAttribute("data-theme", savedTheme);
     
     // Auth Check

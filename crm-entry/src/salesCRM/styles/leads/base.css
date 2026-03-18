@@ -4,23 +4,23 @@
 ------------------------------------------------------- */
 
 .page {
-  --ci: #4f46e5;
-  --ci-d: #4338ca;
-  --ci-lt: #eef2ff;
-  --ci-ring: rgba(79, 70, 229, 0.18);
-  --cb: #f9fafb;
-  --cs: #ffffff;
-  --cborder: #e5e7eb;
-  --ct: #111827;
-  --ct2: #374151;
-  --cm: #6b7280;
-  --cq: #9ca3af;
-  --cr-hover: #f9fafb;
-  --cr-sel: #f0f3ff;
+  --ci: var(--primary, #C41E3A);
+  --ci-d: var(--primary-hover, #A31830);
+  --ci-lt: var(--primary-light, #fef2f2);
+  --ci-ring: rgba(196, 30, 58, 0.18);
+  --cb: var(--bg-body, #ffffff);
+  --cs: var(--bg-card, #ffffff);
+  --cborder: var(--border-color, #e5e7eb);
+  --ct: var(--text-main, #111827);
+  --ct2: var(--text-secondary, #6b7280);
+  --cm: var(--text-secondary, #6b7280);
+  --cq: var(--text-muted, #9ca3af);
+  --cr-hover: var(--bg-hover, #f9fafb);
+  --cr-sel: var(--primary-light, #fef2f2);
   --r: 8px;
   --rl: 12px;
-  --sh-sm: 0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --sh-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --sh-sm: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04));
+  --sh-md: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.08));
   --sh-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
   --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 
