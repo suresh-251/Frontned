@@ -1,16 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
-import { getBrandSummary, getChannelMetrics, syncAnalytics } from "../api/analytics.api";
+import { getBrandSummary, syncAnalytics } from "../api/analytics.api";
 import { useBrand } from "../context/BrandContext";
 
 /**
  * Fetches the full analytics summary for the active brand.
  * Re-fetches automatically when the brand or day window changes.
  */
-export default function useAnalytics(days = 7) {
+export default function useAnalytics(days = 7, platform = null) {
   const { activeBrand } = useBrand();
 
   const [summary, setSummary]         = useState(null);
-  const [channels, setChannels]       = useState([]);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState(null);
   const [syncing, setSyncing]         = useState(false);
@@ -21,18 +20,14 @@ export default function useAnalytics(days = 7) {
     setLoading(true);
     setError(null);
     try {
-      const [summaryData, channelData] = await Promise.all([
-        getBrandSummary(days),
-        getChannelMetrics(days),
-      ]);
+      const summaryData = await getBrandSummary(days, platform);
       setSummary(summaryData);
-      setChannels(channelData ?? []);
     } catch (err) {
       setError(err.message || "Failed to load analytics");
     } finally {
       setLoading(false);
     }
-  }, [activeBrand?.slug, days]);
+  }, [activeBrand?.slug, days, platform]);
 
   const sync = useCallback(async () => {
     if (syncing) return;
@@ -55,5 +50,5 @@ export default function useAnalytics(days = 7) {
 
   useEffect(() => { load(); }, [load]);
 
-  return { summary, channels, loading, error, refresh: load, sync, syncing, syncResult };
+  return { summary, loading, error, refresh: load, sync, syncing, syncResult };
 }

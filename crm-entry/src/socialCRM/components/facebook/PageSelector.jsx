@@ -137,8 +137,8 @@ export default function PageSelector({
                     <span className="text-green-700 text-xs font-semibold">Active</span>
                   </div>
                 </div>
-                <p className="text-sm text-gray-600 font-mono truncate">
-                  ID: {activePage.pageId}
+                <p className="text-sm text-green-600 font-medium">
+                  Connected
                 </p>
               </div>
 

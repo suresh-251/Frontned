@@ -1,4 +1,5 @@
-﻿import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+
 import { Navigate, useNavigate } from "react-router-dom";
 import { login } from "../../api/auth.api";
 import { useAuth } from "../../auth/AuthContext";
@@ -14,8 +15,17 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const justLoggedIn = useRef(false);
 
-  if (isAuthenticated) {
+  // Navigate AFTER React state has committed (isAuthenticated becomes true)
+  useEffect(() => {
+    if (justLoggedIn.current && isAuthenticated) {
+      justLoggedIn.current = false;
+      navigate("/", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
+  if (isAuthenticated && !justLoggedIn.current) {
     return <Navigate to="/" replace />;
   }
 
@@ -36,8 +46,9 @@ const Login = () => {
         throw new Error("Invalid credentials");
       }
 
+      justLoggedIn.current = true;
       setSession(data.accessToken, { persist: rememberMe });
-      navigate("/", { replace: true });
+      // Navigation happens in the useEffect above once isAuthenticated is true
     } catch (err) {
       setError("Invalid email or password");
     } finally {

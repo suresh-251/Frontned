@@ -126,9 +126,15 @@ function PlatformDropdown({ platform, accounts, selected, onToggle, onToggleAll 
                   onChange={() => onToggle(acc.pageIdentifier)}
                   className="w-3.5 h-3.5 accent-blue-600"
                 />
-                {acc.profilePictureUrl ? (
-                  <img src={acc.profilePictureUrl} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" />
-                ) : (
+                <img
+                  src={acc.profilePictureUrl
+                    || (platform === "Facebook" && acc.pageIdentifier ? `https://graph.facebook.com/${acc.pageIdentifier}/picture?type=small` : null)}
+                  alt=""
+                  className="w-5 h-5 rounded-full object-cover shrink-0"
+                  onError={e => { e.target.style.display = "none"; }}
+                  style={(!acc.profilePictureUrl && platform !== "Facebook") ? { display: "none" } : undefined}
+                />
+                {!acc.profilePictureUrl && platform !== "Facebook" && (
                   <PlatformSvg p={platform} cls="w-4 h-4 shrink-0 text-gray-400" />
                 )}
                 <span className="text-sm text-gray-800 truncate flex-1">{acc.displayName || acc.pageIdentifier}</span>

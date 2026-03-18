@@ -369,8 +369,8 @@ export default function BrandManager() {
                       {brand.description && (
                         <p className="text-xs text-slate-500 truncate mt-0.5">{brand.description}</p>
                       )}
-                      <p className="text-[10px] text-slate-300 font-mono mt-1">
-                        ID: {brand.slug} · Created {new Date(brand.createdAt).toLocaleDateString()}
+                      <p className="text-[10px] text-slate-300 mt-1">
+                        Created {new Date(brand.createdAt).toLocaleDateString()}
                       </p>
                     </div>
 

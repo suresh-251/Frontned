@@ -224,6 +224,20 @@ export const getLeadHistory = async (leadId) => {
   return res.data || [];
 };
 
+/** Edit the remark text of a specific history entry */
+export const editLeadRemark = async (leadId, historyId, remark) => {
+  await api.put(
+    `/leads/${leadId}/remarks/${historyId}`,
+    JSON.stringify(remark),
+    { headers: { "Content-Type": "application/json" } }
+  );
+};
+
+/** Delete a specific remark/history entry */
+export const deleteLeadRemark = async (leadId, historyId) => {
+  await api.delete(`/leads/${leadId}/remarks/${historyId}`);
+};
+
 // ─── Brand-free Multi-User Assignment ────────────────────────────────────────
 
 /** Returns all users assigned to a specific lead (brand-free) */
