@@ -98,6 +98,16 @@ export const USER_MENU = [
   },
 
   { type: 'link', label: "Project", path: "/crm/hr/project", icon: FolderKanban },
+   { type: 'link', label: "Payroll", path: "/crm/hr/payroll", icon: Banknote },
+  { 
+    type: 'dropdown', label: "Departments", icon: Building2, stateKey: 'isDeptOpen',
+    children: [
+      { label: "Dept Overview", path: "/crm/hr/departments" },
+      { label: "Dept Budget", path: "/crm/hr/department-budget" },
+      { label: "Budget Change", path: "/crm/hr/budget-change" },
+      { label: "Dept Roles", path: "/crm/hr/department-role" }
+    ]
+  },
 
 
   

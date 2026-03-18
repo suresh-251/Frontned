@@ -1,20 +1,23 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { 
-  Plus, Search, ListTodo, User, Calendar, 
+import {
+  Plus, Search, ListTodo, User, Calendar,
   Trash2, Edit3, Eye, Loader2,
   CheckCircle2, Clock, Check, ChevronRight, Lock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
-import { jwtDecode } from "jwt-decode";
+
+// ✅ CONFIG & AUTH IMPORTS
+import { hasPermission } from "../configs/auth.utils";
+import PermissionGate from "../configs/Gaurd/PermissionsGate";
 
 // API IMPORTS
 import { getTodos, createTodo, updateTodo, deleteTodo } from "../api/todo.api";
-import { getAdminUsers } from "../../api/admin/users.api"; 
+import { getAdminUsers } from "../../api/admin/users.api";
 
 export default function Todo() {
   const [data, setData] = useState([]);
-  const [users, setUsers] = useState([]); 
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [viewTask, setViewTask] = useState(null);
@@ -29,20 +32,11 @@ export default function Todo() {
     title: "", description: "", assignedTo: "", dueDate: "", status: "Pending",
   });
 
-  const token = localStorage.getItem("accessToken");
-  const auth = useMemo(() => {
-    if (!token) return { perms: [], isAdmin: false };
-    try {
-      const decoded = jwtDecode(token);
-      const perms = decoded.perm || [];
-      const role = decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"];
-      const isAdmin = role === "ADMIN" || perms.includes("CRM_FULL_ACCESS");
-      return { perms, isAdmin };
-    } catch (e) { return { perms: [], isAdmin: false }; }
-  }, [token]);
-
-  const canView    = auth.isAdmin || auth.perms.includes("TODO_VIEW");
-  const isManager  = auth.isAdmin || auth.perms.includes("TODO_CREATE") || auth.perms.includes("TODO_MANAGE");
+  // ✅ PERMISSION LOGIC
+  const canView   = hasPermission("TODO_VIEW");
+  const canCreate = hasPermission("TODO_CREATE");
+  const canUpdate = hasPermission("TODO_UPDATE");
+  const canDelete = hasPermission("TODO_DELETE");
 
   const load = async () => {
     if (!canView) return;
@@ -50,11 +44,15 @@ export default function Todo() {
     try {
       const [todoRes, userRes] = await Promise.all([
         getTodos(),
-        getAdminUsers({ page: 1, pageSize: 200 })
+        (canCreate || canUpdate)
+          ? getAdminUsers({ page: 1, pageSize: 200 })
+          : Promise.resolve({ users: [] })
       ]);
       setData(todoRes || []);
       setUsers(userRes?.users || []);
-    } catch (err) { toast.error("Failed to load data"); }
+    } catch (err) {
+      if (err.response?.status !== 403) toast.error("Failed to load data");
+    }
     finally { setLoading(false); }
   };
 
@@ -88,7 +86,8 @@ export default function Todo() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!isManager) return toast.error("Unauthorized Action");
+    if (editTask && !canUpdate) return toast.error("Unauthorized Action");
+    if (!editTask && !canCreate) return toast.error("Unauthorized Action");
     
     if (!form.assignedTo) {
       toast.error("Please search and select a user from the list");
@@ -197,13 +196,13 @@ export default function Todo() {
         <div className="p-4 border-b border-[var(--border-color)]">
           <div className="flex items-center justify-between mb-3">
               <h2 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">
-                {auth.isAdmin ? "Master Tasks" : "Tasks"}
+                Tasks
               </h2>
-              {isManager && (
-                 <button onClick={() => { resetForm(); setOpen(true); }} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition active:scale-95 shadow-md shadow-indigo-500/20">
-                   <Plus size={14} />
-                 </button>
-              )}
+              <PermissionGate permission="TODO_CREATE">
+                <button onClick={() => { resetForm(); setOpen(true); }} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition active:scale-95 shadow-md shadow-indigo-500/20">
+                  <Plus size={14} />
+                </button>
+              </PermissionGate>
           </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
@@ -267,12 +266,12 @@ export default function Todo() {
                       <td className="px-4 py-3 text-right">
                          <div className="flex justify-end gap-2">
                            <button onClick={() => setViewTask(t)} className="p-1 text-slate-400 hover:text-indigo-500 transition-all"><Eye size={14}/></button>
-                           {isManager && (
-                             <>
-                               <button onClick={() => handleEdit(t)} className="p-1 text-slate-400 hover:text-emerald-500 transition-all"><Edit3 size={14}/></button>
-                               <button onClick={() => { if(window.confirm("Remove Task?")) { deleteTodo(t.taskId).then(() => load()); } }} className="p-1 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={14}/></button>
-                             </>
-                           )}
+                           <PermissionGate permission="TODO_UPDATE">
+                             <button onClick={() => handleEdit(t)} className="p-1 text-slate-400 hover:text-emerald-500 transition-all"><Edit3 size={14}/></button>
+                           </PermissionGate>
+                           <PermissionGate permission="TODO_DELETE">
+                             <button onClick={() => { if(window.confirm("Remove Task?")) { deleteTodo(t.taskId).then(() => load()); } }} className="p-1 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={14}/></button>
+                           </PermissionGate>
                          </div>
                       </td>
                     </tr>
@@ -286,7 +285,7 @@ export default function Todo() {
 
       {/* MODAL (FORM) */}
       <AnimatePresence>
-        {open && isManager && (
+        {open && (editTask ? canUpdate : canCreate) && (
           <div className="fixed inset-0 flex items-center justify-center z-[110] backdrop-blur-sm bg-slate-900/60 p-4" onClick={() => setOpen(false)}>
             <motion.form initial={{scale:0.95}} animate={{scale:1}} exit={{scale:0.95}} onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-[var(--bg-card)] w-full max-w-sm rounded-2xl shadow-2xl p-6 border border-[var(--border-color)]">
               <h3 className="text-xs font-black text-indigo-500 uppercase tracking-widest mb-5">{editTask ? "Revise Progress" : "New Task"}</h3>
