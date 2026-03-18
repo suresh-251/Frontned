@@ -73,8 +73,9 @@ export default function PageSubscriptions() {
       setPages(prev => prev.map(p =>
         (p.pageId ?? p.pageIdentifier) === pageId ? { ...p, isSubscribed: !isSubscribed } : p
       ));
-    } catch {
-      notify("error", `Failed to ${isSubscribed ? "unsubscribe" : "subscribe"}`);
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.response?.data?.message || `Failed to ${isSubscribed ? "unsubscribe" : "subscribe"}`;
+      notify("error", msg);
     } finally {
       setProcessing(null);
     }

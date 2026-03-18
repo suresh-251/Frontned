@@ -5,7 +5,7 @@ import useFacebookLeads from "../hooks/useFacebookLeads";
 import { useBrand } from "../context/BrandContext";
 import { appCache } from "../utils/cache";
 import { getAvailablePages } from "../api/facebook.pages.api";
-import { getLeadForms, getLeadFilterOptions, getLeadHistory, editLeadRemark, deleteLeadRemark } from "../api/facebook.leads.api";
+import { getLeadForms, syncLeadsByForm, getLeadFilterOptions, getLeadHistory, editLeadRemark, deleteLeadRemark } from "../api/facebook.leads.api";
 import { getGoogleSheetConfig, updateGoogleSheetConfig } from "../api/brand.api";
 import useUsers from "../hooks/useUsers";
 import * as XLSX from "xlsx";
@@ -268,6 +268,39 @@ export default function Leads() {
   const [sheetSaving, setSheetSaving] = useState(false);
   const [sheetMsg, setSheetMsg] = useState("");
 
+  // ── Manual Sync from Meta ──────────────────────────────────────────
+  const [syncing, setSyncing] = useState(false);
+  const [syncAllLoading, setSyncAllLoading] = useState(false);
+
+  const handleSyncForm = async (formId) => {
+    if (!formId) return Toast?.error?.("Select a form first");
+    setSyncing(true);
+    try {
+      await syncLeadsByForm(formId);
+      Toast?.success?.("Leads synced successfully");
+      reload({});
+    } catch {
+      Toast?.error?.("Failed to sync leads from Meta");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSyncAllForms = async () => {
+    if (!forms.length) return Toast?.error?.("No forms available to sync");
+    setSyncAllLoading(true);
+    let successCount = 0;
+    for (const form of forms) {
+      try {
+        await syncLeadsByForm(form.id);
+        successCount++;
+      } catch { /* continue with next form */ }
+    }
+    Toast?.success?.(`Synced ${successCount}/${forms.length} form(s)`);
+    setSyncAllLoading(false);
+    reload({});
+  };
+
   /* =========================
      INITIAL LOAD
      ========================= */
@@ -334,27 +367,49 @@ useEffect(() => {
     if (cachedPages) setPages(cachedPages.data);
     if (cachedForms) setForms(cachedForms.data);
 
-    // Fetch fresh filter options (pages + forms from DB — fast)
-    getLeadFilterOptions()
-      .then(result => {
+    // Fetch forms from Meta Graph API (live data) and pages from DB
+    const loadData = async () => {
+      let filterForms = [];
+      try {
+        // Try the fast filter endpoint first (DB-backed)
+        const result = await getLeadFilterOptions();
         const p = result.pages || [];
-        const f = result.forms || [];
         setPages(p);
-        setForms(f);
         appCache.set(cacheKey, p);
-        appCache.set(formsCacheKey, f);
-      })
-      .catch(() => {
-        // Fallback: load pages and forms separately
+        // Normalize filter-option forms (formId → id)
+        filterForms = (result.forms || []).map(f => ({
+          id: f.formId || f.id,
+          name: f.name || f.formId || f.id,
+          pageId: f.pageId,
+        }));
+      } catch {
         if (!appCache.isFresh(cacheKey)) {
           getAvailablePages()
             .then(p => { setPages(p); appCache.set(cacheKey, p); })
             .catch(() => setPages([]));
         }
-        getLeadForms()
-          .then(f => { setForms(f); appCache.set(formsCacheKey, f); })
-          .catch(() => setForms([]));
-      });
+      }
+
+      // Always fetch forms from Meta for latest data
+      try {
+        const metaForms = await getLeadForms();
+        // Merge: Meta forms + any DB-only forms not in Meta
+        const metaIds = new Set(metaForms.map(f => f.id));
+        const merged = [...metaForms, ...filterForms.filter(f => !metaIds.has(f.id))];
+        setForms(merged);
+        appCache.set(formsCacheKey, merged);
+      } catch {
+        // Fallback: use filter endpoint forms
+        if (filterForms.length) {
+          setForms(filterForms);
+          appCache.set(formsCacheKey, filterForms);
+        } else if (!cachedForms) {
+          setForms([]);
+        }
+      }
+    };
+
+    loadData();
   }, [activeBrand?.slug]);
 
   // Load Google Sheet config per brand
@@ -655,35 +710,33 @@ useEffect(() => {
       <div className="max-w-screen-2xl mx-auto px-4 py-4 space-y-5">
         
         {/* ── Page Header ── */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage and track your Facebook leads</p>
-        </div>
-
-        
-        {/* ── Top Action Bar ── */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <button 
-            onClick={handleToggleSelectMode}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-all active:scale-95 ${
-              isSelectMode 
-                ? "bg-indigo-100 text-indigo-700 border border-indigo-200 hover:bg-indigo-200" 
-                : "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200"
-            }`}
-          >
-            <FaCheckSquare className={`w-3.5 h-3.5 ${isSelectMode ? "text-indigo-600" : "text-gray-400"}`} /> 
-            {isSelectMode ? "Cancel Selection" : "Select Leads"}
-          </button>
-          
-          <div className="flex items-center gap-1 ml-auto">
-            <button onClick={() => setViewMode("list")}
-              className={`p-2 rounded-lg border transition-all ${viewMode === "list" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
-              <FaList className="w-4 h-4" />
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
+            <p className="text-sm text-gray-500 mt-1">Manage and track your Facebook leads</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleToggleSelectMode}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-all active:scale-95 ${
+                isSelectMode 
+                  ? "bg-indigo-100 text-indigo-700 border border-indigo-200 hover:bg-indigo-200" 
+                  : "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200"
+              }`}
+            >
+              <FaCheckSquare className={`w-3.5 h-3.5 ${isSelectMode ? "text-indigo-600" : "text-gray-400"}`} /> 
+              {isSelectMode ? "Cancel Selection" : "Select Leads"}
             </button>
-            <button onClick={() => setViewMode("grid")}
-              className={`p-2 rounded-lg border transition-all ${viewMode === "grid" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
-              <FaTh className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setViewMode("list")}
+                className={`p-2 rounded-lg border transition-all ${viewMode === "list" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
+                <FaList className="w-4 h-4" />
+              </button>
+              <button onClick={() => setViewMode("grid")}
+                className={`p-2 rounded-lg border transition-all ${viewMode === "grid" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
+                <FaTh className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -698,22 +751,24 @@ useEffect(() => {
 
           <FilterDropdown
             label="Form"
-            options={forms.map(f => ({ label: f.name, value: f.id }))}
+            options={(filters.pageId
+              ? forms.filter(f => f.pageId === filters.pageId)
+              : forms
+            ).map(f => ({ label: f.name, value: f.id }))}
             value={filters.formId}
             onChange={val => reload({ formId: val })}
           />
 
-          {/* Department quick filter */}
-          <select
-            value={filters.departmentId || ""}
-            onChange={e => reload({ departmentId: e.target.value || undefined })}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-700"
+          {/* Sync from Meta */}
+          <button
+            onClick={() => filters.formId ? handleSyncForm(filters.formId) : handleSyncAllForms()}
+            disabled={syncing || syncAllLoading || !forms.length}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            title={filters.formId ? "Sync leads for selected form from Meta" : "Sync leads for all forms from Meta"}
           >
-            <option value="">All Departments</option>
-            {departments.map(d => (
-              <option key={d.departmentId} value={d.departmentId}>{d.departmentName}</option>
-            ))}
-          </select>
+            <FaSync className={`w-3 h-3 ${syncing || syncAllLoading ? "animate-spin" : ""}`} />
+            {syncing || syncAllLoading ? "Syncing…" : filters.formId ? "Sync Form" : "Sync All"}
+          </button>
 
           {/* My Leads quick filter */}
           <button
@@ -770,7 +825,8 @@ useEffect(() => {
           )}
         </div>
 
-        {/* ── Department Assignment Panel (unified toggle) ── */}
+        {/* ── Department Assignment Panel — only visible when a form is selected ── */}
+        {filters.formId && (
         <div className="bg-white rounded-xl border border-gray-100 px-4 py-4 shadow-sm space-y-3">
           {/* Header row */}
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -785,20 +841,8 @@ useEffect(() => {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Form selector */}
-              <select
-                value={filters.formId}
-                onChange={e => reload({ formId: e.target.value })}
-                className="text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all bg-white border-gray-200 text-gray-700"
-              >
-                <option value="">— Select Form —</option>
-                {forms.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-
               {/* Lead count preview badge */}
-              {filters.formId && formLeadCount !== null && (
+              {formLeadCount !== null && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700">
                   <FaUsers className="w-3 h-3" />
                   {formLeadCount} lead{formLeadCount !== 1 ? "s" : ""}
@@ -809,7 +853,7 @@ useEffect(() => {
               {/* Apply button */}
               <button
                 onClick={handleApplyDeptChanges}
-                disabled={!filters.formId || applying}
+                disabled={applying}
                 className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
               >
                 {applying ? <FaSpinner className="w-3.5 h-3.5 animate-spin" /> : <FaCheck className="w-3.5 h-3.5" />}
@@ -819,11 +863,7 @@ useEffect(() => {
           </div>
 
           {/* Department checkbox grid */}
-          {!filters.formId ? (
-            <p className="text-xs text-gray-400 italic pl-1">
-              Select a form above to manage department assignments.
-            </p>
-          ) : departments.length === 0 ? (
+          {departments.length === 0 ? (
             <p className="text-xs text-gray-400 italic pl-1">No departments available.</p>
           ) : (
             <div className="space-y-2">
@@ -879,6 +919,7 @@ useEffect(() => {
             </div>
           )}
         </div>
+        )}
 
         {/* ── Table Toolbar ── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1017,7 +1058,7 @@ useEffect(() => {
                       </th>
                     )}
                     {["Name", "Platform", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      <th key={h} className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>

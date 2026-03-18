@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useBrand } from "../context/BrandContext";
 import { getBrandLogoSrc } from "../api/brand.api";
 import { getUnreadCount, createInboxHubConnection } from "../api/inbox.api";
+import { createLeadsHubConnection } from "../api/facebook.leads.api";
 import { useAuth } from "../../auth/AuthContext";
 import toast from "react-hot-toast";
 
@@ -150,9 +151,11 @@ function UserMenu() {
 
 export default function Topbar() {
   const navigate = useNavigate();
-  const { activeBrand } = useBrand();
+  const { activeBrand, refresh: refreshBrands, invalidateAllBrandCaches } = useBrand();
   const [unread, setUnread] = useState(0);
+  const [newLeads, setNewLeads] = useState(0);
   const hubRef = useRef(null);
+  const leadsHubRef = useRef(null);
 
   // Fetch unread count on mount and brand change
   useEffect(() => {
@@ -171,15 +174,32 @@ export default function Topbar() {
     conn.on("MessageRead", () => {
       getUnreadCount().then((d) => setUnread(d.unreadCount ?? 0)).catch(() => {});
     });
+    conn.on("BrandSwitched", () => {
+      invalidateAllBrandCaches();
+      refreshBrands();
+    });
     conn.start().then(async () => {
       await conn.invoke("JoinBrand", String(activeBrand.id)).catch(() => {});
     }).catch(() => {});
     return () => { conn.stop(); };
   }, [activeBrand?.id]);
 
+  // Listen for real-time lead notifications via SignalR
+  useEffect(() => {
+    if (!activeBrand?.id) return;
+    const conn = createLeadsHubConnection();
+    leadsHubRef.current = conn;
+    conn.on("LeadUpdated", () => {
+      setNewLeads((prev) => prev + 1);
+      toast("🟢 New lead received!", { duration: 4000, position: "top-right" });
+    });
+    conn.start().catch(() => {});
+    return () => { conn.stop(); };
+  }, [activeBrand?.id]);
+
   return (
-    <div className="bg-white px-5 py-3 border-b border-gray-200 shadow-sm shrink-0 z-30">
-      <div className="flex items-center justify-between gap-4">
+    <div className="bg-white px-5 border-b border-gray-200 shadow-sm shrink-0 z-30 h-[57px] flex items-center">
+      <div className="flex items-center justify-between gap-4 w-full">
 
         {/* Left: search */}
         <div className="flex items-center gap-3 flex-1 max-w-md">
@@ -202,11 +222,26 @@ export default function Topbar() {
             title="Inbox messages"
             className="relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
             {unread > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full ring-2 ring-white px-1">
                 {unread > 99 ? "99+" : unread}
+              </span>
+            )}
+          </button>
+
+          {/* Lead notifications — links to Leads */}
+          <button
+            onClick={() => { setNewLeads(0); navigate("/crm/socialmedia/leads"); }}
+            title="New leads"
+            className="relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            {newLeads > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-green-500 text-white text-[10px] font-bold rounded-full ring-2 ring-white px-1">
+                {newLeads > 99 ? "99+" : newLeads}
               </span>
             )}
           </button>
