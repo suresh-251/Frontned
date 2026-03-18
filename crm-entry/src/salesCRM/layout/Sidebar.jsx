@@ -1,11 +1,5 @@
 import { NavLink } from "react-router-dom";
-<<<<<<< HEAD
-import { CalendarDays, LayoutGrid, Layers } from "lucide-react";
-import ThemeToggle from "../../components/ThemeToggle";
-import nafaLogo from "../../assets/nafa.png";
-=======
 import { Building2, CalendarDays, LayoutGrid, Layers, PanelLeftClose, PanelLeftOpen } from "lucide-react";
->>>>>>> 643632a8ec9f6b8b9be2351b46874b5ecbf09455
 
 const navItems = [
   { label: "Leads", path: "/crm/sales/leads", Icon: LayoutGrid },
@@ -31,26 +25,6 @@ export default function Sidebar({
     .join(" ");
 
   return (
-<<<<<<< HEAD
-    <div
-      className="w-56 flex flex-col min-h-screen"
-      style={{
-        background: "var(--bg-sidebar)",
-        borderRight: "1px solid var(--border-color)",
-      }}
-    >
-      <div className="p-6" style={{ borderBottom: "1px solid var(--border-color)" }}>
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden"
-            style={{ background: `linear-gradient(135deg, var(--logo-gradient-from), var(--logo-gradient-to))` }}
-          >
-            <img src={nafaLogo} alt="NaFa" className="w-10 h-10 object-cover" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold" style={{ color: "var(--text-main)" }}>Sales CRM</h2>
-            <p className="text-xs" style={{ color: "var(--text-secondary)" }}>Pipeline workspace</p>
-=======
     <>
       {isMobile && (
         <button
@@ -68,7 +42,6 @@ export default function Sidebar({
               <h2>Sales CRM</h2>
               <p>Pipeline workspace</p>
             </div>
->>>>>>> 643632a8ec9f6b8b9be2351b46874b5ecbf09455
           </div>
           {!isMobile ? (
             <button
@@ -83,31 +56,6 @@ export default function Sidebar({
           ) : null}
         </div>
 
-<<<<<<< HEAD
-      <nav className="flex-1 p-4 space-y-2">
-        {navItems.map(({ label, path, Icon }) => (
-          <NavLink
-            key={path}
-            to={path}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all"
-            style={({ isActive }) =>
-              isActive
-                ? { background: "var(--primary-light)", color: "var(--primary-text)", fontWeight: 600, boxShadow: "var(--shadow-sm)" }
-                : { color: "var(--text-secondary)" }
-            }
-          >
-            <Icon size={18} />
-            <span>{label}</span>
-          </NavLink>
-        ))}
-      </nav>
-
-      {/* Theme toggle at bottom */}
-      <div className="p-4" style={{ borderTop: "1px solid var(--border-color)" }}>
-        <ThemeToggle />
-      </div>
-    </div>
-=======
         <nav className="salescrm-sidebar__nav">
           {navItems.map(({ label, path, Icon }) => (
             <NavLink
@@ -128,6 +76,5 @@ export default function Sidebar({
         </nav>
       </aside>
     </>
->>>>>>> 643632a8ec9f6b8b9be2351b46874b5ecbf09455
   );
 }

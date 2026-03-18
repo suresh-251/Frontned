@@ -1,17 +1,9 @@
-<<<<<<< HEAD
-import axios from "axios";
-
-export const BASE_URL = import.meta.env.VITE_API_BASE_URL
-  ? `${import.meta.env.VITE_API_BASE_URL}/api`
-  : "https://localhost:7015/api";
-=======
 import axios from "axios";
 import { getAccessToken } from "../../utils/authStorage";
 export const BASE_URL = "https://crmsocial.metagensoft.com/api";
 // Local dev override (requires `dotnet run` in Backend folder):
 //export const BASE_URL = "https://localhost:7015/api";
 // export const BASE_URL = "http://89.116.20.215:9090/api";
->>>>>>> 643632a8ec9f6b8b9be2351b46874b5ecbf09455
 
 
 const api = axios.create({

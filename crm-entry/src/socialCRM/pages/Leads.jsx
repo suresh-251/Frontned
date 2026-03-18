@@ -369,7 +369,7 @@ useEffect(() => {
 
     // Fetch forms from Meta Graph API (live data) and pages from DB
     const loadData = async () => {
-      let filterForms = [];
+      let dbForms = [];
       try {
         // Try the fast filter endpoint first (DB-backed)
         const result = await getLeadFilterOptions();
@@ -377,11 +377,16 @@ useEffect(() => {
         setPages(p);
         appCache.set(cacheKey, p);
         // Normalize filter-option forms (formId → id)
-        filterForms = (result.forms || []).map(f => ({
+        dbForms = (result.forms || []).map(f => ({
           id: f.formId || f.id,
           name: f.name || f.formId || f.id,
-          pageId: f.pageId,
+          pageId: f.pageId ? String(f.pageId) : "",
         }));
+        // Set forms immediately from DB so dropdown populates right away
+        if (dbForms.length) {
+          setForms(dbForms);
+          appCache.set(formsCacheKey, dbForms);
+        }
       } catch {
         if (!appCache.isFresh(cacheKey)) {
           getAvailablePages()
@@ -390,22 +395,25 @@ useEffect(() => {
         }
       }
 
-      // Always fetch forms from Meta for latest data
+      // Try to enhance with Meta forms (latest data)
       try {
         const metaForms = await getLeadForms();
-        // Merge: Meta forms + any DB-only forms not in Meta
-        const metaIds = new Set(metaForms.map(f => f.id));
-        const merged = [...metaForms, ...filterForms.filter(f => !metaIds.has(f.id))];
-        setForms(merged);
-        appCache.set(formsCacheKey, merged);
-      } catch {
-        // Fallback: use filter endpoint forms
-        if (filterForms.length) {
-          setForms(filterForms);
-          appCache.set(formsCacheKey, filterForms);
-        } else if (!cachedForms) {
-          setForms([]);
+        if (metaForms.length) {
+          // Merge: Meta forms + any DB-only forms not in Meta
+          // Preserve pageId from DB forms when Meta forms lack it
+          const metaIds = new Set(metaForms.map(f => f.id));
+          const merged = [
+            ...metaForms.map(mf => {
+              const dbForm = dbForms.find(f => String(f.id) === String(mf.id));
+              return { ...mf, pageId: String(mf.pageId || dbForm?.pageId || "") };
+            }),
+            ...dbForms.filter(f => !metaIds.has(f.id)),
+          ];
+          setForms(merged);
+          appCache.set(formsCacheKey, merged);
         }
+      } catch {
+        // DB forms already set above — no action needed
       }
     };
 
@@ -752,7 +760,7 @@ useEffect(() => {
           <FilterDropdown
             label="Form"
             options={(filters.pageId
-              ? forms.filter(f => f.pageId === filters.pageId)
+              ? forms.filter(f => String(f.pageId) === String(filters.pageId))
               : forms
             ).map(f => ({ label: f.name, value: f.id }))}
             value={filters.formId}
@@ -1043,9 +1051,9 @@ useEffect(() => {
         {/* ── LIST VIEW ── */}
         {viewMode === "list" ? (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10">
                   <tr className="bg-gray-50 border-b border-gray-100">
                     {isSelectMode && (
                       <th className="w-10 px-4 py-3">

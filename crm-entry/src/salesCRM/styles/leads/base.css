@@ -4,21 +4,6 @@
 ------------------------------------------------------- */
 
 .page {
-<<<<<<< HEAD
-  --ci: var(--primary, #C41E3A);
-  --ci-d: var(--primary-hover, #A31830);
-  --ci-lt: var(--primary-light, #fef2f2);
-  --ci-ring: rgba(196, 30, 58, 0.18);
-  --cb: var(--bg-body, #ffffff);
-  --cs: var(--bg-card, #ffffff);
-  --cborder: var(--border-color, #e5e7eb);
-  --ct: var(--text-main, #111827);
-  --ct2: var(--text-secondary, #6b7280);
-  --cm: var(--text-secondary, #6b7280);
-  --cq: var(--text-muted, #9ca3af);
-  --cr-hover: var(--bg-hover, #f9fafb);
-  --cr-sel: var(--primary-light, #fef2f2);
-=======
   --ci: #4f46e5;
   --ci-d: #4338ca;
   --ci-lt: #eef2ff;
@@ -32,7 +17,6 @@
   --cq: color-mix(in srgb, var(--text-main) 40%, #94a3b8);
   --cr-hover: color-mix(in srgb, var(--bg-card) 70%, var(--bg-body));
   --cr-sel: color-mix(in srgb, var(--ci) 12%, var(--bg-card));
->>>>>>> 643632a8ec9f6b8b9be2351b46874b5ecbf09455
   --r: 8px;
   --rl: 12px;
   --sh-sm: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04));
