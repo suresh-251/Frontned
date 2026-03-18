@@ -44,7 +44,7 @@ export default function LeadForms() {
       try {
         if (!silent) setLoading(true);
         setError("");
-        const data = await getLeadForms(currentPage.pageId);
+        const data = await getLeadForms();
         if (!cancelled) setForms(data);
       } catch {
         if (!cancelled) setError("Failed to load lead forms. Please try again.");

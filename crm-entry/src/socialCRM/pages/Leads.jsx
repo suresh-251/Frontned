@@ -5,7 +5,7 @@ import useFacebookLeads from "../hooks/useFacebookLeads";
 import { useBrand } from "../context/BrandContext";
 import { appCache } from "../utils/cache";
 import { getAvailablePages } from "../api/facebook.pages.api";
-import { getLeadForms, getLeadHistory, editLeadRemark, deleteLeadRemark } from "../api/facebook.leads.api";
+import { getLeadForms, getLeadFilterOptions, getLeadHistory, editLeadRemark, deleteLeadRemark } from "../api/facebook.leads.api";
 import useUsers from "../hooks/useUsers";
 import * as XLSX from "xlsx";
 import * as signalR from "@microsoft/signalr";
@@ -266,7 +266,7 @@ export default function Leads() {
      ========================= */
   useEffect(() => {
     reload({});
-  }, []);
+  }, [activeBrand?.slug]);
 
   /* =========================
      SIGNALR REAL-TIME
@@ -318,28 +318,42 @@ useEffect(() => {
      ========================= */
   useEffect(() => {
     const slug = activeBrand?.slug;
-    const cacheKey = `ph_pages_${slug ?? "none"}`;
-    const cached = appCache.getStale(cacheKey);
-    if (cached) setPages(cached.data);
-    if (!appCache.isFresh(cacheKey)) {
-      getAvailablePages().then(pages => {
-        setPages(pages);
-        if (slug) appCache.set(cacheKey, pages);
+    if (!slug) { setPages([]); setForms([]); return; }
+
+    const cacheKey = `ph_pages_${slug}`;
+    const formsCacheKey = `ph_forms_${slug}`;
+    const cachedPages = appCache.getStale(cacheKey);
+    const cachedForms = appCache.getStale(formsCacheKey);
+
+    if (cachedPages) setPages(cachedPages.data);
+    if (cachedForms) setForms(cachedForms.data);
+
+    // Fetch fresh filter options (pages + forms from DB — fast)
+    getLeadFilterOptions()
+      .then(result => {
+        const p = result.pages || [];
+        const f = result.forms || [];
+        setPages(p);
+        setForms(f);
+        appCache.set(cacheKey, p);
+        appCache.set(formsCacheKey, f);
+      })
+      .catch(() => {
+        // Fallback: load pages and forms separately
+        if (!appCache.isFresh(cacheKey)) {
+          getAvailablePages()
+            .then(p => { setPages(p); appCache.set(cacheKey, p); })
+            .catch(() => setPages([]));
+        }
+        getLeadForms()
+          .then(f => { setForms(f); appCache.set(formsCacheKey, f); })
+          .catch(() => setForms([]));
       });
-    }
   }, [activeBrand?.slug]);
 
   useEffect(() => {
     getDepartments().then(setDepartments).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!filters.pageId) {
-      setForms([]);
-      return;
-    }
-    getLeadForms(filters.pageId).then(setForms);
-  }, [filters.pageId]);
 
   // Live preview: count leads in selected form matching date range
   useEffect(() => {
@@ -643,7 +657,6 @@ useEffect(() => {
             options={forms.map(f => ({ label: f.name, value: f.id }))}
             value={filters.formId}
             onChange={val => reload({ formId: val })}
-            disabled={!filters.pageId}
           />
 
           {/* Department quick filter */}
@@ -732,9 +745,7 @@ useEffect(() => {
               <select
                 value={filters.formId}
                 onChange={e => reload({ formId: e.target.value })}
-                disabled={!filters.pageId}
-                className={`text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all
-                  ${!filters.pageId ? "bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed" : "bg-white border-gray-200 text-gray-700"}`}
+                className="text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all bg-white border-gray-200 text-gray-700"
               >
                 <option value="">— Select Form —</option>
                 {forms.map(f => (
@@ -766,7 +777,7 @@ useEffect(() => {
           {/* Department checkbox grid */}
           {!filters.formId ? (
             <p className="text-xs text-gray-400 italic pl-1">
-              {!filters.pageId ? "Select a page then a form to manage department assignments." : "Select a form above to manage department assignments."}
+              Select a form above to manage department assignments.
             </p>
           ) : departments.length === 0 ? (
             <p className="text-xs text-gray-400 italic pl-1">No departments available.</p>

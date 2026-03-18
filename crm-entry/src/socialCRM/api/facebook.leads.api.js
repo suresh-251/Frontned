@@ -1,9 +1,16 @@
 import api from "./apiClient";
 
+// ─── Lead Filter Options (pages + forms from DB, fast) ────────────────────────
+
+export const getLeadFilterOptions = async () => {
+  const res = await api.get("/facebook/leads/filters");
+  return res.data || { pages: [], forms: [] };
+};
+
 // ─── Lead Forms ──────────────────────────────────────────────────────────────
 
-export const getLeadForms = async (pageId) => {
-  const res = await api.get("/facebook/leads/forms", { params: { pageId } });
+export const getLeadForms = async () => {
+  const res = await api.get("/facebook/leads/forms");
   return res.data || [];
 };
 

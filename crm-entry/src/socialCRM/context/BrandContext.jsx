@@ -65,21 +65,37 @@ export function BrandProvider({ children }) {
     refresh();
   }, [refresh]);
 
+  /** Flush every brand-scoped cache so the next page renders fresh data. */
+  const invalidateAllBrandCaches = useCallback(() => {
+    const prefixes = [
+      "sc_dash_", "ph_inbox_", "ph_leads_", "ph_pages_",
+      "ph_scheduled_", "ph_history_", "ph_drafts_",
+      "ph_subs_", "ph_fbpages_",
+    ];
+    prefixes.forEach((p) => appCache.invalidatePrefix(p));
+    appCache.invalidate(BRANDS_CACHE_KEY);
+  }, []);
+
   const switchBrand = useCallback(
     async (slug) => {
-      // Optimistic update from existing brands list
+      // Invalidate caches and switch on backend FIRST so subsequent data
+      // fetches (triggered by the state update below) hit the new brand.
+      invalidateAllBrandCaches();
+      localStorage.setItem("brandSlug", slug);
+      await activateBrand(slug);
+
+      // Now update local state — this triggers data-fetch effects in
+      // Leads, Inbox, etc. with the backend already pointing at the new brand.
       const target = brands.find(b => b.slug === slug);
       if (target) {
         const updated = brands.map(b => ({ ...b, isActive: b.slug === slug }));
         setBrands(updated);
         setActiveBrand({ ...target, isActive: true });
         appCache.set(BRANDS_CACHE_KEY, updated);
-        localStorage.setItem("brandSlug", slug);
       }
-      await activateBrand(slug);
       await refresh();
     },
-    [brands, refresh]
+    [brands, refresh, invalidateAllBrandCaches]
   );
 
   const createBrand = useCallback(
@@ -146,6 +162,7 @@ export function BrandProvider({ children }) {
         updateBrand,
         removeBrand,
         deactivate,
+        invalidateAllBrandCaches,
         hasBrands: brands.length > 0,
       }}
     >
