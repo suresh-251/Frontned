@@ -1,75 +1,73 @@
 import { useState } from "react";
 import {
   ResponsiveContainer, AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip,
-  PieChart, Pie, Cell, BarChart, Bar, Legend
+  XAxis, YAxis, Tooltip,
 } from "recharts";
-import { FiRefreshCw, FiTrendingUp, FiUsers, FiEye, FiHeart, FiMessageSquare, FiMousePointer, FiAward, FiDownloadCloud } from "react-icons/fi";
+import {
+  FiRefreshCw, FiTrendingUp, FiUsers, FiEye, FiHeart,
+  FiAward, FiDownloadCloud, FiZap, FiBarChart2, FiShare2, FiStar,
+} from "react-icons/fi";
 import { useBrand } from "../context/BrandContext";
 import useAnalytics from "../hooks/useAnalytics";
 
-// ── Colors ──────────────────────────────────────────────────────────────────
+// ── Colors ───────────────────────────────────────────────────────────────────
 const PLATFORM_COLORS = {
-  facebook: "#1877F2",
+  facebook:  "#1877F2",
   instagram: "#E1306C",
-  linkedin: "#0A66C2",
+  linkedin:  "#0A66C2",
 };
-const PIE_FALLBACK = ["#6366f1", "#10b981", "#f59e0b", "#ef4444"];
 
-// ── Day filter options ───────────────────────────────────────────────────────
+// ── Day filter ────────────────────────────────────────────────────────────────
 const DAY_OPTIONS = [
   { label: "7 days",  value: 7  },
   { label: "14 days", value: 14 },
   { label: "30 days", value: 30 },
 ];
 
-// ── Formatters ───────────────────────────────────────────────────────────────
+// ── Formatters ────────────────────────────────────────────────────────────────
 function fmt(n) {
-  if (n == null) return "—";
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K";
-  return n.toLocaleString();
+  if (n == null || n === "") return "—";
+  const num = Number(n);
+  if (isNaN(num)) return "—";
+  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + "M";
+  if (num >= 1_000)     return (num / 1_000).toFixed(1) + "K";
+  return num.toLocaleString();
 }
 function fmtDate(dateStr) {
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// ── Skeleton card ────────────────────────────────────────────────────────────
-function SkeletonCard() {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+/** Read a numeric field from an object trying multiple key names (API shape varies). */
+function pick(obj, ...keys) {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v != null && !isNaN(Number(v))) return Number(v);
+  }
+  return 0;
+}
+
+// ── Skeleton loaders ──────────────────────────────────────────────────────────
+function SkeletonCard({ tall }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 animate-pulse">
-      <div className="h-3 bg-slate-200 rounded w-1/2 mb-3" />
-      <div className="h-7 bg-slate-200 rounded w-2/3" />
+    <div className={`bg-white rounded-2xl border border-slate-200 p-5 animate-pulse ${tall ? "h-44" : "h-28"}`}>
+      <div className="h-2.5 bg-slate-200 rounded w-1/3 mb-3" />
+      <div className="h-6 bg-slate-200 rounded w-1/2" />
+    </div>
+  );
+}
+function SkeletonDonutCard() {
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 p-5 flex flex-col items-center gap-3 animate-pulse">
+      <div className="w-36 h-36 rounded-full bg-slate-200" />
+      <div className="h-2.5 w-20 rounded-full bg-slate-200" />
+      <div className="h-5 w-14 rounded-full bg-slate-100" />
     </div>
   );
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, color }) {
-  const colorMap = {
-    blue:    "bg-blue-50 text-blue-600",
-    indigo:  "bg-indigo-50 text-indigo-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    rose:    "bg-rose-50 text-rose-600",
-    orange:  "bg-orange-50 text-orange-600",
-    violet:  "bg-violet-50 text-violet-600",
-    slate:   "bg-slate-100 text-slate-600",
-  };
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
-      <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${colorMap[color] ?? colorMap.slate}`}>
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">{label}</p>
-        <p className="text-xl font-black text-slate-800 mt-0.5">{fmt(value)}</p>
-      </div>
-    </div>
-  );
-}
-
-// ── Custom tooltip ───────────────────────────────────────────────────────────
+// ── Custom chart tooltip ──────────────────────────────────────────────────────
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
@@ -86,10 +84,32 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-// ── Platform icon (inline svg) ───────────────────────────────────────────────
+// ── Platform dot ──────────────────────────────────────────────────────────────
 function PlatformDot({ platform }) {
   const color = PLATFORM_COLORS[platform?.toLowerCase()] ?? "#94a3b8";
-  return <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 flex-shrink-0" style={{ background: color }} />;
+  return <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />;
+}
+
+// ── Platform icon (SVG) ───────────────────────────────────────────────────────
+function PlatformIcon({ platform, size = 14 }) {
+  const p = platform?.toLowerCase();
+  if (p === "facebook")
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="#1877F2">
+        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+      </svg>
+    );
+  if (p === "instagram")
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="#E1306C">
+        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+      </svg>
+    );
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#0A66C2">
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+    </svg>
+  );
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
@@ -102,13 +122,152 @@ function Empty({ message }) {
   );
 }
 
+// ── Gauge card (semi-circle) ──────────────────────────────────────────────────
+function GaugeCard({ platform, label, value, sub, percent }) {
+  const color = PLATFORM_COLORS[platform?.toLowerCase()] ?? "#94a3b8";
+  const W = 160, cy = 74, r = 56, cx = W / 2;
+  const p = Math.min(percent ?? 0, 1);
+  const angle = Math.PI * (1 - p);
+  const ex = cx + r * Math.cos(angle);
+  const ey = cy - r * Math.sin(angle);
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-sm transition-shadow">
+      <div className="flex items-center gap-2 mb-1">
+        <PlatformIcon platform={platform} />
+        <span className="text-[11px] font-bold text-slate-600 capitalize">{platform}</span>
+      </div>
+      <p className="text-[11px] text-slate-400 font-medium mb-3">{label}</p>
+      <div className="relative flex justify-center">
+        <svg width={W} height={cy + 10} viewBox={`0 0 ${W} ${cy + 10}`}>
+          <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
+            fill="none" stroke={`${color}20`} strokeWidth="10" strokeLinecap="round" />
+          {p > 0.01 && (
+            <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${ex} ${ey}`}
+              fill="none" stroke={color} strokeWidth="10" strokeLinecap="round" />
+          )}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
+          <p className="text-2xl font-black text-slate-800 leading-none">{value}</p>
+          {sub && <p className="text-[10px] text-slate-400 mt-1">{sub}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Simple metric card ────────────────────────────────────────────────────────
+function MetricCard({ platform, label, value, sub }) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-sm transition-shadow">
+      <div className="flex items-center gap-2 mb-1">
+        <PlatformIcon platform={platform} />
+        <span className="text-[11px] font-bold text-slate-600 capitalize">{platform}</span>
+      </div>
+      <p className="text-[11px] text-slate-400 font-medium mb-3">{label}</p>
+      <p className="text-3xl font-black text-slate-800 leading-none">{value}</p>
+      {sub && <p className="text-xs text-slate-400 mt-2">{sub}</p>}
+    </div>
+  );
+}
+
+// ============================================================================
+// PREMIUM DONUT CARD
+// ============================================================================
+function DonutCard({ icon, label, value, subValue, subLabel, color, gradientEnd, percent }) {
+  const SIZE = 148, STROKE = 13;
+  const r    = (SIZE - STROKE) / 2;
+  const circ = r * 2 * Math.PI;
+  const offset = circ - Math.min(percent ?? 0, 1) * circ;
+  const uid  = label.replace(/\s+/g, "-").toLowerCase();
+
+  return (
+    <div
+      className="relative rounded-3xl p-5 flex flex-col items-center text-center overflow-hidden"
+      style={{
+        background: `linear-gradient(150deg, ${color}10 0%, #ffffff 60%, ${gradientEnd}06 100%)`,
+        border: `1px solid ${color}30`,
+        boxShadow: `0 2px 16px ${color}10`,
+        transition: "all 0.35s cubic-bezier(.4,0,.2,1)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-5px) scale(1.015)";
+        e.currentTarget.style.boxShadow = `0 0 48px ${color}22, 0 20px 48px rgba(0,0,0,0.1)`;
+        e.currentTarget.style.borderColor = `${color}55`;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "";
+        e.currentTarget.style.boxShadow = `0 2px 16px ${color}10`;
+        e.currentTarget.style.borderColor = `${color}30`;
+      }}
+    >
+      <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full blur-3xl pointer-events-none" style={{ background: color, opacity: 0.07 }} />
+      <div className="absolute -bottom-8 -left-8 w-24 h-24 rounded-full blur-3xl pointer-events-none" style={{ background: gradientEnd, opacity: 0.05 }} />
+
+      <div className="relative mb-3">
+        <svg width={SIZE} height={SIZE} style={{ transform: "rotate(-90deg)" }}>
+          <defs>
+            <linearGradient id={`dg-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stopColor={color}       stopOpacity="1" />
+              <stop offset="100%" stopColor={gradientEnd} stopOpacity="1" />
+            </linearGradient>
+            <filter id={`df-${uid}`} x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          <circle cx={SIZE/2} cy={SIZE/2} r={r + STROKE/2 + 6} fill="none" stroke={`${color}18`} strokeWidth={1} strokeDasharray="3 6" />
+          <circle cx={SIZE/2} cy={SIZE/2} r={r} fill="none" stroke={`${color}15`} strokeWidth={STROKE} />
+          <circle
+            cx={SIZE/2} cy={SIZE/2} r={r}
+            fill="none"
+            stroke={`url(#dg-${uid})`}
+            strokeWidth={STROKE}
+            strokeDasharray={`${circ} ${circ}`}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            filter={`url(#df-${uid})`}
+            style={{ transition: "stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1)" }}
+          />
+          {(percent ?? 0) > 0.02 && (() => {
+            const a = (Math.min(percent, 1) * 2 * Math.PI) - Math.PI / 2;
+            return <circle cx={SIZE/2 + r * Math.cos(a)} cy={SIZE/2 + r * Math.sin(a)} r={STROKE/2 - 1} fill={gradientEnd} filter={`url(#df-${uid})`} />;
+          })()}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${color}15`, border: `1px solid ${color}25` }}>
+            <span style={{ color }}>{icon}</span>
+          </div>
+          <span className="text-[22px] font-black leading-none tracking-tight"
+            style={{ background: `linear-gradient(135deg, ${color}, ${gradientEnd})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            {value}
+          </span>
+        </div>
+      </div>
+
+      <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2 text-slate-500">{label}</p>
+      {subValue != null && (
+        <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+          style={{ background: `${color}12`, color, border: `1px solid ${color}28` }}>
+          {subValue}{subLabel ? ` ${subLabel}` : ""}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ============================================================================
 // MAIN PAGE
 // ============================================================================
 export default function Analytics() {
+
+  const [selectedPlatform, setSelectedPlatform] = useState("all");
   const [days, setDays] = useState(7);
   const { activeBrand } = useBrand();
-  const { summary, channels, loading, error, refresh, sync, syncing, syncResult } = useAnalytics(days);
+
+  // All three endpoints now fetched in parallel
+  const { summary, channels, platforms, loading, error, refresh, sync, syncing, syncResult } =
+    useAnalytics(days);
 
   if (!activeBrand) {
     return (
@@ -118,22 +277,203 @@ export default function Analytics() {
     );
   }
 
-  // ── Derived data ─────────────────────────────────────────────────────────
-  const daily    = summary?.dailyBreakdown    ?? [];
-  const platforms = summary?.platformBreakdown ?? [];
-  const topPosts  = summary?.topPosts          ?? [];
+  // ── 1. Build per-platform map from channels (real per-account data) ──────
+  //   channels  → followers, newFollowers, engagement, reach, impressions, leads
+  //   platforms → totalPosts per platform (from getPlatformBreakdown)
+  const byPlatform = (channels || []).reduce((acc, ch) => {
+    const key = ch.platform?.toLowerCase();
+    if (!key) return acc;
+    if (!acc[key]) acc[key] = {
+      platform:        key,
+      totalFollowers:  0,
+      newFollowers:    0,
+      totalEngagement: 0,
+      totalReach:      0,
+      totalImpressions:0,
+      totalLeads:      0,
+      totalPosts:      0,
+    };
+    acc[key].totalFollowers   += pick(ch, "totalFollowers",   "followers")   ;
+    acc[key].newFollowers     += pick(ch, "newFollowers",     "newFollower") ;
+    acc[key].totalEngagement  += pick(ch, "totalEngagement",  "engagement")  ;
+    acc[key].totalReach       += pick(ch, "totalReach",       "reach")       ;
+    acc[key].totalImpressions += pick(ch, "totalImpressions", "impressions") ;
+    acc[key].totalLeads       += pick(ch, "totalLeads",       "leads")       ;
+    return acc;
+  }, {});
 
-  // Pie chart data — engagement per platform
-  const pieData = platforms.map((p, i) => ({
-    name: p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
-    value: Number(p.totalEngagement) || 0,
-    color: PLATFORM_COLORS[p.platform] ?? PIE_FALLBACK[i % PIE_FALLBACK.length],
-  }));
+  // Merge totalPosts from dedicated getPlatformBreakdown response
+  (platforms || []).forEach((pb) => {
+    const key = pb.platform?.toLowerCase();
+    if (!key) return;
+    if (!byPlatform[key]) byPlatform[key] = {
+      platform: key, totalFollowers: 0, newFollowers: 0,
+      totalEngagement: 0, totalReach: 0, totalImpressions: 0, totalLeads: 0, totalPosts: 0,
+    };
+    byPlatform[key].totalPosts = pick(pb, "totalPosts", "postCount", "posts", "total_posts");
+    // Also take engagement from platforms endpoint if channels returned 0
+    if (byPlatform[key].totalEngagement === 0) {
+      byPlatform[key].totalEngagement = pick(pb, "totalEngagement", "engagement");
+    }
+  });
 
+  // Also pull from summary.platformBreakdown as final fallback
+  (summary?.platformBreakdown || []).forEach((pb) => {
+    const key = pb.platform?.toLowerCase();
+    if (!key) return;
+    if (!byPlatform[key]) byPlatform[key] = {
+      platform: key, totalFollowers: 0, newFollowers: 0,
+      totalEngagement: 0, totalReach: 0, totalImpressions: 0, totalLeads: 0, totalPosts: 0,
+    };
+    if (byPlatform[key].totalPosts === 0)
+      byPlatform[key].totalPosts = pick(pb, "totalPosts", "postCount", "posts");
+    if (byPlatform[key].totalEngagement === 0)
+      byPlatform[key].totalEngagement = pick(pb, "totalEngagement", "engagement");
+    if (byPlatform[key].totalReach === 0)
+      byPlatform[key].totalReach = pick(pb, "totalReach", "reach");
+  });
+
+  const platformList = Object.values(byPlatform);
+
+  // ── 2. Visible list for "By Platform" section ─────────────────────────────
+  const visiblePlatforms =
+    selectedPlatform === "all"
+      ? platformList
+      : platformList.filter((p) => p.platform === selectedPlatform);
+
+  // ── 3. Resolved totals for donut cards ────────────────────────────────────
+  const active = selectedPlatform !== "all" ? byPlatform[selectedPlatform] : null;
+
+  const resolvedFollowers    = active ? active.totalFollowers   : platformList.reduce((s, p) => s + p.totalFollowers,   0);
+  const resolvedNewFollowers = active ? active.newFollowers     : platformList.reduce((s, p) => s + p.newFollowers,     0);
+  const resolvedEngagement   = active ? active.totalEngagement  : (summary?.totalEngagement  ?? platformList.reduce((s, p) => s + p.totalEngagement,  0));
+  const resolvedReach        = active ? active.totalReach       : (summary?.totalReach       ?? platformList.reduce((s, p) => s + p.totalReach,       0));
+  const resolvedImpressions  = active ? active.totalImpressions : (summary?.totalImpressions ?? platformList.reduce((s, p) => s + p.totalImpressions, 0));
+  const resolvedLeads        = active ? active.totalLeads       : (summary?.totalLeads       ?? platformList.reduce((s, p) => s + p.totalLeads,       0));
+  const resolvedPosts        = active ? active.totalPosts       : (summary?.totalPosts       ?? platformList.reduce((s, p) => s + p.totalPosts,       0));
+
+  // ── 4. Engagement rate (user-specified formula) ───────────────────────────
+  const engagementRate =
+    resolvedReach > 0
+      ? ((resolvedEngagement / resolvedReach) * 100).toFixed(2)
+      : resolvedFollowers > 0
+      ? ((resolvedEngagement / resolvedFollowers) * 100).toFixed(2)
+      : "0.00";
+
+  // ── 5. Arc percent helper ─────────────────────────────────────────────────
+  // Uses a soft-cap scale per metric so the arc NEVER fills completely
+  // (max arc = 88%) — the same approach used by Sprout Social / Hootsuite.
+  // Tune the caps to match your expected data range.
+  const pct = (value, softCap) =>
+    value > 0 ? Math.min(value / softCap, 0.88) : 0;
+
+  // Dynamic soft caps — 2× the current resolved value so arc sits ~50 %
+  // but never goes above 88 %. Falls back to a sensible minimum per metric.
+  const capFollowers    = Math.max(resolvedFollowers    * 2, 10_000);
+  const capEngagement   = Math.max(resolvedEngagement   * 2,  1_000);
+  const capReach        = Math.max(resolvedReach        * 2, 10_000);
+  const capImpressions  = Math.max(resolvedImpressions  * 2, 20_000);
+  const capNewFollowers = Math.max(resolvedNewFollowers  * 2,  1_000);
+  const capPosts        = Math.max(resolvedPosts         * 2,    100);
+  const capLeads        = Math.max(resolvedLeads         * 2,    100);
+
+  // ── 6. Donut cards ────────────────────────────────────────────────────────
+  const donutCards = [
+    {
+      icon: <FiUsers size={17} />,
+      label: "Followers",
+      value: fmt(resolvedFollowers),
+      subValue: `+${fmt(resolvedNewFollowers)}`,
+      subLabel: "new",
+      color: "#3b82f6",
+      gradientEnd: "#818cf8",
+      percent: pct(resolvedFollowers, capFollowers),
+    },
+    {
+      icon: <FiHeart size={17} />,
+      label: "Engagement",
+      value: fmt(resolvedEngagement),
+      subValue: `${engagementRate}%`,
+      subLabel: "rate",
+      color: "#ef4444",
+      gradientEnd: "#f97316",
+      percent: pct(resolvedEngagement, capEngagement),
+    },
+    {
+      icon: <FiEye size={17} />,
+      label: "Reach",
+      value: resolvedReach > 0 ? fmt(resolvedReach) : "—",
+      color: "#10b981",
+      gradientEnd: "#06b6d4",
+      percent: pct(resolvedReach, capReach),
+    },
+    {
+      icon: <FiBarChart2 size={17} />,
+      label: "Impressions",
+      value: resolvedImpressions > 0 ? fmt(resolvedImpressions) : "—",
+      color: "#8b5cf6",
+      gradientEnd: "#ec4899",
+      percent: pct(resolvedImpressions, capImpressions),
+    },
+    {
+      icon: <FiTrendingUp size={17} />,
+      label: "New Followers",
+      value: fmt(resolvedNewFollowers),
+      color: "#22c55e",
+      gradientEnd: "#a3e635",
+      percent: pct(resolvedNewFollowers, capNewFollowers),
+    },
+    {
+      icon: <FiZap size={17} />,
+      label: "Engagement Rate",
+      value: `${engagementRate}%`,
+      color: "#6366f1",
+      gradientEnd: "#a78bfa",
+      // Rate arc: 15 % rate = 88 % fill — adjust cap to your industry
+      percent: pct(parseFloat(engagementRate), 15),
+    },
+    {
+      icon: <FiShare2 size={17} />,
+      label: "Total Posts",
+      value: resolvedPosts > 0 ? fmt(resolvedPosts) : "—",
+      color: "#f59e0b",
+      gradientEnd: "#fb923c",
+      percent: pct(resolvedPosts, capPosts),
+    },
+    {
+      icon: <FiStar size={17} />,
+      label: "Leads",
+      value: resolvedLeads > 0 ? fmt(resolvedLeads) : "—",
+      color: "#ec4899",
+      gradientEnd: "#f43f5e",
+      percent: pct(resolvedLeads, capLeads),
+    },
+  ];
+
+  // ── 6. Grid column class ──────────────────────────────────────────────────
+  const colClass =
+    visiblePlatforms.length === 1 ? "grid-cols-1 max-w-xs" :
+    visiblePlatforms.length === 2 ? "grid-cols-2" :
+    "grid-cols-3";
+
+  // ── 7. Chart + table data ─────────────────────────────────────────────────
+  const daily    = summary?.dailyBreakdown ?? [];
+  const topPosts = summary?.topPosts       ?? [];
+    console.log({
+  channels,
+  platforms,
+  summary,
+  byPlatform,
+  resolvedFollowers,
+  resolvedReach,
+  resolvedEngagement,
+});
+console.log("CHANNEL SAMPLE:", channels[0]);
+console.log("SUMMARY:", summary);
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] p-6">
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-black text-slate-800 tracking-tight">Analytics</h1>
@@ -144,16 +484,24 @@ export default function Analytics() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Day filter */}
+          <select
+            value={selectedPlatform}
+            onChange={(e) => setSelectedPlatform(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 shadow-sm"
+          >
+            <option value="all">All Platforms</option>
+            <option value="facebook">Facebook</option>
+            <option value="instagram">Instagram</option>
+            <option value="linkedin">LinkedIn</option>
+          </select>
+
           <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             {DAY_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => setDays(opt.value)}
                 className={`px-4 py-2 text-xs font-bold transition-all ${
-                  days === opt.value
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-600 hover:bg-slate-50"
+                  days === opt.value ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 {opt.label}
@@ -161,18 +509,15 @@ export default function Analytics() {
             ))}
           </div>
 
-          {/* Sync from platforms */}
           <button
             onClick={sync}
             disabled={syncing || loading}
-            title="Pull fresh metrics from Facebook / Instagram / LinkedIn"
             className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
           >
             <FiDownloadCloud size={13} className={syncing ? "animate-bounce" : ""} />
             {syncing ? "Syncing…" : "Sync"}
           </button>
 
-          {/* Refresh */}
           <button
             onClick={refresh}
             disabled={loading}
@@ -184,7 +529,7 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* ── Sync result banner ───────────────────────────────────────────────── */}
+      {/* ── Banners ──────────────────────────────────────────────────────────── */}
       {syncResult && (
         <div className={`mb-4 px-4 py-3 rounded-xl text-xs font-medium border ${
           syncResult.errors?.length > 0
@@ -195,394 +540,182 @@ export default function Analytics() {
           {syncResult.errors?.map((e, i) => <p key={i}>{e}</p>)}
         </div>
       )}
-
-      {/* ── Error banner ────────────────────────────────────────────────────── */}
       {error && (
         <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium px-4 py-3 rounded-xl">
           {error}
         </div>
       )}
 
-      {/* ── KPI STAT CARDS ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+      {/* ── DONUT CARDS ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-8">
+        {loading
+          ? Array.from({ length: 8 }).map((_, i) => <SkeletonDonutCard key={i} />)
+          : donutCards.map((card, i) => <DonutCard key={i} {...card} />)
+        }
+      </div>
+
+      {/* ── BY PLATFORM ──────────────────────────────────────────────────────── */}
+      {(loading || visiblePlatforms.length > 0) && (
+        <div className="mb-8">
+          <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">By Platform</h2>
+
+          {/* Row 1 — Engagement Rate gauge */}
+          <div className={`grid ${colClass} gap-4 mb-4`}>
+            {loading
+              ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} tall />)
+              : visiblePlatforms.map((p) => {
+                  const rate = p.totalFollowers > 0
+                    ? ((p.totalEngagement / p.totalFollowers) * 100).toFixed(2)
+                    : p.totalPosts > 0
+                    ? ((p.totalEngagement / p.totalPosts) * 100).toFixed(2)
+                    : "0";
+                  return (
+                    <GaugeCard
+                      key={`${p.platform}-rate`}
+                      platform={p.platform}
+                      label="Post engagement rate"
+                      value={`${rate}%`}
+                      sub="engagement rate"
+                      percent={Math.min(parseFloat(rate) / 10, 1)}
+                    />
+                  );
+                })
+            }
+          </div>
+
+          {/* Row 2 — Followers */}
+          <div className={`grid ${colClass} gap-4 mb-4`}>
+            {loading
+              ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
+              : visiblePlatforms.map((p) => (
+                  <MetricCard key={`${p.platform}-followers`}
+                    platform={p.platform} label="Followers"
+                    value={fmt(p.totalFollowers)}
+                    sub={`+${fmt(p.newFollowers)} new`} />
+                ))
+            }
+          </div>
+
+          {/* Row 3 — Total Engagement */}
+          <div className={`grid ${colClass} gap-4 mb-4`}>
+            {loading
+              ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
+              : visiblePlatforms.map((p) => (
+                  <MetricCard key={`${p.platform}-engagement`}
+                    platform={p.platform} label="Total Engagement"
+                    value={fmt(p.totalEngagement)}
+                    sub={`last ${days} days`} />
+                ))
+            }
+          </div>
+
+          {/* Row 4 — Reach */}
+          <div className={`grid ${colClass} gap-4 mb-4`}>
+            {loading
+              ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
+              : visiblePlatforms.map((p) => (
+                  <MetricCard key={`${p.platform}-reach`}
+                    platform={p.platform} label="Reach"
+                    value={p.totalReach > 0 ? fmt(p.totalReach) : "—"}
+                    sub={`last ${days} days`} />
+                ))
+            }
+          </div>
+
+          {/* Row 5 — Total Posts */}
+          <div className={`grid ${colClass} gap-4`}>
+            {loading
+              ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
+              : visiblePlatforms.map((p) => (
+                  <MetricCard key={`${p.platform}-posts`}
+                    platform={p.platform} label="Total Posts"
+                    value={p.totalPosts > 0 ? fmt(p.totalPosts) : "—"}
+                    sub={`last ${days} days`} />
+                ))
+            }
+          </div>
+        </div>
+      )}
+
+      {/* ── Engagement Trend chart ───────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Engagement Trend</h3>
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={daily}>
+            <defs>
+              <linearGradient id="colorEng" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.8} />
+                <stop offset="95%" stopColor="#6366f1" stopOpacity={0}   />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="date" tickFormatter={fmtDate} />
+            <YAxis />
+            <Tooltip content={<ChartTooltip />} />
+            <Area type="monotone" dataKey="totalEngagement" stroke="#6366f1" fillOpacity={1} fill="url(#colorEng)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* ── Top Posts Table ───────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+            <FiAward className="text-yellow-500" size={14} /> Top Posts by Engagement
+          </h3>
+          <span className="text-[10px] text-slate-400 font-semibold">Top 10 · last {days} days</span>
+        </div>
+
         {loading ? (
-          Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+          <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading posts…</div>
+        ) : topPosts.length === 0 ? (
+          <Empty message="No post metrics yet. Sync to pull fresh data." />
         ) : (
-          <>
-            <StatCard icon={<FiTrendingUp size={18} />} label="Total Posts"       value={summary?.totalPosts}       color="blue"    />
-            <StatCard icon={<FiEye        size={18} />} label="Total Reach"       value={summary?.totalReach}       color="indigo"  />
-            <StatCard icon={<FiEye        size={18} />} label="Impressions"       value={summary?.totalImpressions} color="violet"  />
-            <StatCard icon={<FiHeart      size={18} />} label="Total Engagement"  value={summary?.totalEngagement}  color="rose"    />
-            <StatCard icon={<FiUsers      size={18} />} label="Total Leads"       value={summary?.totalLeads}       color="emerald" />
-            <StatCard icon={<FiMousePointer size={18}/>} label="Total Clicks"    value={summary?.totalClicks}      color="orange"  />
-          </>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
+                <tr>
+                  <th className="px-5 py-3">#</th>
+                  <th className="px-5 py-3">Platform</th>
+                  <th className="px-5 py-3">Post ID</th>
+                  <th className="px-5 py-3 text-right">Likes</th>
+                  <th className="px-5 py-3 text-right">Comments</th>
+                  <th className="px-5 py-3 text-right">Shares</th>
+                  <th className="px-5 py-3 text-right">Reach</th>
+                  <th className="px-5 py-3 text-right">Impressions</th>
+                  <th className="px-5 py-3 text-right">Engagement</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {topPosts.map((post, idx) => (
+                  <tr key={post.postId ?? idx} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-5 py-3 text-xs font-bold text-slate-400">#{idx + 1}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <PlatformDot platform={post.platform} />
+                        <span className="text-xs font-bold text-slate-700 capitalize">{post.platform}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className="text-xs text-slate-500 font-mono truncate max-w-30 inline-block">{post.postId}</span>
+                    </td>
+                    <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.likes)}</td>
+                    <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.comments)}</td>
+                    <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.shares)}</td>
+                    <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.reach)}</td>
+                    <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.impressions)}</td>
+                    <td className="px-5 py-3 text-right">
+                      <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full">
+                        {fmt(post.engagement)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      {/* ── MAIN GRID ───────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-12 gap-6">
-
-        {/* LEFT — Engagement trend chart (8/12) */}
-        <div className="col-span-12 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiTrendingUp className="text-blue-500" size={14} /> Engagement Trend
-            </h3>
-            <span className="text-[10px] text-slate-400 font-semibold">Last {days} days</span>
-          </div>
-
-          <div className="p-4">
-            {loading ? (
-              <div className="h-52 flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : daily.length === 0 ? (
-              <Empty message="No trend data yet. Metrics sync runs every 15 minutes." />
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={daily} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gradEngagement" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="gradReach" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#10b981" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={fmtDate}
-                    tick={{ fontSize: 10, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tickFormatter={fmt}
-                    tick={{ fontSize: 10, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="totalEngagement"
-                    stroke="#6366f1"
-                    strokeWidth={2}
-                    fill="url(#gradEngagement)"
-                    dot={false}
-                    name="engagement"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="totalReach"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    fill="url(#gradReach)"
-                    dot={false}
-                    name="reach"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT — Platform breakdown pie (4/12) */}
-        <div className="col-span-12 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiAward className="text-indigo-500" size={14} /> Platform Breakdown
-            </h3>
-          </div>
-
-          <div className="p-4">
-            {loading ? (
-              <div className="h-52 flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : pieData.length === 0 || pieData.every(d => d.value === 0) ? (
-              <Empty message="No platform data yet." />
-            ) : (
-              <>
-                <ResponsiveContainer width="100%" height={160}>
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={45}
-                      outerRadius={70}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v) => fmt(v)} />
-                  </PieChart>
-                </ResponsiveContainer>
-
-                {/* Legend */}
-                <div className="space-y-2 mt-2">
-                  {pieData.map((p) => (
-                    <div key={p.name} className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: p.color }} />
-                        <span className="text-slate-600 font-semibold">{p.name}</span>
-                      </div>
-                      <span className="font-bold text-slate-800">{fmt(p.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Platform details table (8/12) */}
-        <div className="col-span-12 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiMessageSquare className="text-emerald-500" size={14} /> Platform Metrics
-            </h3>
-          </div>
-
-          {loading ? (
-            <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading…</div>
-          ) : platforms.length === 0 ? (
-            <Empty message="No platform metrics available." />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
-                  <tr>
-                    <th className="px-5 py-3">Platform</th>
-                    <th className="px-5 py-3 text-right">Posts</th>
-                    <th className="px-5 py-3 text-right">Likes</th>
-                    <th className="px-5 py-3 text-right">Comments</th>
-                    <th className="px-5 py-3 text-right">Shares</th>
-                    <th className="px-5 py-3 text-right">Reach</th>
-                    <th className="px-5 py-3 text-right">Impressions</th>
-                    <th className="px-5 py-3 text-right">Engagement</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {platforms.map((p) => (
-                    <tr key={p.platform} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <PlatformDot platform={p.platform} />
-                          <span className="text-sm font-bold text-slate-700 capitalize">{p.platform}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.postsCount)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalLikes)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalComments)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalShares)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalReach)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(p.totalImpressions)}</td>
-                      <td className="px-5 py-3 text-right">
-                        <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full">
-                          {fmt(p.totalEngagement)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Daily posts bar chart (4/12) */}
-        <div className="col-span-12 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiTrendingUp className="text-orange-500" size={14} /> Daily Posts
-            </h3>
-          </div>
-          <div className="p-4">
-            {loading ? (
-              <div className="h-44 flex items-center justify-center">
-                <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : daily.length === 0 ? (
-              <Empty message="No post data yet." />
-            ) : (
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={daily} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={fmtDate}
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                    allowDecimals={false}
-                  />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="postsCount" fill="#f97316" radius={[4, 4, 0, 0]} name="posts" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* ── Connected Channels table (full width) ─────────────────────────── */}
-        <div className="col-span-12 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiUsers className="text-blue-500" size={14} /> Connected Channels
-            </h3>
-            <span className="text-[10px] text-slate-400 font-semibold">Last {days} days · followers synced daily at 02:00 UTC</span>
-          </div>
-
-          {loading ? (
-            <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading channels…</div>
-          ) : channels.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 text-slate-400">
-              <FiUsers size={32} className="mb-3 opacity-40" />
-              <p className="text-sm font-medium">No connected channels yet.</p>
-              <p className="text-xs mt-1">Connect Facebook, Instagram or LinkedIn to see metrics here.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
-                  <tr>
-                    <th className="px-5 py-3">Connected Channel</th>
-                    <th className="px-5 py-3 text-right">Total Followers</th>
-                    <th className="px-5 py-3 text-right">New Followers</th>
-                    <th className="px-5 py-3 text-right">Reach</th>
-                    <th className="px-5 py-3 text-right">Engagement</th>
-                    <th className="px-5 py-3 text-right">Leads</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {channels.map((ch) => {
-                    const color = PLATFORM_COLORS[ch.platform?.toLowerCase()] ?? "#94a3b8";
-                    return (
-                      <tr key={ch.accountId} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-                            <div>
-                              <p className="text-sm font-bold text-slate-700">{ch.accountName || ch.accountId}</p>
-                              <p className="text-[10px] text-slate-400 capitalize">{ch.platform}</p>
-                            </div>
-                            {ch.isActive && (
-                              <span className="ml-1 text-[9px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">● active</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">
-                          {ch.totalFollowers != null ? fmt(ch.totalFollowers) : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-5 py-3 text-right text-sm font-semibold">
-                          {ch.newFollowers != null ? (
-                            <span className={ch.newFollowers >= 0 ? "text-emerald-600" : "text-rose-600"}>
-                              {ch.newFollowers >= 0 ? "+" : ""}{fmt(ch.newFollowers)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">
-                          {ch.totalReach > 0 ? fmt(ch.totalReach) : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          {ch.totalEngagement > 0 ? (
-                            <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full">
-                              {fmt(ch.totalEngagement)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">
-                          {ch.totalLeads > 0 ? fmt(ch.totalLeads) : <span className="text-slate-300 text-sm">0</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Top posts table (full width) */}
-        <div className="col-span-12 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiAward className="text-yellow-500" size={14} /> Top Posts by Engagement
-            </h3>
-            <span className="text-[10px] text-slate-400 font-semibold">Top 10 · last {days} days</span>
-          </div>
-
-          {loading ? (
-            <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading posts…</div>
-          ) : topPosts.length === 0 ? (
-            <Empty message="No post metrics yet. Metrics sync runs every 15 minutes." />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
-                  <tr>
-                    <th className="px-5 py-3">#</th>
-                    <th className="px-5 py-3">Platform</th>
-                    <th className="px-5 py-3">Post ID</th>
-                    <th className="px-5 py-3 text-right">Likes</th>
-                    <th className="px-5 py-3 text-right">Comments</th>
-                    <th className="px-5 py-3 text-right">Shares</th>
-                    <th className="px-5 py-3 text-right">Reach</th>
-                    <th className="px-5 py-3 text-right">Impressions</th>
-                    <th className="px-5 py-3 text-right">Engagement</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {topPosts.map((post, idx) => (
-                    <tr key={post.postId} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-3 text-xs font-bold text-slate-400">#{idx + 1}</td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <PlatformDot platform={post.platform} />
-                          <span className="text-xs font-bold text-slate-700 capitalize">{post.platform}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className="text-xs text-slate-500 font-mono truncate max-w-[120px] inline-block">
-                          {post.postId}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.likes)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.comments)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.shares)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.reach)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-slate-700">{fmt(post.impressions)}</td>
-                      <td className="px-5 py-3 text-right">
-                        <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full">
-                          {fmt(post.engagement)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-      </div>
     </div>
   );
 }

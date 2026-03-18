@@ -18,6 +18,7 @@ import {
   CartesianGrid,
   Legend
 } from "recharts";
+import { Cell } from "recharts";
 
 // ── Platform helpers ────────────────────────────────────────────────────────
 function PlatformIcon({ platform, size = 18 }) {
@@ -61,11 +62,13 @@ export default function Dashboard() {
   const [activating, setActivating] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState(null);
+  const [dailyData, setDailyData] = useState([]);
+const [days, setDays] = useState(7);
 
   const PLATFORMS = ["Facebook", "Instagram", "LinkedIn"];
   const normPlatform = (p) =>
     ({ facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn" }[(p ?? "").toLowerCase()] ?? p);
-
+ 
   const loadData = async (slug) => {
     if (!slug) { setLoading(false); return; }
     setLoading(true);
@@ -107,7 +110,22 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => { loadData(activeBrand?.slug); }, [activeBrand?.slug]);
+ useEffect(() => {
+  loadData(activeBrand?.slug);
+  loadDailyData(days);
+  loadSummaryData();   
+}, [activeBrand?.slug, days]);
+const [summaryData, setSummaryData] = useState(null);
+
+const loadSummaryData = async () => {
+  try {
+    const res = await api.get("/analytics/brand/summary?days=7");
+    setSummaryData(res.data);
+  } catch (err) {
+    console.error("Summary API error", err);
+  }
+};
+
 
   const handleSync = async () => {
     setSyncing(true); setSyncMsg(null);
@@ -122,6 +140,14 @@ export default function Dashboard() {
       setTimeout(() => setSyncMsg(null), 4000);
     }
   };
+  const loadDailyData = async (selectedDays = 7) => {
+  try {
+    const res = await api.get(`/analytics/brand/daily?days=${selectedDays}`);
+    setDailyData(res.data || []);
+  } catch (err) {
+    console.error("Daily API error", err);
+  }
+};
 
   const activateAccount = async (platform, pageIdentifier) => {
     setActivating(pageIdentifier);
@@ -168,18 +194,43 @@ export default function Dashboard() {
   };
   {/* Graph */ }
 
-const graphData = PLATFORMS.map((plat) => {
-  const m = getMetrics(plat) || {};
+// const graphData = PLATFORMS.map((plat) => {
+//   const m = getMetrics(plat) || {};
 
-  return {
-    platform: plat,
-    followers: m?.totalFollowers || 0,
-    reach: m?.reach || 0,
-    engagement: m?.engagement || 0,
-    leads: m?.leads || 0
-  };
-});
+//   return {
+//     platform: plat,
+//     followers: m?.totalFollowers || 0,
+//     reach: m?.reach || 0,
+//     engagement: m?.engagement || 0,
+//     leads: m?.leads || 0
+//   };
+// });
+const normalizePlatform = (p) => {
+  const val = p?.toLowerCase();
 
+  if (val.includes("facebook")) return "Facebook";
+  if (val.includes("instagram")) return "Instagram";
+  if (val.includes("linkedin")) return "LinkedIn";
+
+  return p;
+};
+
+const graphData =
+  summaryData?.platformBreakdown?.map((p) => {
+    const platform = normalizePlatform(p.platform);
+
+    const colors = {
+      Facebook: "#1877F2",
+      Instagram: "#E1306C",
+      LinkedIn: "#0A66C2",
+    };
+
+    return {
+      platform,
+      value: p.totalEngagement || 0,
+      fill: colors[platform] || "#8884d8",
+    };
+  }) || [];
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] p-6">
       {/* Page header */}
@@ -417,30 +468,57 @@ const graphData = PLATFORMS.map((plat) => {
 </div>
                            
 {/* Brand Growth Graph */}
-<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-  <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4">
-    Brand Growth Overview
-  </h3>
+{/* Brand Growth Graph */}
+{/* Brand Growth Graph */}
+<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
 
-  <div className="w-full h-[300px]">
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={graphData}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="platform" />
-        <YAxis />
-        <Tooltip />
-        <Legend />
-
-        <Bar dataKey="followers" name="Followers" />
-        <Bar dataKey="reach" name="Reach" />
-        <Bar dataKey="engagement" name="Engagement" />
-        <Bar dataKey="leads" name="Leads" />
-      </BarChart>
-    </ResponsiveContainer>
+  {/* HEADER */}
+  <div className="flex items-center justify-between mb-4">
+    <div>
+      <h3 className="text-sm font-bold text-slate-800">
+        Engagement by Platform
+      </h3>
+      <p className="text-xs text-slate-500">
+        Last {days} days
+      </p>
+    </div>
   </div>
+
+  <ResponsiveContainer width="100%" height={320}>
+    <BarChart
+      data={graphData}
+      margin={{ top: 10, right: 10, left: 0, bottom: 10 }}
+      barSize={40}
+    >
+      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+
+      <XAxis dataKey="platform" />
+      <YAxis />
+
+      {/* ✅ ONLY ONE TOOLTIP */}
+   <Tooltip
+  cursor={{ fill: "transparent" }}
+  contentStyle={{
+    borderRadius: "8px",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+    padding: "6px 10px",
+    fontSize: "12px"
+  }}
+/>
+
+      <Bar dataKey="value" radius={[10, 10, 0, 0]}>
+        {graphData.map((entry, index) => (
+          <Cell key={index} fill={entry.fill} />
+        ))}
+      </Bar>
+
+    </BarChart>
+  </ResponsiveContainer>
 </div>
 
         </div>
+
 
 
 
