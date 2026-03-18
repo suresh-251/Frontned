@@ -1,46 +1,80 @@
 import { NavLink } from "react-router-dom";
-import { CalendarDays, LayoutGrid, Layers } from "lucide-react";
+import { Building2, CalendarDays, LayoutGrid, Layers, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 const navItems = [
   { label: "Leads", path: "/crm/sales/leads", Icon: LayoutGrid },
   { label: "Deals", path: "/crm/sales/deals", Icon: Layers },
+  { label: "Accounts", path: "/crm/sales/accounts", Icon: Building2 },
   { label: "Calendar", path: "/crm/sales/calendar", Icon: CalendarDays },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({
+  collapsed = false,
+  isMobile = false,
+  isOpen = false,
+  onToggleCollapse,
+  onClose,
+}) {
+  const sidebarClassName = [
+    "salescrm-sidebar",
+    collapsed ? "salescrm-sidebar--collapsed" : "",
+    isMobile ? "salescrm-sidebar--mobile" : "",
+    isMobile && isOpen ? "salescrm-sidebar--mobile-open" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="w-56 bg-white border-r border-gray-200 flex flex-col min-h-screen">
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-500 rounded-xl flex items-center justify-center text-white font-bold">
-            S
+    <>
+      {isMobile && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          className={`salescrm-sidebar__backdrop ${isOpen ? "salescrm-sidebar__backdrop--visible" : ""}`}
+          onClick={onClose}
+        />
+      )}
+      <aside className={sidebarClassName}>
+        <div className="salescrm-sidebar__header">
+          <div className="salescrm-sidebar__brand">
+            <div className="salescrm-sidebar__logo">S</div>
+            <div className="salescrm-sidebar__logo-text">
+              <h2>Sales CRM</h2>
+              <p>Pipeline workspace</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">Sales CRM</h2>
-            <p className="text-xs text-gray-500">Pipeline workspace</p>
-          </div>
+          {!isMobile ? (
+            <button
+              type="button"
+              className="salescrm-sidebar__collapse-btn"
+              onClick={onToggleCollapse}
+              title={collapsed ? "Open sidebar" : "Close sidebar"}
+              aria-label={collapsed ? "Open sidebar" : "Close sidebar"}
+            >
+              {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            </button>
+          ) : null}
         </div>
-      </div>
 
-      <nav className="flex-1 p-4 space-y-2">
-        {navItems.map(({ label, path, Icon }) => (
-          <NavLink
-            key={path}
-            to={path}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                isActive
-                  ? "bg-indigo-50 text-indigo-600 font-semibold shadow-sm"
-                  : "text-gray-700 hover:bg-gray-50"
-              }`
-            }
-          >
-            <Icon size={18} />
-            <span>{label}</span>
-          </NavLink>
-        ))}
-      </nav>
-
-    </div>
+        <nav className="salescrm-sidebar__nav">
+          {navItems.map(({ label, path, Icon }) => (
+            <NavLink
+              key={path}
+              to={path}
+              title={label}
+              onClick={() => {
+                if (isMobile && onClose) onClose();
+              }}
+              className={({ isActive }) =>
+                `salescrm-navlink ${isActive ? "salescrm-navlink--active" : ""}`
+              }
+            >
+              <Icon size={18} />
+              <span className="salescrm-sidebar__label">{label}</span>
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
+    </>
   );
 }

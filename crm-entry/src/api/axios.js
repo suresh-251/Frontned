@@ -1,4 +1,5 @@
 import axios from "axios";
+import { clearAccessToken, getAccessToken, hasPersistentAccessToken, setAccessToken } from "../utils/authStorage";
 
 const api = axios.create({
   // baseURL: "http://89.116.20.215:9090",
@@ -21,7 +22,7 @@ let refreshPromise = null;
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("accessToken"); 
+    const token = getAccessToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -40,7 +41,7 @@ api.interceptors.response.use(
     }
 
     if (originalRequest._retry) {
-      localStorage.clear();
+      clearAccessToken();
       // window.location.href = "/login";
       return Promise.reject(error);
     }
@@ -60,7 +61,7 @@ api.interceptors.response.use(
         throw new Error("No access token returned from refresh");
       }
 
-      localStorage.setItem("accessToken", data.accessToken);
+      setAccessToken(data.accessToken, hasPersistentAccessToken());
 
       api.defaults.headers.common["Authorization"] =
         `Bearer ${data.accessToken}`;
@@ -75,7 +76,7 @@ api.interceptors.response.use(
     } catch (refreshError) {
       isRefreshing = false;
       refreshPromise = null;
-      localStorage.clear();
+      clearAccessToken();
       // window.location.href = "/login";
       return Promise.reject(refreshError);
     }

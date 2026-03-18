@@ -1,4 +1,4 @@
-import { AVATAR_COLORS, CSV_FIELD_MAP, LEAD_SOURCE_OPTIONS, STATUS_LIST } from "./constants";
+import { AVATAR_COLORS, CSV_FIELD_MAP, LEAD_SOURCE_OPTIONS, STATUS_LIST, STATUS_META } from "./constants";
 
 const parseValidDate = (value) => {
   if (!value) return null;
@@ -128,6 +128,11 @@ export function sanitizeStatus(status) {
   return matched || "FreshLead";
 }
 
+export function getLeadAvatarColor(status, index = 0) {
+  const normalizedStatus = sanitizeStatus(status);
+  return STATUS_META[normalizedStatus]?.color || AVATAR_COLORS[index % AVATAR_COLORS.length];
+}
+
 export function sanitizeLeadSource(source) {
   if (!source) return "CustomizedInput";
   const matched = LEAD_SOURCE_OPTIONS.find((item) => normalizeEnumValue(item) === normalizeEnumValue(source));
@@ -199,7 +204,7 @@ export function createLeadRecord(lead, index = 0) {
     rating: lead.rating || "",
     assignee: lead.assignedToUserName || lead.assigneeName || (lead.assignedToUserId ? `User ${lead.assignedToUserId}` : "Unassigned"),
     assignedToUserId: lead.assignedToUserId ?? 0,
-    avatarBg: AVATAR_COLORS[index % AVATAR_COLORS.length],
+    avatarBg: getLeadAvatarColor(lead.status, index),
     createdDate: lead.createdAt ? lead.createdAt.split("T")[0] : todayStr(),
     createdAt: lead.createdAt || null,
     followUpDate: parseValidDate(lead.nextFollowUpAt) ? lead.nextFollowUpAt : "",

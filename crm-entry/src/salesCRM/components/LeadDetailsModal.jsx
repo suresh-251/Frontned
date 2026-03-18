@@ -82,11 +82,11 @@ const CONTACT_ROLE_OPTIONS = [
 ];
 
 const card = { border: "1px solid #e5e7eb", borderRadius: 14, background: "#fff", boxShadow: "none" };
-const input = { width: "100%", minHeight: 38, padding: "10px 12px", border: "1px solid #dbe4f0", borderRadius: 12, outline: "none", fontSize: 13, color: "#334155", background: "#fff", boxSizing: "border-box" };
+const input = { width: "100%", minHeight: 36, padding: "8px 11px", border: "1px solid #dbe4f0", borderRadius: 12, outline: "none", fontSize: 12, color: "#334155", background: "#fff", boxSizing: "border-box" };
 const floatingWrap = { position: "relative", width: "100%", paddingTop: 10 };
-const floatingInput = { ...input, minHeight: 48, padding: "14px 12px 8px" };
-const floatingLabel = { position: "absolute", top: -7, left: 12, padding: "0 5px 0 0", fontSize: 10.5, fontWeight: 700, color: "#475569", background: "#ffffff", pointerEvents: "none", letterSpacing: "0.01em", lineHeight: 1.1 };
-const floatingErrorText = { marginTop: 6, marginLeft: 4, fontSize: 11.5, color: "#dc2626", lineHeight: 1.3 };
+const floatingInput = { ...input, minHeight: 44, padding: "12px 11px 7px" };
+const floatingLabel = { position: "absolute", top: -7, left: 12, padding: "0 5px 0 0", fontSize: 9.5, fontWeight: 700, color: "#475569", background: "#ffffff", pointerEvents: "none", letterSpacing: "0.01em", lineHeight: 1.1 };
+const floatingErrorText = { marginTop: 6, marginLeft: 4, fontSize: 10.5, color: "#dc2626", lineHeight: 1.3 };
 const datePickerInputBase = { ...floatingInput, width: "100%", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
 const selectFieldStyle = {
   appearance: "none",
@@ -267,9 +267,9 @@ const mapCallActivity = (x) => ({
 function InfoRow({ icon: Icon, label, value }) {
   if (!hasValue(value)) return null;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: 10, alignItems: "start", padding: "12px 0", borderBottom: "1px solid #edf2f7" }}>
-      <div style={{ width: 28, height: 28, borderRadius: 10, background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }}><Icon size={15} /></div>
-      <div><div style={{ fontSize: 11.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div><div style={{ marginTop: 4, fontSize: 13.5, color: "#1e293b", wordBreak: "break-word" }}>{value}</div></div>
+    <div style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 8, alignItems: "start", padding: "10px 0", borderBottom: "1px solid #edf2f7" }}>
+      <div style={{ width: 24, height: 24, borderRadius: 9, background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }}><Icon size={13} /></div>
+      <div><div style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div><div style={{ marginTop: 4, fontSize: 12, color: "#1e293b", wordBreak: "break-word" }}>{value}</div></div>
     </div>
   );
 }
@@ -374,13 +374,13 @@ function LeftPanel({ lead, onConvert, onOpenTab }) {
   };
   return (
     <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderRight: "1px solid #e5e7eb", background: "#fff" }}>
-      <div style={{ padding: 22, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(180deg, #f8faff 0%, #f3f6ff 100%)" }}>
-        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          <div style={{ width: 62, height: 62, borderRadius: "50%", background: lead?.avatarBg || "#6366f1", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800 }}>{initials}</div>
+      <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(180deg, #f8faff 0%, #f3f6ff 100%)" }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", background: lead?.avatarBg || "#6366f1", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, fontWeight: 800 }}>{initials}</div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{leadName(lead)}</div>
-            {hasValue(lead?.company) && <div style={{ marginTop: 4, fontSize: 13.5, color: "#64748b" }}>{lead.company}</div>}
-            {hasValue(lead?.status) && <div style={{ display: "inline-flex", marginTop: 10, padding: "5px 10px", borderRadius: 999, background: "#eef2ff", color: "#4f46e5", fontSize: 12, fontWeight: 700 }}>{formatStatus(lead.status)}</div>}
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{leadName(lead)}</div>
+            {hasValue(lead?.company) && <div style={{ marginTop: 4, fontSize: 11.5, color: "#64748b" }}>{lead.company}</div>}
+            {hasValue(lead?.status) && <div style={{ display: "inline-flex", marginTop: 10, padding: "5px 10px", borderRadius: 999, background: "#eef2ff", color: "#4f46e5", fontSize: 11, fontWeight: 700 }}>{formatStatus(lead.status)}</div>}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 18 }}>
@@ -395,8 +395,8 @@ function LeftPanel({ lead, onConvert, onOpenTab }) {
                 title={label}
                 aria-label={label}
                 style={{
-                  width: 34,
-                  height: 34,
+                  width: 30,
+                  height: 30,
                   border: enabled ? "1px solid #dbe4f0" : "1px solid #e2e8f0",
                   borderRadius: "50%",
                   background: "#ffffff",
@@ -431,7 +431,7 @@ function LeftPanel({ lead, onConvert, onOpenTab }) {
                   event.currentTarget.style.transform = "translateY(-2px) scale(1.04)";
                 }}
               >
-                <Icon size={14} color={enabled ? "#64748b" : "#94a3b8"} />
+                <Icon size={13} color={enabled ? "#64748b" : "#94a3b8"} />
               </button>
             );
           })}
@@ -463,15 +463,15 @@ function LeftPanel({ lead, onConvert, onOpenTab }) {
           style={{
             marginTop: 18,
             display: "block",
-            width: 130,
+            width: 118,
             marginLeft: "auto",
             marginRight: "auto",
-            padding: "10px 0",
+            padding: "9px 0",
             border: "1px solid #bbf7d0",
             borderRadius: 12,
             background: "#f0fdf4",
             color: "#166534",
-            fontSize: 13,
+            fontSize: 11.5,
             fontWeight: 800,
             cursor: "pointer",
             lineHeight: 1.1,
@@ -480,7 +480,7 @@ function LeftPanel({ lead, onConvert, onOpenTab }) {
           Convert To Deal
         </button>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 22px 18px" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 18px 16px" }}>
         <InfoRow icon={Mail} label="Email" value={lead?.email} />
         <InfoRow icon={Mail} label="Secondary Email" value={lead?.secondaryEmail} />
         <InfoRow icon={Phone} label="Phone" value={lead?.phone} />
@@ -601,18 +601,18 @@ function Timeline({ items, loading, onRefresh }) {
   const groups = useMemo(() => items.reduce((acc, item) => { const key = fmtDate(timelineDateValue(item), false); (acc[key] ||= []).push(item); return acc; }, {}), [items]);
   return (
     <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderLeft: "1px solid #e2e8f0", background: "linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%)" }}>
-      <div style={{ borderBottom: "1px solid #e2e8f0", background: "linear-gradient(180deg, #ffffff 0%, #f7fbff 100%)", padding: "20px 22px 16px" }}>
+      <div style={{ borderBottom: "1px solid #e2e8f0", background: "linear-gradient(180deg, #ffffff 0%, #f7fbff 100%)", padding: "16px 18px 14px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em" }}>Lead Story</div>
-            <div style={{ marginTop: 6, fontSize: 18, fontWeight: 800, color: "#0f172a" }}>Timeline</div>
-            <div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b", lineHeight: 1.5 }}>A clean view of status changes, communications, and lead updates.</div>
+            <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em" }}>Lead Story</div>
+            <div style={{ marginTop: 6, fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Timeline</div>
+            <div style={{ marginTop: 4, fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>A clean view of status changes, communications, and lead updates.</div>
           </div>
-          <button className="icon-btn" onClick={onRefresh} title="Refresh timeline" style={{ width: 40, height: 40, border: "1px solid #dbe4f0", borderRadius: 12, background: "#ffffff", boxShadow: "0 8px 20px rgba(148, 163, 184, 0.12)" }}><RefreshCw size={16} /></button>
+          <button className="icon-btn" onClick={onRefresh} title="Refresh timeline" style={{ width: 34, height: 34, border: "1px solid #dbe4f0", borderRadius: 12, background: "#ffffff", boxShadow: "0 8px 20px rgba(148, 163, 184, 0.12)" }}><RefreshCw size={14} /></button>
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "18px 14px 22px 0" }}>
-        {loading ? <div style={{ color: "#94a3b8", fontSize: 13, padding: "16px 6px" }}>Loading timeline...</div> : null}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 12px 18px 0" }}>
+        {loading ? <div style={{ color: "#94a3b8", fontSize: 11.5, padding: "16px 6px" }}>Loading timeline...</div> : null}
         {!loading && !items.length ? (
           <div style={{ marginTop: 8, padding: "20px 18px", border: "1px solid #e2e8f0", borderRadius: 18, background: "rgba(255,255,255,0.92)", boxShadow: "0 18px 36px rgba(148, 163, 184, 0.12)" }}>
             <div style={{ width: 44, height: 44, borderRadius: 14, background: "#eef6ff", color: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center" }}><Activity size={18} /></div>
@@ -1410,9 +1410,9 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
   return (
     <>
       <div className="overlay" onClick={onClose} style={{ padding: 24, zIndex: 700 }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1480px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "visible", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1440px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "visible", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
           <button className="icon-btn" onClick={onClose} title="Close" style={{ position: "absolute", top: 14, right: 16, zIndex: 2, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(6px)" }}><X size={18} /></button>
-          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 360px", borderRadius: 24, overflow: "hidden", background: "#fff" }}>
+          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 300px", borderRadius: 24, overflow: "hidden", background: "#fff" }}>
             <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} onOpenTab={setActiveTab} />
             <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} />
             <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} />

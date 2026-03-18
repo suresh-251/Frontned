@@ -131,18 +131,18 @@ export const STATUS_LIST = [
 ];
 
 export const STATUS_META = {
-  FreshLead: { color: "#2563eb", bg: "#e0ecff" },
-  Contacted: { color: "#0ea5e9", bg: "#e0f2fe" },
+  FreshLead: { color: "#2563eb", bg: "#dbeafe" },
+  Contacted: { color: "#0284c7", bg: "#e0f2fe" },
   FollowUp: { color: "#7c3aed", bg: "#ede9fe" },
   Interested: { color: "#16a34a", bg: "#dcfce7" },
-  Qualified: { color: "#059669", bg: "#d1fae5" },
-  Negotiation: { color: "#d97706", bg: "#fef3c7" },
-  Converted: { color: "#047857", bg: "#d1fae5" },
-  Lost: { color: "#dc2626", bg: "#fee2e2" },
-  NotInterested: { color: "#ef4444", bg: "#fee2e2" },
-  UnableToContact: { color: "#6b7280", bg: "#f3f4f6" },
-  JunkLead: { color: "#374151", bg: "#e5e7eb" },
-  NeedReview: { color: "#9333ea", bg: "#f3e8ff" },
+  Qualified: { color: "#0f766e", bg: "#ccfbf1" },
+  Negotiation: { color: "#c2410c", bg: "#ffedd5" },
+  Converted: { color: "#166534", bg: "#dcfce7" },
+  Lost: { color: "#b91c1c", bg: "#fee2e2" },
+  NotInterested: { color: "#e11d48", bg: "#ffe4e6" },
+  UnableToContact: { color: "#64748b", bg: "#f1f5f9" },
+  JunkLead: { color: "#475569", bg: "#e2e8f0" },
+  NeedReview: { color: "#4338ca", bg: "#e0e7ff" },
 };
 
 export const RESPONSE_TYPES = ["All", "Email", "Call", "Message"];
@@ -175,11 +175,10 @@ export const LEAD_SOURCE_OPTIONS = [
 ];
 
 export const ALL_COLUMNS = [
-  { key: "id", label: "ID", always: true },
+  { key: "serial", label: "No.", always: true },
   { key: "name", label: "Lead Name", always: true },
   { key: "company", label: "Company", always: false },
-  { key: "phone", label: "Phone", always: false },
-  { key: "email", label: "Email", always: false },
+  { key: "contact", label: "Contact", always: false },
   { key: "status", label: "Status", always: false },
   { key: "followUp", label: "Follow-Up", always: false },
   { key: "assignee", label: "Assignee", always: false },
