@@ -6,6 +6,7 @@ import { useBrand } from "../context/BrandContext";
 import { appCache } from "../utils/cache";
 import { getAvailablePages } from "../api/facebook.pages.api";
 import { getLeadForms, getLeadFilterOptions, getLeadHistory, editLeadRemark, deleteLeadRemark } from "../api/facebook.leads.api";
+import { getGoogleSheetConfig, updateGoogleSheetConfig } from "../api/brand.api";
 import useUsers from "../hooks/useUsers";
 import * as XLSX from "xlsx";
 import * as signalR from "@microsoft/signalr";
@@ -261,12 +262,17 @@ export default function Leads() {
   const [filterToDate, setFilterToDate] = useState("");
   const [showDateRange, setShowDateRange] = useState(false);
 
+  // ── Google Sheets settings ──────────────────────────────────────────
+  const [showSheetSettings, setShowSheetSettings] = useState(false);
+  const [sheetConfig, setSheetConfig] = useState({ spreadsheetId: "", sheetName: "Leads", enabled: false });
+  const [sheetSaving, setSheetSaving] = useState(false);
+  const [sheetMsg, setSheetMsg] = useState("");
+
   /* =========================
      INITIAL LOAD
      ========================= */
-  useEffect(() => {
-    reload({});
-  }, [activeBrand?.slug]);
+  // The useFacebookLeads hook handles initial load and brand switches internally.
+  // Only call reload for SignalR or manual refresh — not on mount/brand change.
 
   /* =========================
      SIGNALR REAL-TIME
@@ -351,6 +357,19 @@ useEffect(() => {
       });
   }, [activeBrand?.slug]);
 
+  // Load Google Sheet config per brand
+  useEffect(() => {
+    const slug = activeBrand?.slug;
+    if (!slug) return;
+    getGoogleSheetConfig(slug)
+      .then(cfg => setSheetConfig({
+        spreadsheetId: cfg.spreadsheetId || "",
+        sheetName: cfg.sheetName || "Leads",
+        enabled: !!cfg.enabled,
+      }))
+      .catch(() => setSheetConfig({ spreadsheetId: "", sheetName: "Leads", enabled: false }));
+  }, [activeBrand?.slug]);
+
   useEffect(() => {
     getDepartments().then(setDepartments).catch(() => {});
   }, []);
@@ -392,7 +411,9 @@ useEffect(() => {
   const getLeadDate = (l) => new Date(l.metaCreatedAt || l.syncedAt || l.createdAt);
 
   // Guard: don't show stale data from a previous brand during transition
-  const _leads = dataSlug === activeBrand?.slug ? leads : [];
+  // Allow data when dataSlug matches OR during initial load (dataSlug is catching up)
+  const slugMatches = !activeBrand?.slug || dataSlug === activeBrand?.slug;
+  const _leads = slugMatches ? leads : [];
 
   const filteredLeads = _leads.filter(l => {
     // 1. Search Query
@@ -484,6 +505,29 @@ useEffect(() => {
 
     XLSX.writeFile(workbook, mode === "selected" ? "facebook-leads-selected.xlsx" : "facebook-leads-all.xlsx");
     Toast?.success(`Exported ${exportLeads.length} leads successfully.`);
+  };
+
+  /* =========================
+     GOOGLE SHEETS SAVE
+     ========================= */
+  const saveSheetConfig = async () => {
+    if (!activeBrand?.slug) return;
+    setSheetSaving(true);
+    setSheetMsg("");
+    try {
+      const result = await updateGoogleSheetConfig(activeBrand.slug, sheetConfig);
+      setSheetConfig({
+        spreadsheetId: result.spreadsheetId || "",
+        sheetName: result.sheetName || "Leads",
+        enabled: !!result.enabled,
+      });
+      setSheetMsg("✅ Saved");
+      setTimeout(() => setSheetMsg(""), 3000);
+    } catch (err) {
+      setSheetMsg("❌ " + (err?.response?.data?.message || "Save failed"));
+    } finally {
+      setSheetSaving(false);
+    }
   };
 
   /* =========================
@@ -875,6 +919,18 @@ useEffect(() => {
             <button onClick={() => reload({})} className="ml-2 p-1.5 text-gray-400 hover:text-indigo-600 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all" title="Refresh">
               <FaSync className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-500" : ""}`} />
             </button>
+
+            <button
+              onClick={() => setShowSheetSettings(!showSheetSettings)}
+              className={`ml-1 flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-all ${
+                sheetConfig.enabled
+                  ? "bg-green-50 border-green-300 text-green-700 hover:bg-green-100"
+                  : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+              }`}
+              title="Google Sheets Settings"
+            >
+              📊 Sheets {sheetConfig.enabled ? "ON" : "OFF"}
+            </button>
           </div>
           
           <div className="flex items-center gap-2">
@@ -888,6 +944,60 @@ useEffect(() => {
             </div>
           </div>
         </div>
+
+        {/* ── Google Sheets Settings Panel ── */}
+        {showSheetSettings && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">📊 Google Sheets Integration</h3>
+              <button onClick={() => setShowSheetSettings(false)} className="text-gray-400 hover:text-gray-600">
+                <FaTimes className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              When enabled, new leads will be automatically appended to your Google Sheet.
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[220px]">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Spreadsheet ID</label>
+                <input
+                  type="text"
+                  value={sheetConfig.spreadsheetId}
+                  onChange={e => setSheetConfig(c => ({ ...c, spreadsheetId: e.target.value }))}
+                  placeholder="e.g. 1TskPqMIiPYjAY5Eo1IywSfUkkjK4y9n1eSxDQUkBZk8"
+                  className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+              </div>
+              <div className="w-40">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sheet Name</label>
+                <input
+                  type="text"
+                  value={sheetConfig.sheetName}
+                  onChange={e => setSheetConfig(c => ({ ...c, sheetName: e.target.value }))}
+                  placeholder="Leads"
+                  className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sheetConfig.enabled}
+                  onChange={e => setSheetConfig(c => ({ ...c, enabled: e.target.checked }))}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-gray-600">Enable</span>
+              </label>
+              <button
+                onClick={saveSheetConfig}
+                disabled={sheetSaving}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all"
+              >
+                {sheetSaving ? "Saving..." : "Save"}
+              </button>
+              {sheetMsg && <span className="text-sm">{sheetMsg}</span>}
+            </div>
+          </div>
+        )}
 
         {/* ── LIST VIEW ── */}
         {viewMode === "list" ? (
