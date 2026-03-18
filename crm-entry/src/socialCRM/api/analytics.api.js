@@ -9,8 +9,11 @@ import api from "./apiClient";
  * Full brand analytics summary — totals + daily breakdown + platform breakdown + top posts.
  * GET /api/analytics/brand/summary?days=7
  */
-export const getBrandSummary = async (days = 7) => {
-  const res = await api.get("/analytics/brand/summary", { params: { days } });
+export const getBrandSummary = async (days = 7, platform = null, sortBy = "engagement") => {
+  const params = { days };
+  if (platform && platform !== "all") params.platform = platform;
+  if (sortBy && sortBy !== "engagement") params.sortBy = sortBy;
+  const res = await api.get("/analytics/brand/summary", { params });
   return res.data;
 };
 
@@ -56,8 +59,16 @@ export const getChannelMetrics = async (days = 30) => {
  * POST /api/analytics/sync
  */
 export const syncAnalytics = async () => {
-  const res = await api.post("/analytics/sync");
-  return res.data;
+  try {
+    const res = await api.post("/analytics/sync");
+    return res.data;
+  } catch (err) {
+    // Re-throw with the actual backend error message preserved
+    const msg = err?.response?.data?.message || err?.response?.data?.error || err.message || "Sync failed";
+    const enriched = new Error(msg);
+    enriched.response = err.response;
+    throw enriched;
+  }
 };
 
 /**

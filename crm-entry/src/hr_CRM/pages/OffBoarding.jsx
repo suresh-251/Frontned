@@ -609,3 +609,4 @@ const DetailRow = ({ label, value, highlight = false }) => (
     </span>
   </div>
 );
+

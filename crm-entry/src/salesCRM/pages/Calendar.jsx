@@ -4,6 +4,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "luc
 import DatePicker from "react-datepicker";
 import activitiesAPI from "../api/activities.api";
 import leadsAPI from "../api/leads.api";
+import { getAccessToken } from "../../utils/authStorage";
 
 const HOUR_START = 7;
 const HOUR_END = 21;
@@ -102,7 +103,7 @@ const getMonthMatrix = (date) => {
   return weeks;
 };
 const getUserId = () => {
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   if (!token) return null;
   try {
     const decoded = jwtDecode(token);
@@ -410,9 +411,10 @@ export default function CalendarPage() {
     setAnchorDate((current) => addDays(current, direction * span));
   };
 
-  const columnWidth = 240;
-  const gridTemplate = `76px repeat(${dayColumns.length}, ${columnWidth}px)`;
-  const gridTotalWidth = 76 + (dayColumns.length * columnWidth);
+  const timeColumnWidth = 64;
+  const columnWidth = rangeMode === "workweek" ? 180 : rangeMode === "week" ? 170 : 210;
+  const gridTemplate = `${timeColumnWidth}px repeat(${dayColumns.length}, ${columnWidth}px)`;
+  const gridTotalWidth = timeColumnWidth + (dayColumns.length * columnWidth);
   const monthMatrix = useMemo(() => getMonthMatrix(anchorDate), [anchorDate]);
   const handleMiniDateClick = (day) => {
     setAnchorDate(day);
@@ -471,21 +473,21 @@ export default function CalendarPage() {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
-      <aside style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "#ffffff", padding: 16, position: "sticky", top: 92, height: "fit-content" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>{fmtMonthYear(anchorDate)}</div>
+    <div style={{ display: "grid", gridTemplateColumns: "172px minmax(0, 1fr)", gap: 10, alignItems: "start", minHeight: "calc(100vh - 86px)" }}>
+      <aside style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "#ffffff", padding: 8, position: "sticky", top: 92, height: "fit-content", alignSelf: "start" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>{fmtMonthYear(anchorDate)}</div>
           <div style={{ display: "flex", gap: 6 }}>
             <button type="button" onClick={() => setAnchorDate(addMonths(anchorDate, -1))} style={miniBtnStyle}><ChevronLeft size={14} /></button>
             <button type="button" onClick={() => setAnchorDate(addMonths(anchorDate, 1))} style={miniBtnStyle}><ChevronRight size={14} /></button>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
           {WEEKDAY_LABELS.map((label) => (
-            <div key={label} style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textAlign: "center" }}>{label}</div>
+            <div key={label} style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textAlign: "center" }}>{label}</div>
           ))}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
             {monthMatrix.flat().map((day) => {
             const inMonth = day.getMonth() === anchorDate.getMonth();
             const inRange = day >= startOfDay(start) && day <= endOfDay(end);
@@ -496,12 +498,12 @@ export default function CalendarPage() {
                 type="button"
                 onClick={() => handleMiniDateClick(day)}
                 style={{
-                  height: 28,
-                  borderRadius: 6,
+                  height: 20,
+                  borderRadius: 4,
                   border: "none",
                   background: inRange ? "#dbeafe" : "transparent",
                   color: isToday ? "#1d4ed8" : inMonth ? "#1f2937" : "#cbd5f5",
-                  fontSize: 11,
+                  fontSize: 9,
                   fontWeight: isToday ? 700 : 600,
                   cursor: "pointer",
                 }}
@@ -514,7 +516,7 @@ export default function CalendarPage() {
 
       </aside>
 
-      <section style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "#ffffff", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden" }}>
+        <section style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "#ffffff", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden", height: "calc(100vh - 86px)", minHeight: "calc(100vh - 86px)", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <CalendarDays size={18} />
@@ -549,14 +551,14 @@ export default function CalendarPage() {
 
         {error ? <div style={{ ...errorStyle, margin: 16 }}>{error}</div> : null}
 
-        <div style={{ borderTop: "1px solid #e5e7eb", background: "#ffffff" }}>
-          <div style={{ maxHeight: "68vh", overflow: "auto" }}>
+        <div style={{ borderTop: "1px solid #e5e7eb", background: "#ffffff", flex: 1, minHeight: 0 }}>
+          <div style={{ height: "calc(100vh - 170px)", minHeight: "calc(100vh - 170px)", overflow: "auto" }}>
             <div style={{ display: "grid", gridTemplateColumns: gridTemplate, borderBottom: "1px solid #e5e7eb", position: "sticky", top: 0, zIndex: 2, background: "#ffffff", width: gridTotalWidth }}>
-              <div style={{ padding: "12px 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", borderRight: "1px solid #e5e7eb", boxSizing: "border-box" }}>IST</div>
+              <div style={{ padding: "12px 6px", fontSize: 10, fontWeight: 700, color: "#9ca3af", borderRight: "1px solid #e5e7eb", boxSizing: "border-box" }}>IST</div>
               {dayColumns.map((day) => (
-                <div key={day.toISOString()} style={{ padding: "10px 12px", borderRight: "1px solid #e5e7eb", background: sameDay(day, today) ? "#eff6ff" : "#ffffff", boxSizing: "border-box" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: sameDay(day, today) ? "#2563eb" : "#6b7280" }}>{fmtDayName(day)}</div>
-                  <div style={{ marginTop: 2, fontSize: 20, fontWeight: 700, color: sameDay(day, today) ? "#2563eb" : "#111827", lineHeight: 1 }}>{fmtDayNumber(day)}</div>
+                <div key={day.toISOString()} style={{ padding: "8px 10px", borderRight: "1px solid #e5e7eb", background: sameDay(day, today) ? "#eff6ff" : "#ffffff", boxSizing: "border-box" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: sameDay(day, today) ? "#2563eb" : "#6b7280" }}>{fmtDayName(day)}</div>
+                  <div style={{ marginTop: 2, fontSize: 18, fontWeight: 700, color: sameDay(day, today) ? "#2563eb" : "#111827", lineHeight: 1 }}>{fmtDayNumber(day)}</div>
                 </div>
               ))}
             </div>
@@ -566,7 +568,7 @@ export default function CalendarPage() {
                 {Array.from({ length: HOUR_END - HOUR_START }).map((_, index) => {
                   const hour = HOUR_START + index;
                   return (
-                    <div key={hour} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid #f1f5f9", padding: "6px 8px", fontSize: 11, fontWeight: 600, color: "#9ca3af", boxSizing: "border-box" }}>
+                    <div key={hour} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid #f1f5f9", padding: "6px 6px", fontSize: 10, fontWeight: 600, color: "#9ca3af", boxSizing: "border-box" }}>
                       {hour > 12 ? `${hour - 12}pm` : `${hour}am`}
                     </div>
                   );

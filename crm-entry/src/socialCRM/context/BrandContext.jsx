@@ -7,23 +7,46 @@ import {
   getBrands,
   updateBrand as apiUpdateBrand,
 } from "../api/brand.api";
+import { appCache } from "../utils/cache";
+
+const BRANDS_CACHE_KEY = "sc_brands";
+
+/** Read brands synchronously from localStorage (used as useState initializer) */
+function readCachedBrands() {
+  try {
+    const entry = appCache.getStale(BRANDS_CACHE_KEY);
+    return entry?.data ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const BrandContext = createContext(null);
 
 export function BrandProvider({ children }) {
-  const [brands, setBrands] = useState([]);
-  const [activeBrand, setActiveBrand] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const cachedBrands = readCachedBrands();
+
+  // Initialize synchronously from cache — no loading flash for returning users
+  const [brands, setBrands]           = useState(cachedBrands ?? []);
+  const [activeBrand, setActiveBrand] = useState(cachedBrands?.find(b => b.isActive) ?? null);
+  // Only show loading spinner when there is genuinely nothing to show yet
+  const [loading, setLoading]         = useState(!cachedBrands);
+  const [error, setError]             = useState(null);
 
   const refresh = useCallback(async () => {
     try {
-      setLoading(true);
+      // Don't show loading spinner if we already have cached brands
+      const hasCached = readCachedBrands() != null;
+      if (!hasCached) setLoading(true);
       setError(null);
+
       const data = await getBrands();
       setBrands(data);
       const active = data.find((b) => b.isActive) ?? null;
       setActiveBrand(active);
+
+      // Persist to cache + localStorage slug
+      appCache.set(BRANDS_CACHE_KEY, data);
       if (active) {
         localStorage.setItem("brandSlug", active.slug);
       } else {
@@ -36,23 +59,45 @@ export function BrandProvider({ children }) {
     }
   }, []);
 
+  // On mount: if cache is fresh skip the fetch; otherwise fetch in background
   useEffect(() => {
+    if (appCache.isFresh(BRANDS_CACHE_KEY)) return; // nothing to do
     refresh();
   }, [refresh]);
 
+  /** Flush every brand-scoped cache so the next page renders fresh data. */
+  const invalidateAllBrandCaches = useCallback(() => {
+    const prefixes = [
+      "sc_dash_", "ph_inbox_", "ph_leads_", "ph_pages_",
+      "ph_scheduled_", "ph_history_", "ph_drafts_",
+      "ph_subs_", "ph_fbpages_",
+    ];
+    prefixes.forEach((p) => appCache.invalidatePrefix(p));
+    appCache.invalidate(BRANDS_CACHE_KEY);
+  }, []);
+
   const switchBrand = useCallback(
     async (slug) => {
+      invalidateAllBrandCaches();
+      localStorage.setItem("brandSlug", slug);
       await activateBrand(slug);
-      await refresh();
+
+      const target = brands.find(b => b.slug === slug);
+      if (target) {
+        const updated = brands.map(b => ({ ...b, isActive: b.slug === slug }));
+        setBrands(updated);
+        setActiveBrand({ ...target, isActive: true });
+        appCache.set(BRANDS_CACHE_KEY, updated);
+      }
     },
-    [refresh]
+    [brands, invalidateAllBrandCaches]
   );
 
   const createBrand = useCallback(
     async (payload) => {
       const brand = await apiCreateBrand(payload);
-      // Auto-activate the first brand created
       await activateBrand(brand.slug);
+      appCache.invalidate(BRANDS_CACHE_KEY);
       await refresh();
       return brand;
     },
@@ -62,6 +107,7 @@ export function BrandProvider({ children }) {
   const addBrand = useCallback(
     async (payload) => {
       const brand = await apiCreateBrand(payload);
+      appCache.invalidate(BRANDS_CACHE_KEY);
       await refresh();
       return brand;
     },
@@ -71,6 +117,7 @@ export function BrandProvider({ children }) {
   const updateBrand = useCallback(
     async (slug, payload) => {
       const updated = await apiUpdateBrand(slug, payload);
+      appCache.invalidate(BRANDS_CACHE_KEY);
       await refresh();
       return updated;
     },
@@ -80,6 +127,8 @@ export function BrandProvider({ children }) {
   const removeBrand = useCallback(
     async (slug) => {
       await apiDeleteBrand(slug);
+      appCache.invalidate(BRANDS_CACHE_KEY);
+      appCache.invalidate(`sc_dash_${slug}`);
       if (activeBrand?.slug === slug) {
         localStorage.removeItem("brandSlug");
       }
@@ -90,6 +139,7 @@ export function BrandProvider({ children }) {
 
   const deactivate = useCallback(async () => {
     await clearActiveBrand();
+    appCache.invalidate(BRANDS_CACHE_KEY);
     await refresh();
   }, [refresh]);
 
@@ -107,6 +157,7 @@ export function BrandProvider({ children }) {
         updateBrand,
         removeBrand,
         deactivate,
+        invalidateAllBrandCaches,
         hasBrands: brands.length > 0,
       }}
     >

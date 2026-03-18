@@ -27,6 +27,10 @@ export const updateConversationStatus = (conversationId, status) =>
 export const syncInbox = () =>
   api.post("/inbox/sync").then((r) => r.data);
 
+// ── Unread count for bell icon badge ─────────────────────────────────────
+export const getUnreadCount = () =>
+  api.get("/inbox/unread-count").then((r) => r.data);
+
 // ── SignalR connection factory ────────────────────────────────────────────
 export function createInboxHubConnection() {
   const token = localStorage.getItem("accessToken");

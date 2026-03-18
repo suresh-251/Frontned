@@ -6,6 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import dealsAPI from "../api/deals.api";
 import Toast from "../utils/toast";
 import { IFilter, IKanban, IRows, ISearch, IX } from "./leads/shared";
+import { getInitials } from "./leads/utils";
 
 const STAGE_ORDER = [
   "New",
@@ -20,15 +21,15 @@ const STAGE_ORDER = [
 ];
 
 const STAGE_META = {
-  New: { color: "#0f766e", bg: "#ccfbf1" },
-  Prospect: { color: "#2563eb", bg: "#dbeafe" },
+  New: { color: "#2563eb", bg: "#dbeafe" },
+  Prospect: { color: "#0284c7", bg: "#e0f2fe" },
   Qualification: { color: "#7c3aed", bg: "#ede9fe" },
-  Qualified: { color: "#0891b2", bg: "#cffafe" },
-  Proposal: { color: "#d97706", bg: "#fef3c7" },
-  ProposalSent: { color: "#ea580c", bg: "#ffedd5" },
-  Negotiation: { color: "#c2410c", bg: "#fed7aa" },
-  ClosedWon: { color: "#15803d", bg: "#dcfce7" },
-  ClosedLost: { color: "#dc2626", bg: "#fee2e2" },
+  Qualified: { color: "#0f766e", bg: "#ccfbf1" },
+  Proposal: { color: "#b45309", bg: "#fef3c7" },
+  ProposalSent: { color: "#c2410c", bg: "#ffedd5" },
+  Negotiation: { color: "#ea580c", bg: "#fed7aa" },
+  ClosedWon: { color: "#166534", bg: "#dcfce7" },
+  ClosedLost: { color: "#b91c1c", bg: "#fee2e2" },
 };
 
 const fmtCurrency = (value) => {
@@ -205,15 +206,6 @@ function DealsKanban({ deals, onOpenDeal, onDeleteDeal }) {
 
   return (
     <>
-      <div className="kanban-toolbar">
-        <div className="kanban-toolbar__title-wrap">
-          <div className="kanban-toolbar__eyebrow">KANBAN VIEW</div>
-          <div className="kanban-toolbar__title-row">
-            <div className="kanban-toolbar__label">Deal stages</div>
-            <div className="kanban-toolbar__hint">See every stage with its deal count and total annual revenue.</div>
-          </div>
-        </div>
-      </div>
       <div className="kanban-board">
         {STAGE_ORDER.map((stage) => {
           const items = grouped[stage] || [];
@@ -527,48 +519,59 @@ export default function Deals() {
       </div>
 
       {viewMode === "kanban" ? <DealsKanban deals={filteredDeals} onOpenDeal={handleOpenDeal} onDeleteDeal={handleDeleteDeal} /> : (
-        <div className="table-card-shell">
-          <div className="table-card">
-            <div className="table-scroll">
-              <table className="table">
+        <div className="table-card-shell sales-deals-table-shell">
+          <div className="table-card sales-deals-table-card">
+            <div className="table-scroll sales-deals-table-scroll">
+              <table className="table sales-deals-table">
                 <thead>
                   <tr className="thead-row">
-                    <th className="th">Deal ID</th>
-                    <th className="th">Deal Name</th>
-                    <th className="th">Stage</th>
-                    <th className="th">Amount</th>
-                    <th className="th">Probability</th>
-                    <th className="th">Expected Revenue</th>
-                    <th className="th">Account</th>
-                    <th className="th">Contact</th>
-                    <th className="th">Owner</th>
-                    <th className="th">Next Step</th>
-                    <th className="th">Next Activity</th>
-                    <th className="th">Lead Source</th>
-                    <th className="th">Campaign Source</th>
-                    <th className="th">Priority</th>
-                    <th className="th">Tags</th>
-                    <th className="th">Closing Date</th>
-                    <th className="th">Actions</th>
+                    <th className="th sales-deals-table-head-cell">Deal Name</th>
+                    <th className="th sales-deals-table-head-cell">Stage</th>
+                    <th className="th sales-deals-table-head-cell">Amount</th>
+                    <th className="th sales-deals-table-head-cell">Probability</th>
+                    <th className="th sales-deals-table-head-cell">Expected Revenue</th>
+                    <th className="th sales-deals-table-head-cell">Account</th>
+                    <th className="th sales-deals-table-head-cell">Contact</th>
+                    <th className="th sales-deals-table-head-cell">Owner</th>
+                    <th className="th sales-deals-table-head-cell">Next Step</th>
+                    <th className="th sales-deals-table-head-cell">Next Activity</th>
+                    <th className="th sales-deals-table-head-cell">Lead Source</th>
+                    <th className="th sales-deals-table-head-cell">Campaign Source</th>
+                    <th className="th sales-deals-table-head-cell">Priority</th>
+                    <th className="th sales-deals-table-head-cell">Tags</th>
+                    <th className="th sales-deals-table-head-cell">Closing Date</th>
+                    <th className="th th-actions sales-deals-table-head-cell">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? <tr><td className="td" colSpan={17}><span className="cell-txt">Loading deals...</span></td></tr> : null}
-                  {!loading && !deals.length ? <tr><td className="td" colSpan={17}><span className="cell-txt">No deals available yet. Convert a lead to see it here.</span></td></tr> : null}
-                  {!loading && filteredDeals.map((deal) => (
-                    <tr key={deal.dealId || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} className="row">
-                      <td className="td"><span className="cell-txt">{deal.dealId ?? "-"}</span></td>
-                      <td className="td">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDeal(deal)}
-                          className="cell-txt"
-                          style={{ fontWeight: 800, border: "none", background: "transparent", padding: 0, color: "#111827", cursor: "pointer" }}
-                        >
-                          {getDealTitle(deal)}
-                        </button>
+                  {loading ? <tr><td className="td" colSpan={16}><span className="cell-txt">Loading deals...</span></td></tr> : null}
+                  {!loading && !deals.length ? <tr><td className="td" colSpan={16}><span className="cell-txt">No deals available yet. Convert a lead to see it here.</span></td></tr> : null}
+                  {!loading && filteredDeals.map((deal) => {
+                    const dealStage = normalizeStage(deal);
+                    const dealStageMeta = STAGE_META[dealStage] || { color: "#475569", bg: "#e2e8f0" };
+                    const dealInitials = getInitials(getDealTitle(deal));
+                    return (
+                    <tr key={deal.dealId || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} className="row sales-deals-table-row">
+                      <td className="td td-name">
+                        <div className="name-cell sales-deals-name-cell">
+                          <div className="avatar sales-deals-avatar" style={{ background: dealStageMeta.color }}>{dealInitials}</div>
+                          <div className="name-block sales-deals-name-block">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDeal(deal)}
+                              className="name-link sales-deals-name-link"
+                              style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer" }}
+                            >
+                              {getDealTitle(deal)}
+                            </button>
+                          </div>
+                        </div>
                       </td>
-                      <td className="td"><span className="cell-txt">{formatStageLabel(normalizeStage(deal))}</span></td>
+                      <td className="td td-status">
+                        <span className="status-pill" style={{ color: dealStageMeta.color }}>
+                          <span className="status-pill-label">{formatStageLabel(dealStage)}</span>
+                        </span>
+                      </td>
                       <td className="td"><span className="cell-txt">{fmtCurrency(normalizeAmount(deal))}</span></td>
                       <td className="td"><span className="cell-txt">{deal.probability ?? "-"}</span></td>
                       <td className="td"><span className="cell-txt">{fmtCurrency(deal.expectedRevenue || 0)}</span></td>
@@ -582,18 +585,19 @@ export default function Deals() {
                       <td className="td"><span className="cell-txt">{deal.priority || "-"}</span></td>
                       <td className="td"><span className="cell-txt">{deal.tags || "-"}</span></td>
                       <td className="td"><span className="date-txt">{fmtDate(normalizeClosingDate(deal))}</span></td>
-                      <td className="td">
+                      <td className="td td-actions">
                         <button
                           type="button"
                           aria-label="Delete deal"
                           onClick={() => handleDeleteDeal(deal)}
+                          className="act-btn act-btn--edit sales-deals-delete-button"
                           style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer" }}
                         >
                           <Trash2 size={16} />
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>

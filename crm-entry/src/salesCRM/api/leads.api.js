@@ -1,6 +1,6 @@
 // src/salesCRM/api/leads.api.js
 import apiClient from "./apiClient";
-import { getUsers } from "../../api/admin/users.api";
+import { getAdminUsers } from "../../api/admin/users.api";
 
 const unwrapArrayPayload = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -85,11 +85,22 @@ const leadsAPI = {
     return response.data;
   },
 
-  assignLead: async (leadId, userId) => {
-    const response = await apiClient.put(`/Leads/assign/${leadId}`, null, {
-      params: { userId },
-    });
-    return response.data;
+  assignLead: async (leadId, userId, userName = "", remark = "") => {
+    try {
+      const response = await apiClient.put(`/leads/${leadId}/assign`, {
+        userId,
+        userName,
+        remark,
+      });
+      return response.data;
+    } catch (error) {
+      if (error?.response?.status !== 404) throw error;
+
+      const fallbackResponse = await apiClient.put(`/Leads/assign/${leadId}`, null, {
+        params: { userId },
+      });
+      return fallbackResponse.data;
+    }
   },
 
   bulkUpdateStatus: async (ids, status) => {
@@ -108,12 +119,16 @@ const leadsAPI = {
   },
 
   getSalesUsers: async () => {
-    const data = await getUsers({ page: 1, pageSize: 200 });
+    const data = await getAdminUsers({ page: 1, pageSize: 200 });
     const users = Array.isArray(data)
       ? data
       : Array.isArray(data?.users)
         ? data.users
-        : [];
+        : Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data?.data)
+            ? data.data
+            : [];
     return users
       .filter((user) => {
         const roles = Array.isArray(user.roles) ? user.roles : user.role ? [user.role] : [];

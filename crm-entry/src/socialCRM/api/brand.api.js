@@ -74,3 +74,21 @@ export const getBrandAccounts = async (slug) => {
   const res = await api.get(`/brands/${slug}/accounts`);
   return res.data;
 };
+
+// ── Google Sheets config ──────────────────────────────────────────────
+
+/** Get Google Sheets configuration for a brand */
+export const getGoogleSheetConfig = async (slug) => {
+  const res = await api.get(`/brands/${slug}/google-sheets`);
+  return res.data;
+};
+
+/** Update Google Sheets configuration for a brand */
+export const updateGoogleSheetConfig = async (slug, { spreadsheetId, sheetName, enabled }) => {
+  const res = await api.put(`/brands/${slug}/google-sheets`, {
+    spreadsheetId,
+    sheetName,
+    enabled,
+  });
+  return res.data;
+};
