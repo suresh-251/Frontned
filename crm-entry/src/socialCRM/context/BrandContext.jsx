@@ -78,14 +78,10 @@ export function BrandProvider({ children }) {
 
   const switchBrand = useCallback(
     async (slug) => {
-      // Invalidate caches and switch on backend FIRST so subsequent data
-      // fetches (triggered by the state update below) hit the new brand.
       invalidateAllBrandCaches();
       localStorage.setItem("brandSlug", slug);
       await activateBrand(slug);
 
-      // Now update local state — this triggers data-fetch effects in
-      // Leads, Inbox, etc. with the backend already pointing at the new brand.
       const target = brands.find(b => b.slug === slug);
       if (target) {
         const updated = brands.map(b => ({ ...b, isActive: b.slug === slug }));
@@ -93,9 +89,8 @@ export function BrandProvider({ children }) {
         setActiveBrand({ ...target, isActive: true });
         appCache.set(BRANDS_CACHE_KEY, updated);
       }
-      await refresh();
     },
-    [brands, refresh, invalidateAllBrandCaches]
+    [brands, invalidateAllBrandCaches]
   );
 
   const createBrand = useCallback(
