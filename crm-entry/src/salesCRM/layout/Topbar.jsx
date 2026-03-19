@@ -121,7 +121,7 @@ export default function Topbar({ onToggleSidebar, showSidebarToggle = true }) {
               height: "34px",
               borderRadius: "50%",
               border: "none",
-              background: "linear-gradient(135deg,#5b4cf5,#8b5cf6)",
+              background: "linear-gradient(135deg, var(--logo-gradient-from), var(--logo-gradient-to))",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

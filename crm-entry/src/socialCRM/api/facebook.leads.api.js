@@ -1,9 +1,29 @@
 import api from "./apiClient";
+import { BASE_URL } from "./apiClient";
+import * as signalR from "@microsoft/signalr";
+
+const LEADS_HUB_URL = BASE_URL.replace("/api", "") + "/hubs/leads";
+
+export function createLeadsHubConnection() {
+  const token = localStorage.getItem("accessToken");
+  return new signalR.HubConnectionBuilder()
+    .withUrl(LEADS_HUB_URL, token ? { accessTokenFactory: () => token } : {})
+    .withAutomaticReconnect()
+    .configureLogging(signalR.LogLevel.Warning)
+    .build();
+}
+
+// ─── Lead Filter Options (pages + forms from DB, fast) ────────────────────────
+
+export const getLeadFilterOptions = async () => {
+  const res = await api.get("/facebook/leads/filters");
+  return res.data || { pages: [], forms: [] };
+};
 
 // ─── Lead Forms ──────────────────────────────────────────────────────────────
 
-export const getLeadForms = async (pageId) => {
-  const res = await api.get("/facebook/leads/forms", { params: { pageId } });
+export const getLeadForms = async () => {
+  const res = await api.get("/facebook/leads/forms");
   return res.data || [];
 };
 

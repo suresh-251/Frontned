@@ -9,74 +9,317 @@
     height var(--sidebar-indicator-duration) var(--sidebar-indicator-easing);
 }
 /* ============================================
-   SOCIAL CRM - MINIMAL CUSTOM STYLES
-   Using Tailwind for most styling
+   SOCIAL CRM - LAYOUT & SIDEBAR STYLES
+   Matching Sales CRM BEM pattern
    ============================================ */
 
 .social-crm-root {
-  min-height: 100vh;
-}
-
-.social-shell-header {
-  height: 60px;
-}
-
-.social-sidebar-shell {
-  --sidebar-indicator-duration: 400ms;
-  --sidebar-indicator-easing: cubic-bezier(0.16, 1, 0.3, 1);
-  contain: layout paint;
-  will-change: width;
-  transition:
-    width 560ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 180ms ease;
-}
-
-.social-sidebar-copy,
-.social-sidebar-label {
+  height: 100vh;
   overflow: hidden;
-  white-space: nowrap;
-  will-change: max-width, opacity, transform;
-  transform-origin: left center;
-  transition:
-    max-width 420ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 260ms ease,
-    transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.social-sidebar-shell.sidebar-expanded .social-sidebar-copy,
-.social-sidebar-shell.sidebar-expanded .social-sidebar-label {
-  transition-delay: 80ms, 120ms, 120ms;
+.social-crm-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
-.social-sidebar-shell.sidebar-collapsed .social-sidebar-copy,
-.social-sidebar-shell.sidebar-collapsed .social-sidebar-label {
-  transition-delay: 0ms, 0ms, 0ms;
+/* Layout */
+.socialcrm-layout {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
 }
 
-.social-sidebar-copy.is-expanded {
-  max-width: 140px;
-  opacity: 1;
-  transform: translateX(0);
+.socialcrm-layout__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100vh;
 }
 
-.social-sidebar-copy.is-collapsed {
-  max-width: 0;
+.socialcrm-layout__main {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Sidebar */
+.socialcrm-sidebar {
+  width: 196px;
+  min-width: 196px;
+  background: #ffffff;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  transition: width 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.socialcrm-sidebar--collapsed {
+  width: 56px;
+  min-width: 56px;
+}
+
+.socialcrm-sidebar__backdrop {
+  position: fixed;
+  inset: 0;
+  border: none;
+  background: rgba(15, 23, 42, 0.45);
   opacity: 0;
-  transform: translateX(-8px);
   pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 25;
 }
 
-.social-sidebar-label.is-expanded {
-  max-width: 120px;
+.socialcrm-sidebar__backdrop--visible {
   opacity: 1;
-  transform: translateX(0);
+  pointer-events: auto;
 }
 
-.social-sidebar-label.is-collapsed {
-  max-width: 0;
-  opacity: 0;
-  transform: translateX(-6px);
-  pointer-events: none;
+.socialcrm-sidebar__header {
+  padding: 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-/* Any additional custom styles specific to social CRM can go here */
+.socialcrm-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.socialcrm-sidebar__collapse-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color) !important;
+  background: color-mix(in srgb, var(--bg-card) 92%, var(--bg-body)) !important;
+  color: #64748b !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 0 !important;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.socialcrm-sidebar__collapse-btn:hover {
+  background: color-mix(in srgb, rgba(79, 70, 229, 0.08) 85%, var(--bg-card)) !important;
+  color: #4f46e5 !important;
+  border-color: rgba(79, 70, 229, 0.22) !important;
+}
+
+.socialcrm-sidebar__logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: #4f46e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.2);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.socialcrm-sidebar__logo-img {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+}
+
+.socialcrm-sidebar__logo-text h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: 0;
+}
+
+.socialcrm-sidebar__logo-text p {
+  margin: 2px 0 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--text-main) 55%, #94a3b8);
+}
+
+.socialcrm-sidebar__nav {
+  flex: 1;
+  padding: 0 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.socialcrm-sidebar__section {
+  padding-top: 16px;
+  padding-bottom: 4px;
+}
+
+.socialcrm-sidebar__section p {
+  padding: 0 10px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin: 0;
+}
+
+.socialcrm-navlink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #64748b;
+  font-weight: 500;
+  font-size: 12.5px;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.socialcrm-navlink:hover {
+  background: color-mix(in srgb, var(--bg-body) 88%, var(--bg-card));
+  color: var(--text-main);
+}
+
+.socialcrm-navlink--active {
+  background: rgba(79, 70, 229, 0.1);
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, 0.2);
+}
+
+.socialcrm-sidebar__footer {
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+  padding: 8px;
+}
+
+.socialcrm-sidebar__logout {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px !important;
+  border-radius: 8px;
+  color: #ef4444 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  font-weight: 600;
+  font-size: 12.5px !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.socialcrm-sidebar__logout:hover {
+  background: rgba(239, 68, 68, 0.08) !important;
+}
+
+/* Collapsed sidebar states */
+.socialcrm-sidebar--collapsed .socialcrm-sidebar__logo-text,
+.socialcrm-sidebar--collapsed .socialcrm-sidebar__label {
+  display: none;
+}
+
+.socialcrm-sidebar--collapsed .socialcrm-sidebar__logo {
+  display: none;
+}
+
+.socialcrm-sidebar--collapsed .socialcrm-sidebar__header {
+  padding: 10px 8px;
+}
+
+.socialcrm-sidebar--collapsed .socialcrm-sidebar__brand {
+  justify-content: center;
+}
+
+.socialcrm-sidebar--collapsed .socialcrm-sidebar__collapse-btn {
+  margin: 0 auto;
+}
+
+.socialcrm-sidebar--collapsed .socialcrm-sidebar__nav {
+  padding: 0 6px 12px;
+  align-items: center;
+}
+
+.socialcrm-sidebar--collapsed .socialcrm-navlink {
+  justify-content: center;
+  padding: 8px;
+  width: 40px;
+}
+
+.socialcrm-sidebar--collapsed .socialcrm-sidebar__footer {
+  padding: 8px 6px;
+}
+
+.socialcrm-sidebar--collapsed .socialcrm-sidebar__logout {
+  justify-content: center;
+  padding: 8px !important;
+  width: 40px;
+}
+
+/* Topbar toggle button for mobile */
+.socialcrm-topbar__toggle-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color) !important;
+  background: var(--bg-card) !important;
+  color: var(--text-main) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0 !important;
+}
+
+/* Mobile responsive */
+@media (max-width: 1023px) {
+  .socialcrm-layout__content {
+    width: 100%;
+  }
+
+  .socialcrm-layout__main {
+    padding: 10px;
+  }
+
+  .socialcrm-sidebar--mobile {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    transform: translateX(-100%);
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+  }
+
+  .socialcrm-sidebar--mobile.socialcrm-sidebar--mobile-open {
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .socialcrm-layout__main {
+    padding: 8px;
+  }
+}

@@ -1,19 +1,34 @@
-// Social CRM Theme Colors
+// Social CRM Theme Colors — derived from NAFA Barter logo
+// Primary Red: #C41E3A  |  Accent Orange: #E8612D
 export const colors = {
-  // Primary Colors
+  // Primary Colors (Logo Red)
   primary: {
-    50: '#EEF2FF',
-    100: '#E0E7FF',
-    200: '#C7D2FE',
-    300: '#A5B4FC',
-    400: '#818CF8',
-    500: '#6366F1', // Main primary
-    600: '#4F46E5',
-    700: '#4338CA',
-    800: '#3730A3',
-    900: '#312E81',
+    50: '#FEF2F2',
+    100: '#FEE2E2',
+    200: '#FECACA',
+    300: '#FCA5A5',
+    400: '#F87171',
+    500: '#C41E3A', // Main primary — from logo
+    600: '#A31830',
+    700: '#8B1429',
+    800: '#701022',
+    900: '#5C0D1B',
   },
-  
+
+  // Accent Colors (Logo Orange)
+  accent: {
+    50: '#FFF7ED',
+    100: '#FFEDD5',
+    200: '#FED7AA',
+    300: '#FDBA74',
+    400: '#FB923C',
+    500: '#E8612D', // Main accent — from logo
+    600: '#D14E22',
+    700: '#B43D19',
+    800: '#923212',
+    900: '#78290E',
+  },
+
   // Success Colors
   success: {
     50: '#F0FDF4',
@@ -21,13 +36,13 @@ export const colors = {
     200: '#BBF7D0',
     300: '#86EFAC',
     400: '#4ADE80',
-    500: '#22C55E', // Main success
+    500: '#22C55E',
     600: '#16A34A',
     700: '#15803D',
     800: '#166534',
     900: '#14532D',
   },
-  
+
   // Warning Colors
   warning: {
     50: '#FFFBEB',
@@ -35,13 +50,13 @@ export const colors = {
     200: '#FDE68A',
     300: '#FCD34D',
     400: '#FBBF24',
-    500: '#F59E0B', // Main warning
+    500: '#F59E0B',
     600: '#D97706',
     700: '#B45309',
     800: '#92400E',
     900: '#78350F',
   },
-  
+
   // Error Colors
   error: {
     50: '#FEF2F2',
@@ -49,13 +64,13 @@ export const colors = {
     200: '#FECACA',
     300: '#FCA5A5',
     400: '#F87171',
-    500: '#EF4444', // Main error
+    500: '#EF4444',
     600: '#DC2626',
     700: '#B91C1C',
     800: '#991B1B',
     900: '#7F1D1D',
   },
-  
+
   // Neutral/Gray Colors
   gray: {
     50: '#F9FAFB',
@@ -69,14 +84,14 @@ export const colors = {
     800: '#1F2937',
     900: '#111827',
   },
-  
+
   // Background Colors
   background: {
-    main: '#F5F6F8',
+    main: '#FFFFFF',
     paper: '#FFFFFF',
     card: '#FFFFFF',
   },
-  
+
   // Text Colors
   text: {
     primary: '#111827',
@@ -84,7 +99,7 @@ export const colors = {
     disabled: '#9CA3AF',
     white: '#FFFFFF',
   },
-  
+
   // Border Colors
   border: {
     light: '#E5E7EB',
@@ -97,11 +112,11 @@ export const colors = {
 export const getColor = (colorPath) => {
   const path = colorPath.split('.');
   let color = colors;
-  
+
   for (const key of path) {
     color = color[key];
-    if (!color) return colorPath; // Return original if not found
+    if (!color) return colorPath;
   }
-  
+
   return color;
 };

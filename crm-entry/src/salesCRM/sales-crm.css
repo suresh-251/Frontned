@@ -12,23 +12,23 @@
   font-size: 14px;
 }
 
-/* Scrollbar Styles */
+/* Scrollbar Styles — uses global theme vars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--scrollbar-track, #f1f1f1);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: var(--scrollbar-thumb, #888);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--scrollbar-thumb-hover, #555);
 }
 
 .custom-scrollbar::-webkit-scrollbar {

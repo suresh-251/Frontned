@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import { applyTheme, getStoredTheme } from "../../components/ThemeToggle";
 
 const DashboardLayout = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -67,4 +68,3 @@ const DashboardLayout = () => {
 };
 
 export default DashboardLayout;
-

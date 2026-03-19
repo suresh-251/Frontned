@@ -160,8 +160,9 @@ export default function Analytics() {
   const [days, setDays]                       = useState(7);
   const [trendMetric, setTrendMetric]         = useState("totalEngagement");
   const [selectedPlatform, setSelectedPlatform] = useState("all");
+  const [postSort, setPostSort]               = useState("engagement");
   const { activeBrand } = useBrand();
-  const { summary, loading, error, refresh, sync, syncing, syncResult } = useAnalytics(days, selectedPlatform);
+  const { summary, loading, error, refresh, sync, syncing, syncResult } = useAnalytics(days, selectedPlatform, postSort);
   const postsScrollRef = useRef(null);
 
   if (!activeBrand) {
@@ -388,11 +389,19 @@ export default function Analytics() {
         <div className="col-span-12 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiAward className="text-yellow-500" size={14} /> Top Posts by Engagement
+              <FiAward className="text-yellow-500" size={14} />
+              {postSort === "latest" ? "Latest Posts" : "Top Posts by Engagement"}
             </h3>
-            <span className="text-[10px] text-slate-400 font-semibold">
-              {selectedPlatform === "all" ? "All platforms" : <span className="capitalize">{selectedPlatform}</span>} · top 10 · last {days} days
-            </span>
+            <div className="flex items-center gap-3">
+              <select value={postSort} onChange={(e) => setPostSort(e.target.value)}
+                className="text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-yellow-300 cursor-pointer">
+                <option value="engagement">Top Engagement</option>
+                <option value="latest">Latest Posts</option>
+              </select>
+              <span className="text-[10px] text-slate-400 font-semibold">
+                {selectedPlatform === "all" ? "All platforms" : <span className="capitalize">{selectedPlatform}</span>} · top 10 · last {days} days
+              </span>
+            </div>
           </div>
 
           {loading ? (
@@ -432,11 +441,13 @@ export default function Analytics() {
                           </span>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-slate-700 truncate">{post.pageName || post.platform}</p>
-                            {post.createdAt && (
-                              <p className="text-[10px] text-slate-400">{new Date(post.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                            {(post.createdAt || post.recordedAt) && (
+                              <p className="text-[10px] text-slate-400">{new Date(post.createdAt || post.recordedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
                             )}
                           </div>
-                          <span className="text-[10px] font-bold text-slate-400">#{idx + 1}</span>
+                          {postSort !== "latest" && (
+                            <span className="text-[10px] font-bold text-slate-400">#{idx + 1}</span>
+                          )}
                         </div>
 
                         <PostImage post={post} platformColor={platformColor} />

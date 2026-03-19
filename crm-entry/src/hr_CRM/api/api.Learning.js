@@ -3,8 +3,8 @@ import hrApi from "./hr.api";
 // Fetch all assigned courses
 export const getAllLearning = () => hrApi.get("/api/Learning/all");
 
-// Fetch courses by Employee ID
-export const getLearningByEmployee = (employeeId) => hrApi.get(`/api/Learning/employee/${employeeId}`);
+// Fetch courses assigned to a specific user
+export const getLearningByUser = (userId) => hrApi.get(`/api/Learning/user/${userId}`);
 
 // Assign new course (POST) - requires all Swagger fields
 export const assignCourse = (data) => hrApi.post("/api/Learning/assign-course", data);

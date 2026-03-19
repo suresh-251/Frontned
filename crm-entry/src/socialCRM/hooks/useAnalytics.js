@@ -6,7 +6,7 @@ import { useBrand } from "../context/BrandContext";
  * Fetches the full analytics summary for the active brand.
  * Re-fetches automatically when the brand or day window changes.
  */
-export default function useAnalytics(days = 7, platform = null) {
+export default function useAnalytics(days = 7, platform = null, sortBy = "engagement") {
   const { activeBrand } = useBrand();
 
   const [summary, setSummary]         = useState(null);
@@ -20,14 +20,14 @@ export default function useAnalytics(days = 7, platform = null) {
     setLoading(true);
     setError(null);
     try {
-      const summaryData = await getBrandSummary(days, platform);
+      const summaryData = await getBrandSummary(days, platform, sortBy);
       setSummary(summaryData);
     } catch (err) {
       setError(err.message || "Failed to load analytics");
     } finally {
       setLoading(false);
     }
-  }, [activeBrand?.slug, days, platform]);
+  }, [activeBrand?.slug, days, platform, sortBy]);
 
   const sync = useCallback(async () => {
     if (syncing) return;

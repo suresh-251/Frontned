@@ -65,21 +65,32 @@ export function BrandProvider({ children }) {
     refresh();
   }, [refresh]);
 
+  /** Flush every brand-scoped cache so the next page renders fresh data. */
+  const invalidateAllBrandCaches = useCallback(() => {
+    const prefixes = [
+      "sc_dash_", "ph_inbox_", "ph_leads_", "ph_pages_",
+      "ph_scheduled_", "ph_history_", "ph_drafts_",
+      "ph_subs_", "ph_fbpages_",
+    ];
+    prefixes.forEach((p) => appCache.invalidatePrefix(p));
+    appCache.invalidate(BRANDS_CACHE_KEY);
+  }, []);
+
   const switchBrand = useCallback(
     async (slug) => {
-      // Optimistic update from existing brands list
+      invalidateAllBrandCaches();
+      localStorage.setItem("brandSlug", slug);
+      await activateBrand(slug);
+
       const target = brands.find(b => b.slug === slug);
       if (target) {
         const updated = brands.map(b => ({ ...b, isActive: b.slug === slug }));
         setBrands(updated);
         setActiveBrand({ ...target, isActive: true });
         appCache.set(BRANDS_CACHE_KEY, updated);
-        localStorage.setItem("brandSlug", slug);
       }
-      await activateBrand(slug);
-      await refresh();
     },
-    [brands, refresh]
+    [brands, invalidateAllBrandCaches]
   );
 
   const createBrand = useCallback(
@@ -146,6 +157,7 @@ export function BrandProvider({ children }) {
         updateBrand,
         removeBrand,
         deactivate,
+        invalidateAllBrandCaches,
         hasBrands: brands.length > 0,
       }}
     >

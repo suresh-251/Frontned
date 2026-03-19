@@ -295,10 +295,10 @@ export default function Dashboard() {
             )}
           </p>
         </div>
-        <button onClick={() => navigate("/crm/socialmedia/post/create")}
+        {/* <button onClick={() => navigate("/crm/socialmedia/post/create")}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 shadow-sm transition-all">
           <FiEdit size={14} /> New Post
-        </button>
+        </button> */}
       </div>
 
       <div className="grid grid-cols-12 gap-6">
@@ -485,12 +485,12 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-4">
               <CompactAction icon={<FiEdit />}     label="Post"   color="bg-blue-600"   onClick={() => navigate("/crm/socialmedia/post/create")} />
               <CompactAction icon={<FiUsers />}    label="Leads"  color="bg-indigo-600" onClick={() => navigate("/crm/socialmedia/leads")} />
-              <CompactAction icon={<FiFileText />} label="Forms"  color="bg-emerald-600" onClick={() => navigate("/crm/socialmedia/leads/forms")} />
+              <CompactAction icon={<FiFileText />} label="Forms"  color="bg-emerald-600" onClick={() => navigate("/crm/socialmedia/leads")} />
               <CompactAction icon={<FiSettings />} label="Config" color="bg-slate-700"  onClick={() => navigate("/crm/socialmedia/facebook/pages/subscriptions")} />
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          {/* <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-slate-800 font-bold text-[10px] uppercase tracking-widest">Recent Activity</h3>
               <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
@@ -500,7 +500,7 @@ export default function Dashboard() {
               <ActivityItem text="New Lead Received"  time="15m ago" />
               <ActivityItem text="Instagram Updated"  time="1h ago"  />
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

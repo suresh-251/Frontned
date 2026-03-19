@@ -44,7 +44,7 @@ export default function LeadForms() {
       try {
         if (!silent) setLoading(true);
         setError("");
-        const data = await getLeadForms(currentPage.pageId);
+        const data = await getLeadForms();
         if (!cancelled) setForms(data);
       } catch {
         if (!cancelled) setError("Failed to load lead forms. Please try again.");
@@ -149,34 +149,35 @@ export default function LeadForms() {
           <>
             {/* Stats Bar */}
             {forms.length > 0 && (
-              <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Total Forms Card */}
+              <div className="mb-8">
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-lg p-6 text-white">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-blue-100 text-sm font-semibold uppercase tracking-wide mb-2">Total Forms</p>
-                      <p className="text-5xl font-bold">{forms.length}</p>
-                      <p className="text-blue-100 text-sm mt-2">Lead generation forms</p>
+                    <div className="flex items-center gap-4">
+                      {/* Page DP */}
+                      {forms[0]?.pageProfilePictureUrl ? (
+                        <img
+                          src={forms[0].pageProfilePictureUrl}
+                          alt={forms[0].pageName || currentPage?.name}
+                          className="w-14 h-14 rounded-full border-2 border-white/30 object-cover"
+                        />
+                      ) : (
+                        <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                          <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-blue-100 text-sm font-semibold uppercase tracking-wide mb-1">
+                          {forms[0]?.pageName || currentPage?.name || 'Facebook Page'}
+                        </p>
+                        <p className="text-4xl font-bold">{forms.length}</p>
+                        <p className="text-blue-100 text-sm mt-1">Lead generation form{forms.length !== 1 ? 's' : ''}</p>
+                      </div>
                     </div>
                     <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
                       <svg className="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Active Status Card */}
-                <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl shadow-lg p-6 text-white">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-green-100 text-sm font-semibold uppercase tracking-wide mb-2">Status</p>
-                      <p className="text-3xl font-bold mb-1">All Active</p>
-                      <p className="text-green-100 text-sm">Collecting leads from Facebook</p>
-                    </div>
-                    <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                      <svg className="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
                   </div>

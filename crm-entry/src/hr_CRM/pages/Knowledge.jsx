@@ -1,23 +1,26 @@
 import { useEffect, useState, useMemo } from "react";
-import { 
-  BookOpen, Plus, Search, Trash2, 
+import {
+  BookOpen, Plus, Search, Trash2,
   Tag, Loader2, Layers, Lock
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
-import { jwtDecode } from "jwt-decode";
+
+// ✅ CONFIG & AUTH IMPORTS
+import { hasPermission } from "../configs/auth.utils";
+import PermissionGate from "../configs/Gaurd/PermissionsGate";
 
 // API IMPORTS
-import { 
-  getKnowledgeList, 
-  createKnowledge, 
-  deleteKnowledge, 
+import {
+  getKnowledgeList,
+  createKnowledge,
+  deleteKnowledge,
 } from "../api/api.knowledge";
 import { getBranches } from "../api/api.branch";
 import { getManagers } from "../../api/users/users.api";
 
 export default function Knowledge() {
   const [knowledgeList, setKnowledgeList] = useState([]);
-  const [branches, setBranches] = useState([]); 
+  const [branches, setBranches] = useState([]);
   const [managers, setManagers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -37,20 +40,10 @@ export default function Knowledge() {
     createdBy: "",
   });
 
-  const token = localStorage.getItem("accessToken");
-  const auth = useMemo(() => {
-    if (!token) return { perms: [], isAdmin: false };
-    try {
-      const decoded = jwtDecode(token);
-      const perms = decoded.perm || [];
-      const role = decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"];
-      const isAdmin = role === "ADMIN" || perms.includes("CRM_FULL_ACCESS");
-      return { perms, isAdmin };
-    } catch (e) { return { perms: [], isAdmin: false }; }
-  }, [token]);
-
-  const canView   = auth.isAdmin || auth.perms.includes("KNOWLEDGE_VIEW");
-  const isManager = auth.isAdmin || auth.perms.includes("KNOWLEDGE_CREATE") || auth.perms.includes("KNOWLEDGE_MANAGE");
+  // ✅ PERMISSION LOGIC
+  const canView   = hasPermission("KNOWLEDGE_VIEW");
+  const canCreate = hasPermission("KNOWLEDGE_CREATE");
+  const canDelete = hasPermission("KNOWLEDGE_DELETE");
 
   const categoryMap = {
     "IT Infrastructure": ["Database", "Networking", "Cloud", "DevOps"],
@@ -69,8 +62,8 @@ export default function Knowledge() {
       setLoading(true);
       const [kData, bData, mData] = await Promise.all([
         getKnowledgeList(),
-        getBranches(),
-        getManagers("SOCIALMEDIA")
+        canCreate ? getBranches()            : Promise.resolve([]),
+        canCreate ? getManagers("SOCIALMEDIA") : Promise.resolve([])
       ]);
       const list = kData || [];
       setKnowledgeList(list);
@@ -79,7 +72,7 @@ export default function Knowledge() {
       const nextNum = (list.length + 1).toString().padStart(3, "0");
       setFormData(prev => ({ ...prev, code: `KNW-${nextNum}` }));
     } catch (err) {
-      toast.error("Sync Error");
+      if (err.response?.status !== 403) toast.error("Sync Error");
     } finally {
       setLoading(false);
     }
@@ -101,7 +94,7 @@ export default function Knowledge() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!isManager) return toast.error("Unauthorized");
+    if (!canCreate) return toast.error("Unauthorized");
     const tid = toast.loading("Processing...");
     try {
       const payload = { ...formData, branchId: Number(formData.branchId), createdBy: Number(formData.createdBy) };
@@ -118,7 +111,7 @@ export default function Knowledge() {
   };
 
   const handleDelete = async (id) => {
-    if (!isManager) return toast.error("Unauthorized");
+    if (!canDelete) return toast.error("Unauthorized");
     if (!window.confirm("Deactivate?")) return;
     const tid = toast.loading("Deactivating...");
     try {
@@ -137,7 +130,7 @@ export default function Knowledge() {
     );
   }
 
-  const filteredKnowledge = knowledgeList.filter(item => 
+  const filteredKnowledge = knowledgeList.filter(item =>
     item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.category?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -146,8 +139,8 @@ export default function Knowledge() {
     <div className="flex h-[520px] w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-sm font-sans text-[var(--text-main)]">
       <Toaster position="top-right" />
 
-      {/* LEFT SIDEBAR */}
-      {isManager && (
+      {/* LEFT SIDEBAR — only visible with KNOWLEDGE_CREATE */}
+      <PermissionGate permission="KNOWLEDGE_CREATE">
         <div className="w-80 border-r border-[var(--border-color)] flex flex-col shrink-0 bg-[var(--bg-card)]">
           <div className="p-3 border-b border-[var(--border-color)] bg-[var(--bg-body)]/50 flex justify-between items-center">
             <h2 className="text-[10px] font-black text-indigo-500 uppercase flex items-center gap-2"><Plus size={14} /> New Knowledge</h2>
@@ -192,7 +185,7 @@ export default function Knowledge() {
             </form>
           </div>
         </div>
-      )}
+      </PermissionGate>
 
       {/* MAIN TABLE */}
       <div className="flex-1 flex flex-col min-w-0 bg-[var(--bg-card)]">
@@ -216,7 +209,7 @@ export default function Knowledge() {
                     <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase">Reference</th>
                     <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase text-center">Classification</th>
                     <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase text-center">Control</th>
-                    {isManager && <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase text-right">Action</th>}
+                    {canDelete && <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase text-right">Action</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border-color)]/30">
@@ -226,7 +219,7 @@ export default function Knowledge() {
                         <p className="text-[10px] font-black uppercase mb-1">{item.title}</p>
                         <div className="flex items-center gap-2">
                            <span className="text-[8px] font-black px-1.5 py-0.5 bg-indigo-500/10 text-indigo-500 rounded uppercase border border-indigo-500/10">{item.code}</span>
-                           <span className="text-[8px] font-bold text-slate-400 uppercase">ID: {item.id}</span>
+                           <span className="text-[8px] font-bold text-slate-400 uppercase">ID: {item.id ?? item.knowledgeId ?? "—"}</span>
                         </div>
                       </td>
                       <td className="px-3 py-2 text-center">
@@ -240,14 +233,14 @@ export default function Knowledge() {
                       <td className="px-3 py-2 text-center">
                         <div className="flex flex-col items-center gap-1">
                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${
-                             item.status === 'Active' || item.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 
-                             item.status === 'InProgress' ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' : 
+                             item.status === 'Active' || item.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                             item.status === 'InProgress' ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' :
                              'bg-slate-100 text-slate-400 border-transparent'
                            }`}>{item.status}</span>
                            <span className="text-[7px] font-bold text-slate-400 uppercase italic">By: {item.approvedBy || 'Admin'}</span>
                         </div>
                       </td>
-                      {isManager && (
+                      {canDelete && (
                         <td className="px-3 py-2 text-right">
                           <button onClick={() => handleDelete(item.id)} className="p-1.5 border border-[var(--border-color)] rounded text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-all"><Trash2 size={13} /></button>
                         </td>

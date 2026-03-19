@@ -120,11 +120,10 @@ export default function useFacebookLeads() {
   const slug = activeBrand?.slug ?? null;
 
   // Initialize synchronously from cache so first render already has data
-  const [leads, setLeads] = useState(() => {
-    const cached = slug ? appCache.getStale(leadsCacheKey(slug)) : null;
-    return cached?.data ?? [];
-  });
-  const [loading, setLoading] = useState(false);
+  const initCache = slug ? appCache.getStale(leadsCacheKey(slug)) : null;
+  const [leads, setLeads] = useState(() => initCache?.data ?? []);
+  // Show loading skeleton on first render when there's no cached data
+  const [loading, setLoading] = useState(!initCache && !!slug);
   // Tracks which brand slug the currently displayed leads belong to
   const [dataSlug, setDataSlug] = useState(slug);
 
@@ -185,6 +184,9 @@ export default function useFacebookLeads() {
       setLeads(cached.data ?? []);
     }
     setDataSlug(slug);
+
+    // Show loading skeleton when no cached data
+    if (!cached) setLoading(true);
 
     // Always fetch fresh data; show cached data silently while it loads
     loadLeads({}, !!cached);
