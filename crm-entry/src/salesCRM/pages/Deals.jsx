@@ -759,7 +759,7 @@ export default function Deals() {
               </div>
               <button className="icon-btn modal-close" onClick={() => setCreateOpen(false)}><IX s={15} /></button>
             </div>
-            <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", overflowY: "auto" }}>
+            <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "14px", overflowY: "auto" }}>
               {[
                 { key: "dealName", label: "Deal Name *", span: 2 },
                 { key: "amount", label: "Amount", type: "number" },
@@ -783,8 +783,8 @@ export default function Deals() {
                   />
                 </div>
               ))}
-              <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <div>
+              <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, alignItems: "start" }}>
+                <div style={{ minWidth: 0 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Closing Date</label>
                   <DatePicker
                     selected={createForm.closingDate}
@@ -793,10 +793,11 @@ export default function Deals() {
                     timeIntervals={15}
                     dateFormat="MMM d, yyyy h:mm aa"
                     className="deal-datepicker"
-                    customInput={<input style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
+                    wrapperClassName="deal-datepicker-wrapper"
+                    customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
                   />
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Next Activity Date</label>
                   <DatePicker
                     selected={createForm.nextActivityDate}
@@ -805,7 +806,8 @@ export default function Deals() {
                     timeIntervals={15}
                     dateFormat="MMM d, yyyy h:mm aa"
                     className="deal-datepicker"
-                    customInput={<input style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
+                    wrapperClassName="deal-datepicker-wrapper"
+                    customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
                   />
                 </div>
               </div>
@@ -826,6 +828,15 @@ export default function Deals() {
           </div>
         </div>
       ) : null}
+
+      <style>{`
+        .deal-datepicker-wrapper,
+        .deal-datepicker-wrapper .react-datepicker-wrapper,
+        .deal-datepicker-wrapper .react-datepicker__input-container {
+          display: block;
+          width: 100%;
+        }
+      `}</style>
 
       {showFilter && (
         <DealFilterModal
