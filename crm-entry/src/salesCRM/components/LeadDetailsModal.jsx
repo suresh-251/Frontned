@@ -98,6 +98,21 @@ const selectFieldStyle = {
   cursor: "pointer",
 };
 
+const useViewportWidth = () => {
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === "undefined" ? 1440 : window.innerWidth));
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return viewportWidth;
+};
+
 const hasValue = (v) => !(v === null || v === undefined || (typeof v !== "boolean" && String(v).trim() === ""));
 const leadName = (lead) => [lead?.firstName, lead?.lastName].filter(Boolean).join(" ").trim() || lead?.name || "Lead";
 const assignee = (lead) => lead?.assignee || lead?.assignedToUserName || lead?.assignedUserName || (lead?.assignedToUserId ? `User ${lead.assignedToUserId}` : "");
@@ -361,7 +376,7 @@ function FloatingDateTimePicker({ label, selected, onChange, minDate, error, sty
   );
 }
 
-function LeftPanel({ lead, onConvert, onOpenTab }) {
+function LeftPanel({ lead, onConvert, onOpenTab, stacked = false }) {
   const location = [lead?.address, lead?.city, lead?.state, lead?.country, lead?.zipCode || lead?.zip].filter(Boolean).join(", ");
   const initials = (leadName(lead).match(/\b\w/g) || []).join("").slice(0, 2).toUpperCase();
   const canCall = hasValue(lead?.phone) || hasValue(lead?.mobile) || hasValue(lead?.secondaryPhone);
@@ -373,7 +388,7 @@ function LeftPanel({ lead, onConvert, onOpenTab }) {
     emails: canEmail,
   };
   return (
-    <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderRight: "1px solid #e5e7eb", background: "#fff" }}>
+    <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderRight: stacked ? "none" : "1px solid #e5e7eb", borderBottom: stacked ? "1px solid #e5e7eb" : "none", background: "#fff" }}>
       <div style={{ padding: 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(180deg, #f8faff 0%, #f3f6ff 100%)" }}>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <div style={{ width: 52, height: 52, borderRadius: "50%", background: lead?.avatarBg || "#6366f1", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, fontWeight: 800 }}>{initials}</div>
@@ -597,10 +612,10 @@ function ConvertToDealModal({ lead, onClose, onConverted }) {
   );
 }
 
-function Timeline({ items, loading, onRefresh }) {
+function Timeline({ items, loading, onRefresh, stacked = false }) {
   const groups = useMemo(() => items.reduce((acc, item) => { const key = fmtDate(timelineDateValue(item), false); (acc[key] ||= []).push(item); return acc; }, {}), [items]);
   return (
-    <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderLeft: "1px solid #e2e8f0", background: "linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%)" }}>
+    <aside style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderLeft: stacked ? "none" : "1px solid #e2e8f0", borderTop: stacked ? "1px solid #e2e8f0" : "none", background: "linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%)" }}>
       <div style={{ borderBottom: "1px solid #e2e8f0", background: "linear-gradient(180deg, #ffffff 0%, #f7fbff 100%)", padding: "16px 18px 14px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
@@ -1225,19 +1240,18 @@ function Attachments({ leadId }) {
   );
 }
 
-function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
-  const [activityView, setActivityView] = useState("open"); const [meetingView, setMeetingView] = useState("create"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]); const [comms, setComms] = useState([]);
+function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline = [], compact = false }) {
+  const [activityView, setActivityView] = useState("open"); const [meetingView, setMeetingView] = useState("create"); const [loading, setLoading] = useState(false); const [open, setOpen] = useState([]); const [closed, setClosed] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const allowMeetingPopups = activeTab === "meetings" && meetingView === "create";
   const load = async () => {
     if (!lead?.id) return;
     setLoading(true);
     try {
-      const [openResult, closedResult, commResult, meetingResult] = await Promise.allSettled([
+      const [openResult, closedResult, meetingResult] = await Promise.allSettled([
         activitiesAPI.getOpen({ leadId: lead.id }),
         activitiesAPI.getClosed({ leadId: lead.id }),
-        leadsAPI.getCommunications(lead.id),
-        meetingsAPI.getAll(),
+        meetingsAPI.getForLead(lead.id),
       ]);
 
       if (openResult.status === "fulfilled") {
@@ -1254,15 +1268,8 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
         setClosed([]);
       }
 
-      if (commResult.status === "fulfilled") {
-        setComms((Array.isArray(commResult.value) ? commResult.value : []).map(mapComm));
-      } else {
-        console.error("Failed to load communications", commResult.reason);
-        setComms([]);
-      }
-
       if (meetingResult.status === "fulfilled") {
-        setMeetings((Array.isArray(meetingResult.value) ? meetingResult.value : []).filter((item) => Number(item?.leadId) === Number(lead.id)).map(mapMeetingRecord));
+        setMeetings((Array.isArray(meetingResult.value) ? meetingResult.value : []).map(mapMeetingRecord));
       } else {
         console.error("Failed to load meetings", meetingResult.reason);
         setMeetings([]);
@@ -1271,7 +1278,6 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
       if (
         openResult.status === "rejected" &&
         closedResult.status === "rejected" &&
-        commResult.status === "rejected" &&
         meetingResult.status === "rejected"
       ) {
         Toast.error("Unable to load lead details");
@@ -1283,6 +1289,7 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
     }
   };
   useEffect(() => { load(); }, [lead?.id]);
+  const comms = useMemo(() => (Array.isArray(timeline) ? timeline : []).map(mapComm).filter((item) => item.kind !== "other"), [timeline]);
   const callHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("call")).map(mapCallActivity), [open, closed]);
   const taskHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("task")), [open, closed]);
   const filtered = useMemo(() => {
@@ -1294,7 +1301,7 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
   const activityItems = activityView === "open" ? open : closed;
   return (
     <section style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: allowMeetingPopups ? "visible" : "hidden", background: "#ffffff" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 12px 0", overflowX: "auto", flexShrink: 0, background: "#ffffff", borderBottom: "1px solid #eef2f7" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: compact ? 4 : 6, rowGap: 0, padding: "10px 0 0", overflowX: "visible", flexWrap: "wrap", flexShrink: 0, background: "#ffffff", borderBottom: "1px solid #eef2f7" }}>
         {TABS.map(([id, label, Icon]) => (
           <button
             key={id}
@@ -1304,12 +1311,11 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
               borderBottom: activeTab === id ? "2px solid #93c5fd" : "2px solid transparent",
               background: "transparent",
               color: activeTab === id ? "#5b7fa6" : "#64748b",
-              padding: "10px 4px 9px",
-              marginRight: 8,
+              padding: compact ? "10px 2px 9px" : "10px 4px 9px",
               display: "inline-flex",
               alignItems: "center",
-              gap: 6,
-              fontSize: 13,
+              gap: compact ? 5 : 6,
+              fontSize: compact ? 12.5 : 13,
               fontWeight: 700,
               cursor: "pointer",
               whiteSpace: "nowrap",
@@ -1320,7 +1326,7 @@ function Middle({ lead, activeTab, onTabChange, onActivitySaved }) {
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: allowMeetingPopups ? "visible" : "auto", overflowX: allowMeetingPopups ? "visible" : "hidden", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: allowMeetingPopups ? "visible" : "auto", overflowX: allowMeetingPopups ? "visible" : "hidden", padding: compact ? 14 : 18, display: "flex", flexDirection: "column", gap: 16 }}>
         {loading && <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading details...</div>}
         {activeTab === "activity" && <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -1403,19 +1409,33 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [activeTab, setActiveTab] = useState("activity");
   const [timeline, setTimeline] = useState([]); const [timelineLoading, setTimelineLoading] = useState(false);
+  const viewportWidth = useViewportWidth();
+  const isTabletLayout = viewportWidth < 1180;
+  const isMobileLayout = viewportWidth < 820;
+  const overlayPadding = isMobileLayout ? 12 : isTabletLayout ? 16 : 24;
+  const modalWidth = isMobileLayout ? "calc(100vw - 24px)" : isTabletLayout ? "min(1120px, calc(100vw - 32px))" : "min(1440px, calc(100vw - 48px))";
+  const modalHeight = isMobileLayout ? "min(calc(100dvh - 24px), 980px)" : isTabletLayout ? "min(92vh, 980px)" : "min(88vh, 860px)";
+  const gridTemplateColumns = isMobileLayout ? "minmax(0, 1fr)" : isTabletLayout ? "220px minmax(0, 1fr)" : "214px minmax(0, 1fr) 300px";
+  const gridTemplateRows = isMobileLayout ? "auto minmax(0, 1fr) minmax(260px, 34vh)" : isTabletLayout ? "minmax(0, 1fr) minmax(240px, 32vh)" : "minmax(0, 1fr)";
   const loadTimeline = async () => { if (!lead?.id) return; setTimelineLoading(true); try { const data = await leadsAPI.getTimeline(lead.id); setTimeline(Array.isArray(data) ? data : []); } catch (e) { Toast.error(e?.response?.data?.message || "Unable to load timeline"); } finally { setTimelineLoading(false); } };
   useEffect(() => { loadTimeline(); }, [lead?.id]);
   useEffect(() => { setActiveTab("activity"); }, [lead?.id]);
   useEffect(() => { const onKey = (e) => { if (e.key === "Escape") onClose?.(); }; document.addEventListener("keydown", onKey); return () => document.removeEventListener("keydown", onKey); }, [onClose]);
   return (
     <>
-      <div className="overlay" onClick={onClose} style={{ padding: 24, zIndex: 700 }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1440px, calc(100vw - 48px))", height: "min(88vh, 860px)", background: "#fff", borderRadius: 24, overflow: "visible", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
+      <div className="overlay" onClick={onClose} style={{ padding: overlayPadding, zIndex: 700 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: modalWidth, height: modalHeight, background: "#fff", borderRadius: isMobileLayout ? 18 : 24, overflow: "hidden", boxShadow: "0 32px 90px rgba(15, 23, 42, 0.22)", position: "relative" }}>
           <button className="icon-btn" onClick={onClose} title="Close" style={{ position: "absolute", top: 14, right: 16, zIndex: 2, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(6px)" }}><X size={18} /></button>
-          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 300px", borderRadius: 24, overflow: "hidden", background: "#fff" }}>
-            <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} onOpenTab={setActiveTab} />
-            <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} />
-            <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} />
+          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateColumns, gridTemplateRows, borderRadius: isMobileLayout ? 18 : 24, overflow: "hidden", background: "#fff" }}>
+            <div style={{ minHeight: 0 }}>
+              <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} onOpenTab={setActiveTab} stacked={isMobileLayout} />
+            </div>
+            <div style={{ minHeight: 0 }}>
+            <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} timeline={timeline} compact={isMobileLayout} />
+            </div>
+            <div style={{ minHeight: 0, gridColumn: isMobileLayout ? "1" : isTabletLayout ? "1 / span 2" : "auto", gridRow: isMobileLayout ? "3" : isTabletLayout ? "2" : "auto" }}>
+              <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} stacked={isTabletLayout} />
+            </div>
           </div>
         </div>
       </div>

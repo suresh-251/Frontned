@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 /* Custom Animations for Modern UI */
@@ -213,7 +213,7 @@
 }
 
 [data-theme='dark'] {
-  --bg-body: #0f172a; --bg-card: #1e293b; --text-main: #f1f5f9; --border-color: #334155;
+  --bg-body: #232329; --bg-card: #2d2f36; --text-main: #f3f4f6; --border-color: #3a3d46;
 }
 
 [data-theme='midnight'] {

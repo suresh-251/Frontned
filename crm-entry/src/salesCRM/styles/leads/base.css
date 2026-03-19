@@ -267,6 +267,79 @@
   transform: scale(1.08);
 }
 
+[data-theme='dark'] .stat-card {
+  background:
+    radial-gradient(circle at 88% 18%, color-mix(in srgb, var(--sc-ink) 10%, transparent) 0%, transparent 34%),
+    linear-gradient(180deg, #353942 0%, #31353d 100%);
+  border-color: color-mix(in srgb, var(--sc-ink) 12%, #575d69);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[data-theme='dark'] .stat-card:hover {
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-color: color-mix(in srgb, var(--sc-ink) 18%, #6b7280);
+}
+
+[data-theme='dark'] .stat-header {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sc-ink) 12%, #414651) 0%, color-mix(in srgb, var(--sc-ink) 8%, #3a3f48) 100%);
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .stat-icon-wrap {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sc-icon) 24%, #ffffff) 0%, color-mix(in srgb, var(--sc-icon) 10%, #0f172a) 100%);
+  border: 1px solid color-mix(in srgb, var(--sc-ink) 16%, rgba(255, 255, 255, 0.06));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme='dark'] .stat-label,
+[data-theme='dark'] .stat-value {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .stat-alert {
+  background: rgba(255, 255, 255, 0.04);
+  color: color-mix(in srgb, var(--sc-ink) 78%, #f8fafc);
+  border: 1px solid color-mix(in srgb, var(--sc-ink) 12%, rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[data-theme='dark'] .stat-body {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.01) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+[data-theme='dark'] .stat-value {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+}
+
+[data-theme='dark'] .stat-change {
+  background: color-mix(in srgb, var(--sc-ink) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--sc-ink) 22%, rgba(255, 255, 255, 0.04));
+  color: color-mix(in srgb, var(--sc-ink) 94%, #ffffff);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme='dark'] .stat-card::before {
+  height: 3px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sc-ink) 88%, #ffffff) 0%, color-mix(in srgb, var(--sc-ink) 45%, transparent) 100%);
+}
+
+[data-theme='dark'] .stat-card::after {
+  background: color-mix(in srgb, var(--sc-ink) 36%, #353942);
+  opacity: 0.1;
+  filter: blur(42px);
+}
+
 
 .page {
   scroll-behavior: smooth;

@@ -245,42 +245,56 @@ function AccountFilterModal({ filters, onApply, onClose, activeFilterCount }) {
   }, [filters]);
 
   const updateFilter = (key, value) => setLocalFilters((current) => ({ ...current, [key]: value }));
-  const inputStyle = { width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", outline: "none" };
+  const panelBg = "var(--bg-card)";
+  const panelBorder = "var(--border-color)";
+  const primaryText = "var(--text-main)";
+  const mutedText = "color-mix(in srgb, var(--text-main) 70%, #94a3b8)";
+  const subtleText = "color-mix(in srgb, var(--text-main) 56%, #94a3b8)";
+  const fieldStyle = { width: "100%", padding: "8px 12px", border: `1.5px solid ${panelBorder}`, borderRadius: "6px", fontSize: "13px", background: panelBg, color: primaryText, outline: "none" };
+  const handleApply = () => { onApply(localFilters); onClose(); };
+  const handleClear = () => setLocalFilters(DEFAULT_FILTERS);
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" style={{ width: 520 }} onClick={(event) => event.stopPropagation()}>
-        <div className="modal-hdr">
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.35)", zIndex: 500 }} />
+      <div style={{ position: "fixed", left: 20, top: "50%", transform: "translateY(-50%)", width: "300px", maxWidth: "calc(100vw - 40px)", background: panelBg, boxShadow: "0 18px 42px rgba(0,0,0,0.22)", zIndex: 501, display: "flex", flexDirection: "column", animation: "panelDropIn 0.22s ease-out", border: `1px solid ${panelBorder}`, borderRadius: 18, overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${panelBorder}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <IFilter s={16} c="#4f46e5" />
-            <span style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>Filter Accounts</span>
-            {activeFilterCount > 0 ? <span style={{ background: "#4f46e5", color: "white", fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 12 }}>{activeFilterCount}</span> : null}
+            <span style={{ fontSize: "15px", fontWeight: 600, color: primaryText }}>Filter Accounts</span>
+            {activeFilterCount > 0 ? <span style={{ background: "#4f46e5", color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 12 }}>{activeFilterCount}</span> : null}
           </div>
-          <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", borderRadius: 4 }}><IX s={16} c="#6b7280" /></button>
         </div>
-        <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gap: 14 }}>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Industry</label>
-            <input type="text" value={localFilters.industry} onChange={(event) => updateFilter("industry", event.target.value)} placeholder="Industry" style={inputStyle} />
-          </div>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Category</label>
-            <input type="text" value={localFilters.category} onChange={(event) => updateFilter("category", event.target.value)} placeholder="Category" style={inputStyle} />
-          </div>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Region</label>
-            <input type="text" value={localFilters.region} onChange={(event) => updateFilter("region", event.target.value)} placeholder="Region" style={inputStyle} />
+        <div style={{ padding: "16px 20px 12px" }}>
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Account Filters</h4>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Industry</label>
+              <input type="text" value={localFilters.industry} onChange={(event) => updateFilter("industry", event.target.value)} placeholder="Industry" style={fieldStyle} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Category</label>
+              <input type="text" value={localFilters.category} onChange={(event) => updateFilter("category", event.target.value)} placeholder="Category" style={fieldStyle} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Region</label>
+              <input type="text" value={localFilters.region} onChange={(event) => updateFilter("region", event.target.value)} placeholder="Region" style={fieldStyle} />
+            </div>
           </div>
         </div>
-        <div className="modal-footer" style={{ justifyContent: "space-between" }}>
-          <button className="btn-ghost" onClick={() => setLocalFilters(DEFAULT_FILTERS)}>Clear</button>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button className="btn-primary" onClick={() => { onApply(localFilters); onClose(); }}>Apply</button>
-          </div>
+        <div style={{ padding: "16px 20px", borderTop: `1px solid ${panelBorder}`, display: "flex", gap: 8, background: "color-mix(in srgb, var(--bg-card) 78%, var(--bg-body))" }}>
+          <button onClick={handleClear} style={{ flex: 1, padding: "8px 12px", background: panelBg, border: `1.5px solid ${panelBorder}`, borderRadius: "6px", fontSize: "13px", fontWeight: 500, color: primaryText, cursor: "pointer" }}>Clear All</button>
+          <button onClick={handleApply} style={{ flex: 1, padding: "8px 12px", background: "#4f46e5", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#fff", cursor: "pointer" }}>Apply {activeFilterCount > 0 ? `(${activeFilterCount})` : ""}</button>
         </div>
       </div>
-    </div>
+      <style>{`
+        @keyframes panelDropIn {
+          from { opacity: 0; transform: translateY(calc(-50% - 8px)) scale(0.98); }
+          to { opacity: 1; transform: translateY(-50%) scale(1); }
+        }
+      `}</style>
+    </>
   );
 }
 

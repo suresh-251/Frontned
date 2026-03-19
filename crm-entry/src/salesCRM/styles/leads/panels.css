@@ -323,7 +323,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px;
+  min-height: 32px;
+  padding: 6px 14px;
   background: var(--ci);
   color: #fff;
   border: none;
@@ -342,7 +343,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px;
+  min-height: 32px;
+  padding: 6px 14px;
   background: var(--cs);
   border: 1.5px solid var(--cborder);
   border-radius: var(--r);
@@ -521,13 +523,31 @@
 }
 
 .kanban-card {
-  background: color-mix(in srgb, var(--cs) 92%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--kanban-accent-bg) 22%, var(--cs)) 0%,
+    color-mix(in srgb, var(--cs) 98%, #ffffff) 24%,
+    var(--cs) 100%
+  );
   border: 1px solid color-mix(in srgb, var(--cborder) 90%, transparent);
   border-radius: 14px;
   padding: 12px;
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
   cursor: grab;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  position: relative;
+}
+
+.kanban-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 10px;
+  right: 10px;
+  height: 1px;
+  background: color-mix(in srgb, var(--kanban-accent) 18%, #ffffff);
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .kanban-card:hover {

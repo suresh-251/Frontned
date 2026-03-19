@@ -3,19 +3,23 @@ import { Check } from "lucide-react";
 
 const themes = [
   { id: "light", name: "Light", color: "#f8fafc" },
-  { id: "dark", name: "Dark", color: "#0f172a" },
-  { id: "midnight", name: "Midnight", color: "#0b1437" },
-  { id: "eco", name: "Eco Moss", color: "#f0f4f3" },
-  { id: "cloud", name: "Cloud Blue", color: "#f4f7fe" },
-  { id: "rose", name: "Soft Rose", color: "#fff5f7" },
+  { id: "dark", name: "Dark", color: "#232329" },
 ];
+
+const allowedThemeIds = new Set(themes.map((theme) => theme.id));
 
 export default function ThemeChange() {
   const [currentTheme, setCurrentTheme] = useState(
-    localStorage.getItem("sales-crm-theme") || "light"
+    allowedThemeIds.has(localStorage.getItem("sales-crm-theme"))
+      ? localStorage.getItem("sales-crm-theme")
+      : "light"
   );
 
   useEffect(() => {
+    if (!allowedThemeIds.has(currentTheme)) {
+      setCurrentTheme("light");
+      return;
+    }
     document.documentElement.setAttribute("data-theme", currentTheme);
     localStorage.setItem("sales-crm-theme", currentTheme);
   }, [currentTheme]);

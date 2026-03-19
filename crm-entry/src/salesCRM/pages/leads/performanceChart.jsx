@@ -58,7 +58,7 @@ export function LeadsPerformanceChart({ onClose, leads }) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   const avg = data.length > 0 ? Math.round(total / data.length) : 0;
   const peak = data.length > 0 ? data.reduce((best, current) => (best.value > current.value ? best : current)) : { value: 0, label: "N/A" };
-  const W = 640;
+  const W = 520;
   const H = 180;
   const PAD = { t: 14, r: 12, b: 28, l: 36 };
   const chartW = W - PAD.l - PAD.r;

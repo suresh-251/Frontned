@@ -31,6 +31,12 @@ const meetingsAPI = {
     const response = await apiClient.get(`/Meetings/${id}`);
     return unwrapObjectPayload(response.data);
   },
+
+  getForLead: async (leadId) => {
+    if (!leadId) return [];
+    const response = await apiClient.get(`/Meetings/lead/${leadId}`);
+    return unwrapArrayPayload(response.data);
+  },
 };
 
 export default meetingsAPI;

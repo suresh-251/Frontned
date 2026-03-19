@@ -206,7 +206,7 @@ const getPresetDates = (mode, customStart, customEnd) => {
 function EventCard({ item, onEdit }) {
   const meta = activityTypeMeta(item?.type);
   const title = item?.subject || item?.title || meta.label;
-  const description = item?.description || "";
+  const description = (item?.description || "").trim();
   return (
     <div
       title={`${title}\n${fmtTime(item?.date)}${description ? `\n${description}` : ""}`}
@@ -218,26 +218,32 @@ function EventCard({ item, onEdit }) {
         position: "absolute",
         left: `${6 + ((item.column || 0) * item.eventWidth)}px`,
         width: `${item.eventWidth - 12}px`,
+        minHeight: 48,
+        padding: "6px 10px",
         borderRadius: 10,
-        padding: "4px 8px",
         background: meta.background,
         color: meta.color,
         border: "1px solid rgba(15, 23, 42, 0.08)",
-        boxShadow: "0 3px 8px rgba(15, 23, 42, 0.08)",
+        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.14)",
         overflow: "hidden",
         cursor: "pointer",
       }}
     >
-      <div style={{ display: "grid", gap: 2 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", padding: "1px 6px", borderRadius: 999, background: "rgba(255,255,255,0.8)", fontSize: 8.5, fontWeight: 800, whiteSpace: "nowrap" }}>
-          {meta.label}
+      <div style={{ display: "grid", gap: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", padding: "1px 6px", borderRadius: 999, background: "rgba(255,255,255,0.85)", fontSize: 9, fontWeight: 700, letterSpacing: "0.02em" }}>
+            {meta.label}
           </span>
-          <span style={{ fontSize: 10.5, fontWeight: 800, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {title}
-          </span>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>{fmtTime(item?.date)}</span>
         </div>
-        <div style={{ fontSize: 9.5, fontWeight: 700, color: meta.color }}>{fmtTime(item?.date)}</div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {title}
+        </div>
+        {description ? (
+          <div style={{ fontSize: 10, color: "#475467", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+            {description}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -255,7 +261,7 @@ function DayColumn({ day, items, columnWidth, onCreateEvent, onEditEvent }) {
   });
 
   return (
-    <div style={{ minWidth: columnWidth, width: columnWidth, background: "#ffffff", position: "relative", boxSizing: "border-box", borderRight: "1px solid #e5e7eb" }}>
+    <div style={{ minWidth: columnWidth, width: columnWidth, background: "var(--bg-card)", position: "relative", boxSizing: "border-box", borderRight: "1px solid var(--border-color)" }}>
       <div
         style={{ position: "relative", height: totalHeight }}
         onClick={(event) => {
@@ -264,8 +270,8 @@ function DayColumn({ day, items, columnWidth, onCreateEvent, onEditEvent }) {
         }}
       >
         {Array.from({ length: HOUR_END - HOUR_START }).map((_, index) => (
-          <div key={index} style={{ position: "absolute", left: 0, right: 0, top: index * HOUR_HEIGHT, height: HOUR_HEIGHT, borderBottom: "1px dashed #dbe4f0" }}>
-            <div style={{ position: "absolute", left: 0, right: 0, top: HOUR_HEIGHT / 2, borderBottom: "1px dashed #e7edf6" }} />
+          <div key={index} style={{ position: "absolute", left: 0, right: 0, top: index * HOUR_HEIGHT, height: HOUR_HEIGHT, borderBottom: "1px dashed color-mix(in srgb, var(--border-color) 72%, #cbd5e1)" }}>
+            <div style={{ position: "absolute", left: 0, right: 0, top: HOUR_HEIGHT / 2, borderBottom: "1px dashed color-mix(in srgb, var(--border-color) 52%, #cbd5e1)" }} />
           </div>
         ))}
         {positionedItems.map((item) => (
@@ -354,7 +360,7 @@ export default function CalendarPage() {
     };
   }, []);
 
-  const loadCalendar = async () => {
+  const loadCalendar = useCallback(async () => {
     const activeUserId = selectedUserId || userId;
     if (!activeUserId) {
       setItems([]);
@@ -382,11 +388,15 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [end, selectedUserId, start, userId]);
 
   useEffect(() => {
     loadCalendar();
-  }, [end.getTime(), start.getTime(), userId, selectedUserId]);
+    const intervalId = setInterval(() => {
+      loadCalendar();
+    }, 60000);
+    return () => clearInterval(intervalId);
+  }, [loadCalendar]);
 
   const combinedItems = useMemo(() => [...items, ...localItems], [items, localItems]);
 
@@ -412,7 +422,7 @@ export default function CalendarPage() {
   };
 
   const timeColumnWidth = 64;
-  const columnWidth = rangeMode === "workweek" ? 180 : rangeMode === "week" ? 170 : 210;
+  const columnWidth = rangeMode === "workweek" ? 144 : rangeMode === "week" ? 136 : 168;
   const gridTemplate = `${timeColumnWidth}px repeat(${dayColumns.length}, ${columnWidth}px)`;
   const gridTotalWidth = timeColumnWidth + (dayColumns.length * columnWidth);
   const monthMatrix = useMemo(() => getMonthMatrix(anchorDate), [anchorDate]);
@@ -474,9 +484,9 @@ export default function CalendarPage() {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "172px minmax(0, 1fr)", gap: 10, alignItems: "start", minHeight: "calc(100vh - 86px)" }}>
-      <aside style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "#ffffff", padding: 8, position: "sticky", top: 92, height: "fit-content", alignSelf: "start" }}>
+      <aside style={{ border: "1px solid var(--border-color)", borderRadius: 16, background: "var(--bg-card)", padding: 8, position: "sticky", top: 92, height: "fit-content", alignSelf: "start" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>{fmtMonthYear(anchorDate)}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-main)" }}>{fmtMonthYear(anchorDate)}</div>
           <div style={{ display: "flex", gap: 6 }}>
             <button type="button" onClick={() => setAnchorDate(addMonths(anchorDate, -1))} style={miniBtnStyle}><ChevronLeft size={14} /></button>
             <button type="button" onClick={() => setAnchorDate(addMonths(anchorDate, 1))} style={miniBtnStyle}><ChevronRight size={14} /></button>
@@ -484,7 +494,7 @@ export default function CalendarPage() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
           {WEEKDAY_LABELS.map((label) => (
-            <div key={label} style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8", textAlign: "center" }}>{label}</div>
+            <div key={label} style={{ fontSize: 8, fontWeight: 700, color: "color-mix(in srgb, var(--text-main) 45%, #94a3b8)", textAlign: "center" }}>{label}</div>
           ))}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
@@ -501,8 +511,8 @@ export default function CalendarPage() {
                   height: 20,
                   borderRadius: 4,
                   border: "none",
-                  background: inRange ? "#dbeafe" : "transparent",
-                  color: isToday ? "#1d4ed8" : inMonth ? "#1f2937" : "#cbd5f5",
+                  background: inRange ? "color-mix(in srgb, var(--ci, #2563eb) 18%, var(--bg-card))" : "transparent",
+                  color: isToday ? "var(--ci, #1d4ed8)" : inMonth ? "var(--text-main)" : "color-mix(in srgb, var(--text-main) 28%, #cbd5f5)",
                   fontSize: 9,
                   fontWeight: isToday ? 700 : 600,
                   cursor: "pointer",
@@ -516,12 +526,12 @@ export default function CalendarPage() {
 
       </aside>
 
-        <section style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "#ffffff", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden", height: "calc(100vh - 86px)", minHeight: "calc(100vh - 86px)", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "14px 18px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <section style={{ border: "1px solid var(--border-color)", borderRadius: 16, background: "var(--bg-card)", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden", height: "calc(100vh - 86px)", minHeight: "calc(100vh - 86px)", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <CalendarDays size={18} />
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>Calendar</div>
-            <div style={{ fontSize: 13, color: "#6b7280" }}>{fmtRangeHeaderSafe(start, end)}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-main)" }}>Calendar</div>
+            <div style={{ fontSize: 13, color: "color-mix(in srgb, var(--text-main) 58%, #6b7280)" }}>{fmtRangeHeaderSafe(start, end)}</div>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -551,24 +561,24 @@ export default function CalendarPage() {
 
         {error ? <div style={{ ...errorStyle, margin: 16 }}>{error}</div> : null}
 
-        <div style={{ borderTop: "1px solid #e5e7eb", background: "#ffffff", flex: 1, minHeight: 0 }}>
+        <div style={{ borderTop: "1px solid var(--border-color)", background: "var(--bg-card)", flex: 1, minHeight: 0 }}>
           <div style={{ height: "calc(100vh - 170px)", minHeight: "calc(100vh - 170px)", overflow: "auto" }}>
-            <div style={{ display: "grid", gridTemplateColumns: gridTemplate, borderBottom: "1px solid #e5e7eb", position: "sticky", top: 0, zIndex: 2, background: "#ffffff", width: gridTotalWidth }}>
-              <div style={{ padding: "12px 6px", fontSize: 10, fontWeight: 700, color: "#9ca3af", borderRight: "1px solid #e5e7eb", boxSizing: "border-box" }}>IST</div>
+            <div style={{ display: "grid", gridTemplateColumns: gridTemplate, borderBottom: "1px solid var(--border-color)", position: "sticky", top: 0, zIndex: 2, background: "var(--bg-card)", width: gridTotalWidth }}>
+              <div style={{ padding: "12px 6px", fontSize: 10, fontWeight: 700, color: "color-mix(in srgb, var(--text-main) 42%, #9ca3af)", borderRight: "1px solid var(--border-color)", boxSizing: "border-box" }}>IST</div>
               {dayColumns.map((day) => (
-                <div key={day.toISOString()} style={{ padding: "8px 10px", borderRight: "1px solid #e5e7eb", background: sameDay(day, today) ? "#eff6ff" : "#ffffff", boxSizing: "border-box" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: sameDay(day, today) ? "#2563eb" : "#6b7280" }}>{fmtDayName(day)}</div>
-                  <div style={{ marginTop: 2, fontSize: 18, fontWeight: 700, color: sameDay(day, today) ? "#2563eb" : "#111827", lineHeight: 1 }}>{fmtDayNumber(day)}</div>
+                <div key={day.toISOString()} style={{ padding: "8px 10px", borderRight: "1px solid var(--border-color)", background: sameDay(day, today) ? "color-mix(in srgb, var(--ci, #2563eb) 16%, var(--bg-card))" : "var(--bg-card)", boxSizing: "border-box" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: sameDay(day, today) ? "var(--ci, #2563eb)" : "color-mix(in srgb, var(--text-main) 58%, #6b7280)" }}>{fmtDayName(day)}</div>
+                  <div style={{ marginTop: 2, fontSize: 18, fontWeight: 700, color: sameDay(day, today) ? "var(--ci, #2563eb)" : "var(--text-main)", lineHeight: 1 }}>{fmtDayNumber(day)}</div>
                 </div>
               ))}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: gridTemplate, width: gridTotalWidth }}>
-              <div style={{ position: "relative", borderRight: "1px solid #e5e7eb", background: "#ffffff", boxSizing: "border-box" }}>
+              <div style={{ position: "relative", borderRight: "1px solid var(--border-color)", background: "var(--bg-card)", boxSizing: "border-box" }}>
                 {Array.from({ length: HOUR_END - HOUR_START }).map((_, index) => {
                   const hour = HOUR_START + index;
                   return (
-                    <div key={hour} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid #f1f5f9", padding: "6px 6px", fontSize: 10, fontWeight: 600, color: "#9ca3af", boxSizing: "border-box" }}>
+                    <div key={hour} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid color-mix(in srgb, var(--border-color) 62%, transparent)", padding: "6px 6px", fontSize: 10, fontWeight: 600, color: "color-mix(in srgb, var(--text-main) 42%, #9ca3af)", boxSizing: "border-box" }}>
                       {hour > 12 ? `${hour - 12}pm` : `${hour}am`}
                     </div>
                   );
@@ -609,14 +619,14 @@ export default function CalendarPage() {
             style={{
               width: "100%",
               maxWidth: 420,
-              background: "#ffffff",
+              background: "var(--bg-card)",
               borderRadius: 16,
               padding: 18,
               boxShadow: "0 24px 60px rgba(15, 23, 42, 0.2)",
             }}
             onClick={(event) => event.stopPropagation()}
           >
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Calendar Event</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-main)" }}>Calendar Event</div>
             <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
               <input
                 type="text"
@@ -675,9 +685,9 @@ const navBtnStyle = {
   minWidth: 70,
   height: 34,
   borderRadius: 6,
-  border: "1px solid #e5e7eb",
-  background: "#ffffff",
-  color: "#374151",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-card)",
+  color: "var(--text-main)",
   fontSize: 12.5,
   fontWeight: 600,
   display: "inline-flex",
@@ -690,9 +700,9 @@ const navIconStyle = {
   width: 34,
   height: 34,
   borderRadius: 6,
-  border: "1px solid #e5e7eb",
-  background: "#ffffff",
-  color: "#6b7280",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-card)",
+  color: "color-mix(in srgb, var(--text-main) 58%, #6b7280)",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -703,9 +713,9 @@ const selectStyle = {
   minWidth: 90,
   height: 34,
   borderRadius: 6,
-  border: "1px solid #e5e7eb",
-  background: "#ffffff",
-  color: "#374151",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-card)",
+  color: "var(--text-main)",
   fontSize: 12.5,
   fontWeight: 600,
   padding: "0 8px",
@@ -716,9 +726,9 @@ const miniBtnStyle = {
   width: 26,
   height: 26,
   borderRadius: 6,
-  border: "1px solid #e5e7eb",
-  background: "#ffffff",
-  color: "#6b7280",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-card)",
+  color: "color-mix(in srgb, var(--text-main) 58%, #6b7280)",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -729,20 +739,21 @@ const modalInputStyle = {
   width: "100%",
   height: 38,
   borderRadius: 8,
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--border-color)",
   padding: "0 10px",
   fontSize: 13,
-  color: "#111827",
+  color: "var(--text-main)",
+  background: "var(--bg-card)",
   outline: "none",
 };
 
 const modalGhostStyle = {
   height: 36,
   borderRadius: 8,
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--border-color)",
   padding: "0 12px",
-  background: "#ffffff",
-  color: "#374151",
+  background: "var(--bg-card)",
+  color: "var(--text-main)",
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
