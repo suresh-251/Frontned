@@ -33,7 +33,8 @@
   border: 1.5px solid var(--cborder);
   border-radius: var(--r);
   transition: border-color 0.15s, box-shadow 0.15s;
-  padding: 3px;
+  min-height: 32px;
+  padding: 1px 3px;
 }
 
 .unified-search:focus-within {
@@ -55,7 +56,7 @@
 }
 
 .search-inp.unified-inp {
-  padding: 8px 32px 8px 36px;
+  padding: 6px 32px 6px 36px;
   border: none;
   border-radius: 0;
   font-size: 14px;
@@ -100,9 +101,14 @@
   font-size: 13px;
   font-weight: 600;
   padding: 0 8px 0 10px;
-  height: 34px;
+  height: 28px;
   outline: none;
   min-width: 110px;
+}
+
+.search-field-select option {
+  background: var(--cs);
+  color: var(--ct);
 }
 
 .search-field-select:hover {
@@ -143,12 +149,55 @@
   font-weight: 600;
 }
 
+[data-theme='dark'] .unified-search,
+[data-theme='dark'] .icon-btn-outline,
+[data-theme='dark'] .btn-filter {
+  background: #353942;
+  border-color: #4a505c;
+}
+
+[data-theme='dark'] .unified-search:focus-within,
+[data-theme='dark'] .icon-btn-outline:hover,
+[data-theme='dark'] .btn-filter:hover {
+  border-color: color-mix(in srgb, var(--ci) 62%, #6b7280);
+}
+
+[data-theme='dark'] .search-field-select,
+[data-theme='dark'] .search-field-select option {
+  background: #353942;
+  color: #e5e7eb;
+}
+
+[data-theme='dark'] .unified-divider,
+[data-theme='dark'] .toolbar-divider {
+  background: #4a505c;
+}
+
+[data-theme='dark'] .seg-btn:hover {
+  color: #f3f4f6;
+  background: #3f444d;
+}
+
+[data-theme='dark'] .seg-btn--on {
+  background: color-mix(in srgb, var(--ci) 14%, #353942);
+  color: #c7d2fe;
+}
+
+[data-theme='dark'] .ptab {
+  background: #323740;
+}
+
+[data-theme='dark'] .quick-item:hover {
+  background: #3b4049;
+}
+
 /* Filter buttons */
 .btn-filter {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  min-height: 32px;
+  padding: 6px 14px;
   border: 1.5px solid var(--cborder);
   border-radius: var(--r);
   background: var(--cs);
@@ -218,8 +267,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: 1.5px solid var(--cborder);
   border-radius: var(--r);
   background: var(--cs);

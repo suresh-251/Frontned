@@ -65,4 +65,21 @@ export const appCache = {
       keys.forEach(k => localStorage.removeItem(k));
     } catch { /* ignore */ }
   },
+
+  /** Clear all user-specific caches. Call on logout and before new login. */
+  clearAllUserCaches() {
+    const prefixes = [
+      "sc_dash_", "ph_inbox_", "ph_leads_", "ph_pages_",
+      "ph_scheduled_", "ph_history_", "ph_drafts_",
+      "ph_subs_", "ph_fbpages_", "ph_brands_",
+    ];
+    prefixes.forEach((p) => this.invalidatePrefix(p));
+
+    // Also clear standalone user-scoped keys
+    try {
+      localStorage.removeItem("brandSlug");
+      localStorage.removeItem("salesCrmToken");
+      localStorage.removeItem("activeBrandId");
+    } catch { /* ignore */ }
+  },
 };

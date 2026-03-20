@@ -19,6 +19,12 @@ const dealsAPI = {
     return response.data;
   },
 
+  // PATCH /api/Deals/{id}
+  update: async (id, data) => {
+    const response = await apiClient.patch(`/Deals/${id}`, data);
+    return response.data;
+  },
+
   // PUT /api/Deals/stage/{id}
   updateStage: async (id, stage) => {
   return apiClient.put(

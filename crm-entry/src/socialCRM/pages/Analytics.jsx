@@ -28,6 +28,8 @@ const DAY_OPTIONS = [
   { label: "7 days",  value: 7  },
   { label: "14 days", value: 14 },
   { label: "30 days", value: 30 },
+  { label: "60 days", value: 60 },
+  { label: "90 days", value: 90 },
 ];
 
 // ── Trend metric options (for main area chart) ────────────────────────────────
@@ -263,6 +265,19 @@ export default function Analytics() {
       {error && (
         <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium px-4 py-3 rounded-xl">
           {error}
+        </div>
+      )}
+
+      {/* ── No data in window but posts exist banner ──────────────────────── */}
+      {!loading && !error && summary?.totalPosts === 0 && (summary?.totalPostsInDb > 0 || (syncResult?.postsSynced > 0 && !syncResult?.errors?.length)) && (
+        <div className="mb-4 px-4 py-3 rounded-xl border bg-amber-50 border-amber-200 text-amber-800 text-xs font-medium flex items-center gap-2">
+          <FiTrendingUp size={14} className="flex-shrink-0" />
+          <span>
+            {summary?.totalPostsInDb > 0
+              ? `${summary.totalPostsInDb} post(s) synced but none fall within the last ${days} days.`
+              : `${syncResult.postsSynced} post(s) synced but none fall within the last ${days} days.`}
+            {" "}Try selecting a wider date range (30, 60, or 90 days) to see older data.
+          </span>
         </div>
       )}
 

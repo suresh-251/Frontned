@@ -70,6 +70,7 @@ export const CLEARED_FILTERS = {
   state: "",
   country: "",
   zip: "",
+  followUp: "All",
 };
 
 export const STAT_CARDS = [

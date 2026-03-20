@@ -1,10 +1,10 @@
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import DatePicker from "react-datepicker";
+import activitiesAPI from "../../api/activities.api";
 import { LEAD_SOURCE_OPTIONS, STATUS_LIST, STATUS_META } from "./constants";
 import { formatLeadSource, formatStatus, getFollowUpLabel, getScoreTier, offsetDay, todayStr } from "./utils";
-import { ICal, IChevD, parseDateTimeValue, toDateTimeValue, useClickOutside } from "./shared";
+import { ICal, IChevD, useClickOutside } from "./shared";
 
 export function StatusCell({ value, onChange }) {
   const [open, setOpen] = useState(false);
@@ -59,7 +59,7 @@ export function StatusCell({ value, onChange }) {
         <span className="status-pill-caret"><IChevD s={9} c={meta.color} /></span>
       </button>
       {open && createPortal(
-        <div className="status-menu" ref={menuRef} style={{ position: "fixed", top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight, overflowY: "auto", zIndex: 5000, display: "grid", gap: 2, background: "#ffffff", border: "1.5px solid #e5e7eb", borderRadius: 12, boxShadow: "0 18px 30px rgba(15, 23, 42, 0.14)", padding: 4, overscrollBehavior: "contain" }}>
+        <div className="status-menu" ref={menuRef} style={{ position: "fixed", top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight, overflowY: "auto", zIndex: 5000, display: "grid", gap: 2, background: "var(--bg-card)", border: "1.5px solid var(--border-color)", borderRadius: 12, boxShadow: "0 18px 30px rgba(15, 23, 42, 0.14)", padding: 4, overscrollBehavior: "contain" }}>
           {STATUS_LIST.map((status) => {
             const currentMeta = STATUS_META[status];
             return (
@@ -82,17 +82,17 @@ export function SourceCell({ value, onChange }) {
 
   return (
     <div className="status-cell" ref={ref}>
-      <button className="status-pill" style={{ color: "#475569" }} onClick={() => setOpen((current) => !current)}>
-        <span className="status-dot" style={{ background: "#64748b" }} />
+      <button className="status-pill" style={{ color: "var(--text-main)" }} onClick={() => setOpen((current) => !current)}>
+        <span className="status-dot" style={{ background: "color-mix(in srgb, var(--text-main) 55%, #64748b)" }} />
         <span className="status-pill-label">{formatLeadSource(value)}</span>
-        <span className="status-pill-caret"><IChevD s={9} c="#64748b" /></span>
+        <span className="status-pill-caret"><IChevD s={9} c="var(--text-main)" /></span>
       </button>
       {open && (
-        <div className="status-menu" style={{ maxHeight: 280, overflowY: "auto", minWidth: 240 }}>
+        <div className="status-menu" style={{ maxHeight: 280, overflowY: "auto", minWidth: 240, background: "var(--bg-card)", borderColor: "var(--border-color)" }}>
           {LEAD_SOURCE_OPTIONS.map((source) => (
             <button key={source} className={`status-opt ${value === source ? "status-opt--on" : ""}`} onClick={() => { onChange(source); setOpen(false); }}>
-              <span className="status-opt-dot" style={{ background: "#64748b" }} />
-              <span style={{ color: "#334155" }}>{formatLeadSource(source)}</span>
+              <span className="status-opt-dot" style={{ background: "color-mix(in srgb, var(--text-main) 55%, #64748b)" }} />
+              <span style={{ color: "var(--text-main)" }}>{formatLeadSource(source)}</span>
             </button>
           ))}
         </div>
@@ -104,72 +104,20 @@ export function SourceCell({ value, onChange }) {
 export function AssigneeCell({ value, options = [], onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const menuRef = useRef(null);
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 172, maxHeight: 280 });
-
-  const getMenuPos = (rect) => {
-    const preferredHeight = 280;
-    const gap = 8;
-    const viewportPadding = 12;
-    const minWidth = Math.max(164, Math.min(184, rect.width + 10));
-    const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
-    const availableAbove = rect.top - viewportPadding;
-    const openBelow = availableBelow >= 190 || availableBelow >= availableAbove;
-    const maxHeight = Math.max(160, Math.min(preferredHeight, openBelow ? availableBelow - gap : availableAbove - gap));
-    const top = openBelow ? Math.max(viewportPadding, rect.bottom + gap) : Math.max(viewportPadding, rect.top - maxHeight - gap);
-    const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - minWidth - viewportPadding);
-    return { top, left, width: minWidth, maxHeight };
-  };
-
-  useEffect(() => {
-    if (!open || !ref.current) return;
-    setMenuPos(getMenuPos(ref.current.getBoundingClientRect()));
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event) => {
-      if (ref.current?.contains(event.target) || menuRef.current?.contains(event.target)) return;
-      setOpen(false);
-    };
-    const reposition = () => {
-      if (!ref.current) return;
-      setMenuPos(getMenuPos(ref.current.getBoundingClientRect()));
-    };
-    document.addEventListener("mousedown", close);
-    window.addEventListener("scroll", reposition, true);
-    window.addEventListener("resize", reposition);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      window.removeEventListener("scroll", reposition, true);
-      window.removeEventListener("resize", reposition);
-    };
-  }, [open]);
+  useClickOutside(ref, () => setOpen(false));
 
   return (
-    <div className="assignee-cell" ref={ref}>
-      <button className="assignee-pill" onClick={() => setOpen((current) => !current)}>
+    <div className="status-cell assignee-cell" ref={ref}>
+      <button className="status-pill assignee-pill" style={{ color: "var(--text-main)" }} onClick={() => setOpen((current) => !current)}>
         <span className="assignee-pill__label">{value || "Unassigned"}</span>
-        <span className="assignee-pill-caret"><IChevD s={9} c="#64748b" /></span>
+        <span className="status-pill-caret assignee-pill-caret"><IChevD s={9} c="var(--text-main)" /></span>
       </button>
-      {open && createPortal(
-        <div
-          className="assignee-menu"
-          ref={menuRef}
-          style={{
-            position: "fixed",
-            top: menuPos.top,
-            left: menuPos.left,
-            minWidth: menuPos.width,
-            maxHeight: menuPos.maxHeight,
-            overflowY: "auto",
-            zIndex: 5000,
-          }}
-        >
+      {open && (
+        <div className="status-menu assignee-menu" style={{ maxHeight: 280, overflowY: "auto", minWidth: 172, background: "var(--bg-card)", borderColor: "var(--border-color)" }}>
           {options.map((option) => (
             <button
               key={option}
-              className={`assignee-opt ${value === option ? "assignee-opt--on" : ""}`}
+              className={`status-opt assignee-opt ${value === option ? "status-opt--on assignee-opt--on" : ""}`}
               onClick={() => {
                 onChange(option);
                 setOpen(false);
@@ -178,25 +126,36 @@ export function AssigneeCell({ value, options = [], onChange }) {
               <span>{option}</span>
             </button>
           ))}
-        </div>,
-        document.body
+        </div>
       )}
     </div>
   );
 }
 
-export function FollowUpCell({ value, onChange }) {
+export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   const panelRef = useRef(null);
   const [panelPos, setPanelPos] = useState(null);
-  const info = value ? getFollowUpLabel(value) : null;
+  const [followUpItems, setFollowUpItems] = useState([]);
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [followUpError, setFollowUpError] = useState("");
+  const [followUpView, setFollowUpView] = useState("");
+  const bucketLower = String(bucket || "").toLowerCase();
+  const activeFollowUpOption = followUpView || "all";
+  const info = bucketLower === "today"
+    ? { label: "Today", type: "today" }
+    : bucketLower === "overdue"
+      ? { label: "Overdue", type: "overdue" }
+      : bucketLower === "upcoming"
+        ? { label: "Upcoming", type: "normal" }
+        : value ? getFollowUpLabel(value) : null;
 
   const getPanelPos = () => {
     if (!ref.current) return null;
     const rect = ref.current.getBoundingClientRect();
-    const panelHeight = 262;
-    const panelWidth = 232;
+    const panelHeight = followUpView ? 336 : 190;
+    const panelWidth = 260;
     const viewportPadding = 12;
     const gap = 8;
     const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
@@ -230,10 +189,91 @@ export function FollowUpCell({ value, onChange }) {
     };
   }, [editing]);
 
+  const closePicker = () => {
+    setEditing(false);
+    setPanelPos(null);
+    setFollowUpView("");
+    setFollowUpError("");
+  };
+
+  const fmtPopupDate = (value) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const fmtPopupLabel = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "-";
+    return raw.replace(/([a-z])([A-Z])/g, "$1 $2");
+  };
+
+  const handleTodayClick = async () => {
+    setFollowUpView("today");
+    setFollowUpLoading(true);
+    setFollowUpError("");
+    try {
+      const data = await activitiesAPI.getFollowUpsToday({ leadId });
+      setFollowUpItems(Array.isArray(data) ? data : []);
+      setPanelPos(getPanelPos());
+    } catch (error) {
+      setFollowUpItems([]);
+      setFollowUpError(error?.response?.data?.message || "Unable to load today's follow-ups.");
+      setPanelPos(getPanelPos());
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
+  const handleOverdueClick = async () => {
+    setFollowUpView("overdue");
+    setFollowUpLoading(true);
+    setFollowUpError("");
+    try {
+      const data = await activitiesAPI.getFollowUpsOverdue();
+      const filtered = (Array.isArray(data) ? data : []).filter((item) => Number(item?.leadId || item?.leadID || item?.lead?.id || 0) === Number(leadId));
+      setFollowUpItems(filtered);
+      setPanelPos(getPanelPos());
+    } catch (error) {
+      setFollowUpItems([]);
+      setFollowUpError(error?.response?.data?.message || "Unable to load overdue follow-ups.");
+      setPanelPos(getPanelPos());
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
+  const handleUpcomingClick = async () => {
+    setFollowUpView("upcoming");
+    setFollowUpLoading(true);
+    setFollowUpError("");
+    try {
+      const now = new Date();
+      const data = await activitiesAPI.getFollowUps({
+        leadId,
+        fromDate: now.toISOString(),
+        status: "Pending",
+      });
+      setFollowUpItems(Array.isArray(data) ? data : []);
+      setPanelPos(getPanelPos());
+    } catch (error) {
+      setFollowUpItems([]);
+      setFollowUpError(error?.response?.data?.message || "Unable to load upcoming follow-ups.");
+      setPanelPos(getPanelPos());
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
   const toggleEditing = () => {
     if (editing) {
-      setEditing(false);
-      setPanelPos(null);
+      closePicker();
       return;
     }
     setPanelPos(getPanelPos());
@@ -247,30 +287,65 @@ export function FollowUpCell({ value, onChange }) {
         {info ? <span>{info.label}</span> : <span>No follow-up</span>}
       </button>
       {editing && panelPos && createPortal(
-          <div className="followup-picker followup-picker--cute" ref={panelRef} style={{ position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 5000 }}>
-            <div className="followup-quick">
-            <button onClick={() => { onChange(toDateTimeValue(new Date())); setEditing(false); setPanelPos(null); }}>Today</button>
-            <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 1); onChange(toDateTimeValue(d)); setEditing(false); setPanelPos(null); }}>Tomorrow</button>
-            <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 3); onChange(toDateTimeValue(d)); setEditing(false); setPanelPos(null); }}>+3 days</button>
+          <div className="followup-picker followup-picker--plain" ref={panelRef} style={{ position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 5000 }}>
+          <div className="followup-picker__topbar">
+            <div className="followup-picker__eyebrow">Follow-Up</div>
+            <div className="followup-picker__title">Quick filters</div>
           </div>
-
-          <DatePicker
-            selected={value ? parseDateTimeValue(value) : null}
-            onChange={(date) => {
-              onChange(toDateTimeValue(date));
-              setEditing(false);
-              setPanelPos(null);
-            }}
-            inline
-            showTimeSelect
-            timeIntervals={15}
-            dateFormat="MMM d, yyyy h:mm aa"
-            showMonthDropdown
-            showYearDropdown
-            dropdownMode="select"
-            yearDropdownItemNumber={12}
-            calendarClassName="followup-datepicker"
-          />
+          {onChange && (
+            <div className="followup-picker__header">
+              {onChange ? (
+                <div className="followup-picker__actions">
+                  {["Today", "Overdue", "Upcoming", "All"].map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={`followup-picker__action ${activeFollowUpOption === option.toLowerCase() ? "followup-picker__action--active" : ""}`}
+                      onClick={() => {
+                        if (option === "Today") {
+                          handleTodayClick();
+                          return;
+                        }
+                        if (option === "Overdue") {
+                          handleOverdueClick();
+                          return;
+                        }
+                        if (option === "Upcoming") {
+                          handleUpcomingClick();
+                          return;
+                        }
+                        setFollowUpView("");
+                        setFollowUpItems([]);
+                        setFollowUpError("");
+                      }}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )}
+          {followUpView ? (
+            <div className="followup-picker__results">
+              <div className="followup-picker__results-title">{followUpView === "overdue" ? "Overdue follow-ups" : followUpView === "upcoming" ? "Upcoming pending follow-ups" : "Today's follow-ups"}</div>
+              {followUpLoading ? <div className="followup-picker__results-empty">Loading follow-ups...</div> : null}
+              {!followUpLoading && followUpError ? <div className="followup-picker__results-empty">{followUpError}</div> : null}
+              {!followUpLoading && !followUpError && !followUpItems.length ? <div className="followup-picker__results-empty">{followUpView === "overdue" ? "No overdue follow-ups for this lead." : followUpView === "upcoming" ? "No pending upcoming follow-ups for this lead." : "No follow-ups for today."}</div> : null}
+              {!followUpLoading && !followUpError && followUpItems.length ? (
+                <div className="followup-picker__results-list">
+                  {followUpItems.map((item, index) => (
+                    <div key={item?.id || `${item?.title || item?.type || "followup"}-${index}`} className="followup-picker__result-item">
+                      <div className="followup-picker__result-title">{item?.title || item?.name || item?.type || "Follow-up"}</div>
+                      <div className="followup-picker__result-meta"><strong>Subject:</strong> {fmtPopupLabel(item?.subject || item?.title || item?.name)}</div>
+                      <div className="followup-picker__result-meta"><strong>Type:</strong> {fmtPopupLabel(item?.type)}</div>
+                      <div className="followup-picker__result-meta">{fmtPopupDate(item?.dueDate || item?.activityDate || item?.date || item?.createdAt)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>,
         document.body
       )}

@@ -199,7 +199,7 @@
   min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .table:not(.table--wrap) td {
@@ -210,6 +210,20 @@
   white-space: normal;
 }
 
+.td-wrap-limit,
+.th-wrap-limit {
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+}
+
+.table .td-wrap-limit,
+.table .td-wrap-limit .cell-txt {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 /* Head */
 .thead-row {
   background: color-mix(in srgb, var(--cs) 92%, var(--cb));
@@ -217,7 +231,7 @@
 }
 
 .th {
-  padding: 9px 10px;
+  padding: 9px 6px;
   text-align: left;
   font-size: 11px;
   font-weight: 600;
@@ -247,6 +261,11 @@
   width: 56px;
   cursor: default;
   text-align: center;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
 }
 
 .th-inner {
@@ -298,11 +317,12 @@
 }
 
 .td {
-  padding: 9px 10px;
+  padding: 10px 6px;
   color: var(--ct2);
   vertical-align: middle;
   border-bottom: 1px solid var(--cborder);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .row:last-child .td {
@@ -368,9 +388,14 @@
 .name-block {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .name-link {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   background: none;
   border: none;
   font-size: 12px;
@@ -385,11 +410,57 @@
 
 .name-link:hover {
   color: var(--ci-d);
+}
+
+.name-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ci) 28%, white);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+.sales-leads-name-link {
+  color: var(--text-main);
+}
+
+.sales-leads-name-link:hover {
+  color: color-mix(in srgb, var(--text-main) 82%, #94a3b8);
+}
+
+.sales-leads-name-link__label {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.sales-leads-name-text {
+  color: var(--text-main);
+}
+
+.sales-leads-name-link__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.01em;
+  transition: color 0.16s ease, transform 0.16s ease;
+}
+
+.sales-leads-name-link:hover .sales-leads-name-link__label {
   text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+}
+
+.sales-leads-name-link:hover .sales-leads-name-link__meta,
+.sales-leads-name-link:focus-visible .sales-leads-name-link__meta {
+  color: var(--ci);
+  transform: translateX(1px);
 }
 
 .sales-deals-name-link {
-  color: #111827;
+  color: var(--text-main);
 }
 
 .sales-deals-stage-pill {
@@ -413,7 +484,7 @@
 }
 
 .sales-accounts-name-link {
-  color: #111827;
+  color: var(--text-main);
 }
 
 .sales-accounts-avatar {
@@ -425,18 +496,122 @@
 }
 
 .sales-accounts-page .table {
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .sales-accounts-page .th {
-  padding: 8px 6px;
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  padding: 8px 8px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.sales-leads-table .th {
+  padding: 8px 8px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.sales-leads-table .td {
+  padding: 10px 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sales-leads-table .th-check,
+.sales-leads-table .td-check {
+  width: 34px;
+}
+
+.sales-leads-table .td-name {
+  min-width: 136px;
+}
+
+.sales-leads-table .td-contact {
+  min-width: 168px;
+}
+
+.sales-leads-table .td-status {
+  min-width: 116px;
+}
+
+.sales-leads-table .td-followup {
+  min-width: 122px;
+}
+
+.sales-leads-table .td-assignee {
+  min-width: 112px;
+}
+
+.sales-leads-table .th-score,
+.sales-leads-table .td-score {
+  min-width: 58px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.sales-leads-table .td-actions,
+.sales-leads-table .th-actions {
+  min-width: 48px;
+  width: 48px;
+}
+
+.sales-leads-table .name-cell {
+  gap: 10px;
+}
+
+.sales-leads-table .cell-txt,
+.sales-leads-table .date-txt,
+.sales-leads-table .contact-email,
+.sales-leads-table .contact-phone,
+.sales-leads-table .sales-leads-name-link,
+.sales-leads-table .status-pill,
+.sales-leads-table .status-pill-label,
+.sales-leads-table .followup-btn,
+.sales-leads-table .assignee-pill,
+.sales-leads-table .assignee-pill__label {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.sales-deals-table .th {
+  padding: 8px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.sales-deals-table .td {
+  padding: 10px 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sales-deals-table .td-actions,
+.sales-deals-table .th-actions {
+  min-width: 48px;
+  width: 48px;
+}
+
+.sales-deals-table .name-cell {
+  gap: 10px;
+}
+
+.sales-deals-table .avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.sales-deals-table .cell-txt,
+.sales-deals-table .date-txt,
+.sales-deals-table .sales-deals-name-link {
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .sales-accounts-page .td {
-  padding: 8px 6px;
-  font-size: 11px;
+  padding: 10px 8px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .sales-accounts-page .td-name {
@@ -452,13 +627,13 @@
 }
 
 .sales-accounts-page .name-cell {
-  gap: 7px;
+  gap: 10px;
 }
 
 .sales-accounts-page .avatar {
-  width: 26px;
-  height: 26px;
-  font-size: 10px;
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
 }
 
 .sales-accounts-page .name-link,
@@ -466,7 +641,8 @@
 .sales-accounts-page .contact-email,
 .sales-accounts-page .contact-phone,
 .sales-accounts-page .date-txt {
-  font-size: 10.5px;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .contact-cell {
@@ -667,19 +843,6 @@
 }
 
 .assignee-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  border: none;
-  background: transparent;
-  color: #475569;
-  cursor: pointer;
-  transition: filter 0.12s;
-  white-space: nowrap;
   max-width: 100%;
 }
 
@@ -705,30 +868,12 @@
 }
 
 .assignee-menu {
-  display: grid;
-  gap: 2px;
-  background: #ffffff;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 18px 30px rgba(15, 23, 42, 0.14);
-  padding: 4px;
-  overscroll-behavior: contain;
+  min-width: 172px;
 }
 
 .assignee-opt {
-  display: flex;
-  align-items: center;
   width: 100%;
-  padding: 7px 8px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: #334155;
-  font-size: 11px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
+  justify-content: flex-start;
 }
 
 .assignee-opt:hover {

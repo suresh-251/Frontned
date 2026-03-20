@@ -50,6 +50,34 @@ const activitiesAPI = {
     return unwrapArrayPayload(response.data);
   },
 
+  getFollowUps: async ({ leadId, assignedToUserId, fromDate, toDate, status } = {}) => {
+    const response = await apiClient.get('/Activities/followups', {
+      params: {
+        ...(leadId ? { leadId } : {}),
+        ...(assignedToUserId ? { assignedToUserId } : {}),
+        ...(fromDate ? { fromDate } : {}),
+        ...(toDate ? { toDate } : {}),
+        ...(status ? { status } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data);
+  },
+
+  getFollowUpsToday: async ({ leadId, assignedToUserId } = {}) => {
+    const response = await apiClient.get('/Activities/followups/today', {
+      params: {
+        ...(leadId ? { leadId } : {}),
+        ...(assignedToUserId ? { assignedToUserId } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data);
+  },
+
+  getFollowUpsOverdue: async () => {
+    const response = await apiClient.get('/Activities/followups/overdue');
+    return unwrapArrayPayload(response.data);
+  },
+
   // Get activity by ID
   getById: async (id) => {
     const response = await apiClient.get(`/Activities/${id}`);

@@ -3,6 +3,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { useEffect, useMemo, useState } from "react";
 import DatePicker from "react-datepicker";
 import { Plus, Trash2 } from "lucide-react";
+import * as XLSX from "xlsx";
 import dealsAPI from "../api/deals.api";
 import Toast from "../utils/toast";
 import { IFilter, IKanban, IRows, ISearch, IX } from "./leads/shared";
@@ -55,6 +56,7 @@ const normalizeStage = (deal) => deal?.stage || deal?.dealStage || deal?.status 
 const normalizeAmount = (deal) => Number(deal?.amount ?? deal?.dealValue ?? deal?.value ?? 0) || 0;
 const normalizeClosingDate = (deal) => deal?.closingDate || deal?.expectedCloseDate || deal?.closeDate || null;
 const getDealTitle = (deal) => deal?.dealName || deal?.title || deal?.subject || deal?.name || `Deal #${deal?.dealId ?? deal?.id ?? ""}`;
+const getDealId = (deal) => Number(deal?.dealId ?? deal?.id ?? 0);
 const formatStageLabel = (value = "") => String(value).replace(/([a-z])([A-Z])/g, "$1 $2").trim();
 
 const SEARCH_FIELD_OPTIONS = [
@@ -85,6 +87,25 @@ const DEFAULT_DEAL_FILTERS = {
   closingDateTo: "",
 };
 
+const RANGE_FILTER_SECTIONS = [
+  {
+    minKey: "minAmount",
+    maxKey: "maxAmount",
+    title: "Deal value",
+    helper: "Total value of the opportunity",
+    minPlaceholder: "Min amount",
+    maxPlaceholder: "Max amount",
+  },
+  {
+    minKey: "minExpectedRevenue",
+    maxKey: "maxExpectedRevenue",
+    title: "Expected revenue",
+    helper: "Forecasted earnings",
+    minPlaceholder: "Min expected revenue",
+    maxPlaceholder: "Max expected revenue",
+  },
+];
+
 const normalizeFilterText = (value) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
 function DealFilterModal({ filters, onApply, onClose, activeFilterCount }) {
@@ -102,99 +123,138 @@ function DealFilterModal({ filters, onApply, onClose, activeFilterCount }) {
   };
 
   const handleClear = () => setLocalFilters(DEFAULT_DEAL_FILTERS);
-
-  const inputStyle = { width: "100%", padding: "8px 12px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", background: "white", cursor: "pointer" };
+  const panelBg = "var(--bg-card)";
+  const panelBorder = "var(--border-color)";
+  const primaryText = "var(--text-main)";
+  const mutedText = "color-mix(in srgb, var(--text-main) 70%, #94a3b8)";
+  const subtleText = "color-mix(in srgb, var(--text-main) 56%, #94a3b8)";
+  const fieldStyle = {
+    width: "100%",
+    padding: "8px 12px",
+    border: `1.5px solid ${panelBorder}`,
+    borderRadius: "6px",
+    fontSize: "13px",
+    background: panelBg,
+    color: primaryText,
+  };
+  const pairRow = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 };
+  const dateInputs = [
+    { key: "closingDateFrom", label: "From", placeholder: "From date" },
+    { key: "closingDateTo", label: "To", placeholder: "To date" },
+  ];
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" style={{ width: 520 }} onClick={(event) => event.stopPropagation()}>
-        <div className="modal-hdr">
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.35)", zIndex: 500 }} />
+      <div style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: "340px", background: panelBg, boxShadow: "4px 0 20px rgba(0,0,0,0.15)", zIndex: 501, display: "flex", flexDirection: "column", animation: "slideIn 0.25s ease-out", borderRight: `1px solid ${panelBorder}` }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${panelBorder}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <IFilter s={16} c="#4f46e5" />
-            <span style={{ fontSize: "15px", fontWeight: 600, color: "#111827" }}>Filter Deals</span>
-            {activeFilterCount > 0 && <span style={{ background: "#4f46e5", color: "white", fontSize: "11px", fontWeight: 700, padding: "2px 6px", borderRadius: "12px" }}>{activeFilterCount}</span>}
+            <span style={{ fontSize: "15px", fontWeight: 600, color: primaryText }}>Filter Deals</span>
+            {activeFilterCount > 0 && <span style={{ background: "#4f46e5", color: "#fff", fontSize: "11px", fontWeight: 700, padding: "2px 6px", borderRadius: "12px" }}>{activeFilterCount}</span>}
           </div>
-          <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", borderRadius: 4 }}><IX s={16} c="#6b7280" /></button>
         </div>
-        <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gap: 14 }}>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Stage</label>
-            <select value={localFilters.stage} onChange={(event) => updateFilter("stage", event.target.value)} style={inputStyle}>
-              <option value="All">All Stages</option>
-              {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Priority</label>
-            <select value={localFilters.priority} onChange={(event) => updateFilter("priority", event.target.value)} style={inputStyle}>
-              <option value="All">All Priorities</option>
-              {["Low", "Medium", "High"].map((priority) => <option key={priority} value={priority}>{priority}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Owner</label>
-            <input type="text" value={localFilters.owner} onChange={(event) => updateFilter("owner", event.target.value)} placeholder="Owner name" style={inputStyle} />
-          </div>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Lead Source</label>
-            <input type="text" value={localFilters.leadSource} onChange={(event) => updateFilter("leadSource", event.target.value)} placeholder="Lead source" style={inputStyle} />
-          </div>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Campaign Source</label>
-            <input type="text" value={localFilters.campaignSource} onChange={(event) => updateFilter("campaignSource", event.target.value)} placeholder="Campaign source" style={inputStyle} />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Min Amount</label>
-              <input type="number" value={localFilters.minAmount} onChange={(event) => updateFilter("minAmount", event.target.value)} placeholder="0" style={inputStyle} />
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Deal Filters</h4>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Stage</label>
+              <select value={localFilters.stage} onChange={(event) => updateFilter("stage", event.target.value)} style={{ ...fieldStyle, cursor: "pointer" }}>
+                <option value="All">All Stages</option>
+                {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
+              </select>
             </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Max Amount</label>
-              <input type="number" value={localFilters.maxAmount} onChange={(event) => updateFilter("maxAmount", event.target.value)} placeholder="0" style={inputStyle} />
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Priority</label>
+              <select value={localFilters.priority} onChange={(event) => updateFilter("priority", event.target.value)} style={{ ...fieldStyle, cursor: "pointer" }}>
+                <option value="All">All Priorities</option>
+                {["Low", "Medium", "High"].map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Owner</label>
+              <input type="text" value={localFilters.owner} onChange={(event) => updateFilter("owner", event.target.value)} placeholder="Owner name" style={fieldStyle} />
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Min Expected Revenue</label>
-              <input type="number" value={localFilters.minExpectedRevenue} onChange={(event) => updateFilter("minExpectedRevenue", event.target.value)} placeholder="0" style={inputStyle} />
+
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Source</h4>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Lead Source</label>
+              <input type="text" value={localFilters.leadSource} onChange={(event) => updateFilter("leadSource", event.target.value)} placeholder="Lead source" style={fieldStyle} />
             </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Max Expected Revenue</label>
-              <input type="number" value={localFilters.maxExpectedRevenue} onChange={(event) => updateFilter("maxExpectedRevenue", event.target.value)} placeholder="0" style={inputStyle} />
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Campaign Source</label>
+              <input type="text" value={localFilters.campaignSource} onChange={(event) => updateFilter("campaignSource", event.target.value)} placeholder="Campaign source" style={fieldStyle} />
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Closing Date From</label>
-              <DatePicker
-                selected={localFilters.closingDateFrom ? new Date(localFilters.closingDateFrom) : null}
-                onChange={(date) => updateFilter("closingDateFrom", date ? date.toISOString() : "")}
-                dateFormat="MMM d, yyyy"
-                className="deal-datepicker"
-                customInput={<input style={inputStyle} />}
-              />
+
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Amount Range</h4>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {RANGE_FILTER_SECTIONS.map((section) => (
+                <div key={section.minKey} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: primaryText }}>{section.title}</span>
+                    <span style={{ fontSize: 11, color: subtleText }}>{section.helper}</span>
+                  </div>
+                  <div style={pairRow}>
+                    <input
+                      type="number"
+                      value={localFilters[section.minKey]}
+                      onChange={(event) => updateFilter(section.minKey, event.target.value)}
+                      placeholder={section.minPlaceholder}
+                      style={fieldStyle}
+                    />
+                    <input
+                      type="number"
+                      value={localFilters[section.maxKey]}
+                      onChange={(event) => updateFilter(section.maxKey, event.target.value)}
+                      placeholder={section.maxPlaceholder}
+                      style={fieldStyle}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Closing Date To</label>
-              <DatePicker
-                selected={localFilters.closingDateTo ? new Date(localFilters.closingDateTo) : null}
-                onChange={(date) => updateFilter("closingDateTo", date ? date.toISOString() : "")}
-                dateFormat="MMM d, yyyy"
-                className="deal-datepicker"
-                customInput={<input style={inputStyle} />}
-              />
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Closing Date</h4>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={pairRow}>
+                {dateInputs.map((input) => (
+                  <div key={input.key} style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: subtleText }}>{input.label}</span>
+                    <DatePicker
+                      selected={localFilters[input.key] ? new Date(localFilters[input.key]) : null}
+                      onChange={(date) => updateFilter(input.key, date ? date.toISOString() : "")}
+                      dateFormat="MMM d, yyyy"
+                      className="deal-datepicker"
+                      customInput={<input style={fieldStyle} placeholder={input.placeholder} />}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-        <div className="modal-footer" style={{ justifyContent: "space-between" }}>
-          <button className="btn-ghost" onClick={handleClear}>Clear</button>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button className="btn-primary" onClick={handleApply}>Apply {activeFilterCount > 0 && `(${activeFilterCount})`}</button>
-          </div>
+
+        <div style={{ padding: "16px 20px", borderTop: `1px solid ${panelBorder}`, display: "flex", gap: 8, background: "color-mix(in srgb, var(--bg-card) 78%, var(--bg-body))" }}>
+          <button onClick={handleClear} style={{ flex: 1, padding: "8px 12px", background: panelBg, border: `1.5px solid ${panelBorder}`, borderRadius: "6px", fontSize: "13px", fontWeight: 500, color: primaryText, cursor: "pointer" }}>Clear All</button>
+          <button onClick={handleApply} style={{ flex: 1, padding: "8px 12px", background: "#4f46e5", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#fff", cursor: "pointer" }}>Apply {activeFilterCount > 0 && `(${activeFilterCount})`}</button>
         </div>
       </div>
-    </div>
+
+      <style>{`
+        @keyframes slideIn {
+          from { transform: translateX(-100%); }
+          to { transform: translateX(0); }
+        }
+      `}</style>
+    </>
   );
 }
 
@@ -216,13 +276,13 @@ function DealsKanban({ deals, onOpenDeal, onDeleteDeal }) {
               <div className="kanban-column__header" style={{ alignItems: "flex-start" }}>
                 <div>
                   <div className="kanban-column__label">{formatStageLabel(stage)}</div>
-                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#334155" }}>{fmtCurrency(totalAmount)}</div>
+                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "color-mix(in srgb, var(--text-main) 84%, #94a3b8)" }}>{fmtCurrency(totalAmount)}</div>
                 </div>
                 <span className="kanban-column__count">{items.length}</span>
               </div>
               <div className="kanban-column__list">
                 {!items.length ? (
-                  <div className="kanban-card" style={{ borderStyle: "dashed", color: "#94a3b8" }}>
+                  <div className="kanban-card" style={{ borderStyle: "dashed", color: "color-mix(in srgb, var(--text-main) 60%, #94a3b8)" }}>
                     No deals in this stage
                   </div>
                 ) : items.map((deal) => (
@@ -231,7 +291,7 @@ function DealsKanban({ deals, onOpenDeal, onDeleteDeal }) {
                       type="button"
                       aria-label="Delete deal"
                       onClick={(event) => { event.stopPropagation(); onDeleteDeal(deal); }}
-                      style={{ position: "absolute", top: 8, right: 8, border: "none", background: "#ffffff", color: "#ef4444", cursor: "pointer", padding: 2, borderRadius: 6, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.08)" }}
+                      style={{ position: "absolute", top: 8, right: 8, border: "none", background: "color-mix(in srgb, var(--bg-card) 92%, #ffffff)", color: "#ef4444", cursor: "pointer", padding: 2, borderRadius: 6, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.08)" }}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -242,7 +302,7 @@ function DealsKanban({ deals, onOpenDeal, onDeleteDeal }) {
                           onClick={() => onOpenDeal(deal)}
                           style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}
                         >
-                          <div style={{ fontSize: 13.5, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--text-main)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {getDealTitle(deal)}
                           </div>
                         </button>
@@ -252,26 +312,26 @@ function DealsKanban({ deals, onOpenDeal, onDeleteDeal }) {
                         <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "rgba(79,70,229,0.12)", color: "#4f46e5" }}>
                           {formatStageLabel(stage)}
                         </span>
-                        {deal.priority ? <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#475569" }}>{deal.priority}</span> : null}
+                        {deal.priority ? <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "color-mix(in srgb, var(--bg-card) 78%, #ffffff)", color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>{deal.priority}</span> : null}
                       </div>
 
                       <div style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 12.5, color: "#475569" }}><span style={{ color: "#94a3b8" }}>Account</span> · {deal.accountName || "-"}</div>
-                        <div style={{ fontSize: 12.5, color: "#475569" }}><span style={{ color: "#94a3b8" }}>Contact</span> · {deal.contactName || "-"}</div>
-                        <div style={{ fontSize: 12.5, color: "#475569" }}><span style={{ color: "#94a3b8" }}>Owner</span> · {deal.dealOwner || "-"}</div>
+                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Account</span> · {deal.accountName || "-"}</div>
+                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Contact</span> · {deal.contactName || "-"}</div>
+                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Owner</span> · {deal.dealOwner || "-"}</div>
                       </div>
 
                       <div style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 12.5, color: "#475569" }}><span style={{ color: "#94a3b8" }}>Next Step</span> · {deal.nextStep || "-"}</div>
-                        <div style={{ fontSize: 12.5, color: "#475569" }}><span style={{ color: "#94a3b8" }}>Next Activity</span> · {deal.nextActivity || "-"}</div>
+                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Next Step</span> · {deal.nextStep || "-"}</div>
+                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Next Activity</span> · {deal.nextActivity || "-"}</div>
                       </div>
 
                       <div style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>
-                          Amount: <strong style={{ color: "#0f172a" }}>{fmtCurrency(normalizeAmount(deal))}</strong>
+                        <div style={{ fontSize: 12, color: "color-mix(in srgb, var(--text-main) 68%, #94a3b8)", whiteSpace: "nowrap" }}>
+                          Amount: <strong style={{ color: "var(--text-main)" }}>{fmtCurrency(normalizeAmount(deal))}</strong>
                         </div>
-                        <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>
-                          Expected: <strong style={{ color: "#0f172a" }}>{fmtCurrency(deal.expectedRevenue || 0)}</strong>
+                        <div style={{ fontSize: 12, color: "color-mix(in srgb, var(--text-main) 68%, #94a3b8)", whiteSpace: "nowrap" }}>
+                          Expected: <strong style={{ color: "var(--text-main)" }}>{fmtCurrency(deal.expectedRevenue || 0)}</strong>
                         </div>
                         <div style={{ fontSize: 12, color: "#ef4444", whiteSpace: "nowrap" }}>{fmtDate(normalizeClosingDate(deal))}</div>
                       </div>
@@ -300,6 +360,9 @@ export default function Deals() {
   const [detailDeal, setDetailDeal] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkStage, setBulkStage] = useState("New");
+  const [bulkOwner, setBulkOwner] = useState("");
   const [createForm, setCreateForm] = useState({
     dealName: "",
     amount: "",
@@ -333,6 +396,14 @@ export default function Deals() {
   useEffect(() => {
     loadDeals();
   }, []);
+
+  useEffect(() => {
+    setSelected((current) => {
+      const validIds = new Set(deals.map((deal) => getDealId(deal)).filter(Boolean));
+      const next = new Set([...current].filter((id) => validIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [deals]);
 
   const totalValue = useMemo(() => deals.reduce((sum, deal) => sum + normalizeAmount(deal), 0), [deals]);
   const convertedCount = deals.filter((deal) => normalizeStage(deal) === "ClosedWon").length;
@@ -405,6 +476,38 @@ export default function Deals() {
     return true;
   }), [deals, filters, search, searchField]);
 
+  const selectedDeals = useMemo(
+    () => filteredDeals.filter((deal) => selected.has(getDealId(deal))),
+    [filteredDeals, selected]
+  );
+  const allFilteredSelected = filteredDeals.length > 0 && filteredDeals.every((deal) => selected.has(getDealId(deal)));
+
+  const toggleAllFiltered = () => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (allFilteredSelected) {
+        filteredDeals.forEach((deal) => next.delete(getDealId(deal)));
+      } else {
+        filteredDeals.forEach((deal) => {
+          const dealId = getDealId(deal);
+          if (dealId) next.add(dealId);
+        });
+      }
+      return next;
+    });
+  };
+
+  const toggleOne = (dealId) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(dealId)) next.delete(dealId);
+      else next.add(dealId);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
   const handleOpenDeal = async (deal) => {
     const dealId = deal?.dealId || deal?.id;
     if (!dealId) return;
@@ -423,7 +526,7 @@ export default function Deals() {
   };
 
   const handleDeleteDeal = async (deal) => {
-    const dealId = deal?.dealId || deal?.id;
+    const dealId = getDealId(deal);
     if (!dealId) return;
     const ok = window.confirm("Delete this deal? This cannot be undone.");
     if (!ok) return;
@@ -433,6 +536,83 @@ export default function Deals() {
       loadDeals();
     } catch (error) {
       Toast.error(error?.response?.data?.message || "Failed to delete deal");
+    }
+  };
+
+  const handleExportSelected = () => {
+    if (!selectedDeals.length) return;
+    const rows = selectedDeals.map((deal) => ({
+      "Deal ID": getDealId(deal),
+      "Deal Name": getDealTitle(deal),
+      Stage: formatStageLabel(normalizeStage(deal)),
+      Amount: normalizeAmount(deal),
+      Probability: deal.probability ?? "",
+      "Expected Revenue": Number(deal.expectedRevenue || 0) || 0,
+      Account: deal.accountName || "",
+      Contact: deal.contactName || "",
+      Owner: deal.dealOwner || "",
+      "Next Step": deal.nextStep || "",
+      "Next Activity": deal.nextActivity || "",
+      "Lead Source": deal.leadSource || "",
+      "Campaign Source": deal.campaignSource || "",
+      Priority: deal.priority || "",
+      Tags: deal.tags || "",
+      "Closing Date": normalizeClosingDate(deal) || "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Deals");
+    XLSX.writeFile(workbook, "sales-crm-deals.xlsx");
+  };
+
+  const handleBulkStageUpdate = async () => {
+    const ids = selectedDeals.map((deal) => getDealId(deal)).filter(Boolean);
+    if (!ids.length || !bulkStage) return;
+    try {
+      await Promise.all(ids.map((id) => dealsAPI.updateStage(id, bulkStage)));
+      setDeals((current) => current.map((deal) => (
+        ids.includes(getDealId(deal)) ? { ...deal, stage: bulkStage, dealStage: bulkStage, status: bulkStage } : deal
+      )));
+      Toast.success(`Updated stage for ${ids.length} deal${ids.length > 1 ? "s" : ""}`);
+      clearSelection();
+      await loadDeals();
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || "Unable to update deal stages");
+    }
+  };
+
+  const handleBulkOwnerUpdate = async () => {
+    const ids = selectedDeals.map((deal) => getDealId(deal)).filter(Boolean);
+    const ownerName = String(bulkOwner || "").trim();
+    if (!ids.length || !ownerName) return;
+    try {
+      await Promise.all(ids.map((id) => dealsAPI.update(id, { dealOwner: ownerName })));
+      setDeals((current) => current.map((deal) => (
+        ids.includes(getDealId(deal)) ? { ...deal, dealOwner: ownerName } : deal
+      )));
+      Toast.success(`Updated owner for ${ids.length} deal${ids.length > 1 ? "s" : ""}`);
+      setBulkOwner("");
+      clearSelection();
+      await loadDeals();
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || "Unable to update deal owners");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = selectedDeals.map((deal) => getDealId(deal)).filter(Boolean);
+    if (!ids.length) return;
+    const ok = window.confirm(`Delete ${ids.length} selected deal${ids.length > 1 ? "s" : ""}? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      await Promise.all(ids.map((id) => dealsAPI.delete(id)));
+      setDeals((current) => current.filter((deal) => !ids.includes(getDealId(deal))));
+      Toast.success(`Deleted ${ids.length} deal${ids.length > 1 ? "s" : ""}`);
+      clearSelection();
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || "Unable to delete selected deals");
+      await loadDeals();
     }
   };
 
@@ -456,7 +636,10 @@ export default function Deals() {
         nextActivityDate: createForm.nextActivityDate ? createForm.nextActivityDate.toISOString() : null,
         leadSource: createForm.leadSource || "",
         campaignSource: createForm.campaignSource || "",
-        tags: createForm.tags || "",
+        tags: String(createForm.tags || "")
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
         description: createForm.description || "",
       });
       Toast.success("Deal created");
@@ -493,9 +676,9 @@ export default function Deals() {
             <IFilter s={12} />&ensp;Filter{activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}
           </button>
           <div className="toolbar-divider" />
-          <div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: "8px", overflow: "hidden", background: "white" }}>
+          <div style={{ display: "flex", border: "1.5px solid var(--cborder)", borderRadius: "8px", overflow: "hidden", background: "var(--cs)", boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)" }}>
             {[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => (
-              <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", border: "none", borderRight: k === "list" ? "1px solid #e5e7eb" : "none", background: viewMode === k ? "#eef2ff" : "transparent", color: viewMode === k ? "#4f46e5" : "#6b7280" }}>
+              <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", border: "none", borderRight: k === "list" ? "1px solid var(--cborder)" : "none", background: viewMode === k ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "transparent", color: viewMode === k ? "var(--ci)" : "var(--cm)" }}>
                 <I s={13} />{l}
               </button>
             ))}
@@ -518,6 +701,29 @@ export default function Deals() {
         </div>
       </div>
 
+      {viewMode === "list" && selectedDeals.length ? (
+        <div className="table-card-shell" style={{ marginBottom: 16 }}>
+          <div className="table-card" style={{ padding: "12px 14px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-main)" }}>{selectedDeals.length} deal{selectedDeals.length > 1 ? "s" : ""} selected</div>
+            <button className="btn-ghost" onClick={handleExportSelected}>Export selected</button>
+            <select value={bulkStage} onChange={(event) => setBulkStage(event.target.value)} style={{ minWidth: 150, padding: "8px 10px", border: "1.5px solid var(--cborder)", borderRadius: 10, background: "var(--cs)", color: "var(--text-main)" }}>
+              {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
+            </select>
+            <button className="btn-ghost" onClick={handleBulkStageUpdate}>Change stage</button>
+            <input
+              type="text"
+              value={bulkOwner}
+              onChange={(event) => setBulkOwner(event.target.value)}
+              placeholder="Assign owner"
+              style={{ minWidth: 160, padding: "8px 10px", border: "1.5px solid var(--cborder)", borderRadius: 10, background: "var(--cs)", color: "var(--text-main)", outline: "none" }}
+            />
+            <button className="btn-ghost" onClick={handleBulkOwnerUpdate} disabled={!bulkOwner.trim()}>Assign owner</button>
+            <button className="btn-ghost" onClick={handleBulkDelete} style={{ color: "#dc2626", borderColor: "color-mix(in srgb, #dc2626 18%, var(--cborder))" }}>Delete</button>
+            <button className="btn-ghost" onClick={clearSelection}>Clear</button>
+          </div>
+        </div>
+      ) : null}
+
       {viewMode === "kanban" ? <DealsKanban deals={filteredDeals} onOpenDeal={handleOpenDeal} onDeleteDeal={handleDeleteDeal} /> : (
         <div className="table-card-shell sales-deals-table-shell">
           <div className="table-card sales-deals-table-card">
@@ -525,6 +731,7 @@ export default function Deals() {
               <table className="table sales-deals-table">
                 <thead>
                   <tr className="thead-row">
+                    <th className="th th-check"><input type="checkbox" className="cb" checked={allFilteredSelected} onChange={toggleAllFiltered} /></th>
                     <th className="th sales-deals-table-head-cell">Deal Name</th>
                     <th className="th sales-deals-table-head-cell">Stage</th>
                     <th className="th sales-deals-table-head-cell">Amount</th>
@@ -533,8 +740,8 @@ export default function Deals() {
                     <th className="th sales-deals-table-head-cell">Account</th>
                     <th className="th sales-deals-table-head-cell">Contact</th>
                     <th className="th sales-deals-table-head-cell">Owner</th>
-                    <th className="th sales-deals-table-head-cell">Next Step</th>
-                    <th className="th sales-deals-table-head-cell">Next Activity</th>
+                    <th className="th sales-deals-table-head-cell th-wrap-limit">Next Step</th>
+                    <th className="th sales-deals-table-head-cell th-wrap-limit">Next Activity</th>
                     <th className="th sales-deals-table-head-cell">Lead Source</th>
                     <th className="th sales-deals-table-head-cell">Campaign Source</th>
                     <th className="th sales-deals-table-head-cell">Priority</th>
@@ -544,14 +751,16 @@ export default function Deals() {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? <tr><td className="td" colSpan={16}><span className="cell-txt">Loading deals...</span></td></tr> : null}
-                  {!loading && !deals.length ? <tr><td className="td" colSpan={16}><span className="cell-txt">No deals available yet. Convert a lead to see it here.</span></td></tr> : null}
+                  {loading ? <tr><td className="td" colSpan={17}><span className="cell-txt">Loading deals...</span></td></tr> : null}
+                  {!loading && !deals.length ? <tr><td className="td" colSpan={17}><span className="cell-txt">No deals available yet. Convert a lead to see it here.</span></td></tr> : null}
                   {!loading && filteredDeals.map((deal) => {
                     const dealStage = normalizeStage(deal);
                     const dealStageMeta = STAGE_META[dealStage] || { color: "#475569", bg: "#e2e8f0" };
                     const dealInitials = getInitials(getDealTitle(deal));
+                    const dealId = getDealId(deal);
                     return (
-                    <tr key={deal.dealId || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} className="row sales-deals-table-row">
+                    <tr key={dealId || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} className="row sales-deals-table-row">
+                      <td className="td td-check"><input type="checkbox" className="cb" checked={selected.has(dealId)} onChange={() => toggleOne(dealId)} /></td>
                       <td className="td td-name">
                         <div className="name-cell sales-deals-name-cell">
                           <div className="avatar sales-deals-avatar" style={{ background: dealStageMeta.color }}>{dealInitials}</div>
@@ -578,8 +787,8 @@ export default function Deals() {
                       <td className="td"><span className="cell-txt">{deal.accountName || "-"}</span></td>
                       <td className="td"><span className="cell-txt">{deal.contactName || "-"}</span></td>
                       <td className="td"><span className="cell-txt">{deal.dealOwner || "-"}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.nextStep || "-"}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.nextActivity || "-"}</span></td>
+                      <td className="td td-wrap-limit"><span className="cell-txt">{deal.nextStep || "-"}</span></td>
+                      <td className="td td-wrap-limit"><span className="cell-txt">{deal.nextActivity || "-"}</span></td>
                       <td className="td"><span className="cell-txt">{deal.leadSource || "-"}</span></td>
                       <td className="td"><span className="cell-txt">{deal.campaignSource || "-"}</span></td>
                       <td className="td"><span className="cell-txt">{deal.priority || "-"}</span></td>
@@ -701,7 +910,7 @@ export default function Deals() {
               </div>
               <button className="icon-btn modal-close" onClick={() => setCreateOpen(false)}><IX s={15} /></button>
             </div>
-            <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", overflowY: "auto" }}>
+            <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "14px", overflowY: "auto" }}>
               {[
                 { key: "dealName", label: "Deal Name *", span: 2 },
                 { key: "amount", label: "Amount", type: "number" },
@@ -713,7 +922,7 @@ export default function Deals() {
                 { key: "nextStep", label: "Next Step", span: 2 },
                 { key: "leadSource", label: "Lead Source" },
                 { key: "campaignSource", label: "Campaign Source" },
-                { key: "tags", label: "Tags", span: 2 },
+                { key: "tags", label: "Tags (comma separated)", span: 2 },
               ].map((field) => (
                 <div key={field.key} style={{ gridColumn: field.span === 2 ? "1 / -1" : "auto" }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>{field.label}</label>
@@ -725,8 +934,8 @@ export default function Deals() {
                   />
                 </div>
               ))}
-              <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <div>
+              <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, alignItems: "start" }}>
+                <div style={{ minWidth: 0 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Closing Date</label>
                   <DatePicker
                     selected={createForm.closingDate}
@@ -735,10 +944,11 @@ export default function Deals() {
                     timeIntervals={15}
                     dateFormat="MMM d, yyyy h:mm aa"
                     className="deal-datepicker"
-                    customInput={<input style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
+                    wrapperClassName="deal-datepicker-wrapper"
+                    customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
                   />
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Next Activity Date</label>
                   <DatePicker
                     selected={createForm.nextActivityDate}
@@ -747,7 +957,8 @@ export default function Deals() {
                     timeIntervals={15}
                     dateFormat="MMM d, yyyy h:mm aa"
                     className="deal-datepicker"
-                    customInput={<input style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
+                    wrapperClassName="deal-datepicker-wrapper"
+                    customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
                   />
                 </div>
               </div>
@@ -768,6 +979,15 @@ export default function Deals() {
           </div>
         </div>
       ) : null}
+
+      <style>{`
+        .deal-datepicker-wrapper,
+        .deal-datepicker-wrapper .react-datepicker-wrapper,
+        .deal-datepicker-wrapper .react-datepicker__input-container {
+          display: block;
+          width: 100%;
+        }
+      `}</style>
 
       {showFilter && (
         <DealFilterModal

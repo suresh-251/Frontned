@@ -2,12 +2,15 @@ import "../styles/Leads.css";
 import "react-datepicker/dist/react-datepicker.css";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, History } from "lucide-react";
+import * as XLSX from "xlsx";
 import leadsAPI from "../api/leads.api";
+import activitiesAPI from "../api/activities.api";
 import LeadDetailsModal from "../components/LeadDetailsModal.jsx";
 import { ALL_COLUMNS, CLEARED_FILTERS, DEFAULT_FILTERS, INITIAL_STATS, STAT_CARDS, STATUS_LIST, STATUS_META } from "./leads/constants";
 import {
   AddLeadDropdown,
   AssigneeCell,
+  IChevR,
   CreateLeadModal,
   EditModal,
   FilterModal,
@@ -128,13 +131,13 @@ function DeletedLeadsPanel({ leads }) {
   if (!leads.length) return null;
 
   return (
-    <div className="table-card-shell sales-leads-history-shell" style={{ marginTop: 18 }}>
-      <div className="table-card sales-leads-history-card">
-        <button onClick={() => setOpen((current) => !current)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "16px 18px", border: "none", background: "transparent", cursor: "pointer" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 15, fontWeight: 700, color: "#111827" }}><History size={16} />Deleted Leads History</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 10, color: "#64748b", fontSize: 13, fontWeight: 700 }}>{leads.length} deleted<IChevD s={12} style={{ transform: open ? "rotate(180deg)" : "none" }} /></span>
+    <div className="table-card-shell sales-leads-history-shell" style={{ marginTop: 18, marginInline: "auto", width: "fit-content", maxWidth: "100%" }}>
+      <div className="table-card sales-leads-history-card" style={{ width: "fit-content", maxWidth: "100%" }}>
+        <button onClick={() => setOpen((current) => !current)} style={{ width: "fit-content", maxWidth: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, padding: "8px", border: "none", background: "transparent", cursor: "pointer" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, fontWeight: 700, color: "#111827" }}><History size={12} />Deleted Leads History</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 10, color: "#64748b", fontSize: 11, fontWeight: 700 }}>{leads.length} deleted<IChevD s={12} style={{ transform: open ? "rotate(180deg)" : "none" }} /></span>
         </button>
-        {open && <div className="table-scroll sales-leads-history-scroll" style={{ borderTop: "1px solid #eef2f7" }}><table className="table sales-leads-history-table"><thead><tr className="thead-row"><th className="th">No.</th><th className="th">Name</th><th className="th">Company</th><th className="th">Source</th><th className="th">Status</th><th className="th">Created</th></tr></thead><tbody>{leads.map((lead, index) => <tr key={lead.id} className="row sales-leads-history-row"><td className="td"><span className="cell-txt">{index + 1}</span></td><td className="td"><span className="cell-txt">{lead.name}</span></td><td className="td"><span className="cell-txt">{lead.company}</span></td><td className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td><td className="td"><span className="cell-txt">{formatStatus(lead.status)}</span></td><td className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td></tr>)}</tbody></table></div>}
+        {open && <div className="table-scroll sales-leads-history-scroll" style={{ width: "fit-content", maxWidth: "100%", borderTop: "1px solid #eef2f7" }}><table className="table sales-leads-history-table"><thead><tr className="thead-row"><th className="th">No.</th><th className="th">Name</th><th className="th">Company</th><th className="th">Source</th><th className="th">Status</th><th className="th">Created</th></tr></thead><tbody>{leads.map((lead, index) => <tr key={lead.id} className="row sales-leads-history-row"><td className="td"><span className="cell-txt">{index + 1}</span></td><td className="td"><span className="cell-txt">{lead.name}</span></td><td className="td"><span className="cell-txt">{lead.company}</span></td><td className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td><td className="td"><span className="cell-txt">{formatStatus(lead.status)}</span></td><td className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td></tr>)}</tbody></table></div>}
       </div>
     </div>
   );
@@ -191,6 +194,7 @@ export default function Leads() {
   const [showChart, setShowChart] = useState(false);
   const [bulkStatus, setBulkStatus] = useState(STATUS_LIST[0]);
   const [showBulkStatusPicker, setShowBulkStatusPicker] = useState(false);
+  const [followUpBuckets, setFollowUpBuckets] = useState({});
 
   const salesUserOptions = useMemo(() => {
     const names = salesUsers.map((user) => getSalesUserLabel(user)).filter(Boolean);
@@ -287,8 +291,63 @@ export default function Leads() {
       }
     };
 
+    const loadFollowUps = async () => {
+      try {
+        const [allResult, overdueResult, todayResult] = await Promise.allSettled([
+          activitiesAPI.getFollowUps(),
+          activitiesAPI.getFollowUpsOverdue(),
+          activitiesAPI.getFollowUpsToday(),
+        ]);
+        if (!active) return;
+
+        const bucketMap = {};
+        const rank = { overdue: 3, today: 2, upcoming: 1 };
+        const assignBucket = (item, bucket) => {
+          const leadId = Number(item?.leadId || 0);
+          if (!leadId) return;
+          const dueDate = item?.dueDate || "";
+          const next = { bucket, dueDate, subject: item?.subject || "", type: item?.type || "" };
+          const current = bucketMap[leadId];
+          const currentRank = current ? rank[current.bucket] || 0 : 0;
+          const nextRank = rank[bucket] || 0;
+          if (!current || nextRank > currentRank) {
+            bucketMap[leadId] = next;
+            return;
+          }
+          if (nextRank === currentRank && dueDate && (!current?.dueDate || new Date(dueDate) < new Date(current.dueDate))) {
+            bucketMap[leadId] = next;
+          }
+        };
+
+        const allFollowUps = allResult.status === "fulfilled" ? allResult.value : [];
+        const overdueFollowUps = overdueResult.status === "fulfilled" ? overdueResult.value : [];
+        const todayFollowUps = todayResult.status === "fulfilled" ? todayResult.value : [];
+        const now = new Date();
+        const startOfTomorrow = new Date(now);
+        startOfTomorrow.setHours(24, 0, 0, 0);
+
+        allFollowUps.forEach((item) => {
+          const dueDate = item?.dueDate ? new Date(item.dueDate) : null;
+          const status = String(item?.status || "").toLowerCase();
+          const isDone = item?.isCompleted || status === "completed";
+          const isUpcoming = dueDate && !Number.isNaN(dueDate.getTime()) && dueDate >= startOfTomorrow && !isDone;
+          if (isUpcoming) assignBucket(item, "upcoming");
+        });
+        overdueFollowUps.forEach((item) => assignBucket(item, "overdue"));
+        todayFollowUps.forEach((item) => assignBucket(item, "today"));
+
+        setFollowUpBuckets(bucketMap);
+      } catch (error) {
+        if (active) {
+          console.error("Failed to fetch follow-up buckets", error);
+          setFollowUpBuckets({});
+        }
+      }
+    };
+
     loadUsers();
     loadLeads();
+    loadFollowUps();
     leadsAPI.getDeleted()
       .then((data) => { if (active) { const normalized = normalizeLeads(data); setDeletedLeads(resolvedUsers.length ? applyAssigneeNames(normalized, resolvedUsers) : normalized); } })
       .catch((error) => { if (active) { console.error("Failed to fetch deleted leads", error); setDeletedLeads([]); } });
@@ -304,6 +363,7 @@ export default function Leads() {
     if (filters.status !== "All") count++;
     if (filters.source !== "All") count++;
     if (filters.assignee !== "All") count++;
+    if (filters.followUp !== "All") count++;
     if (filters.createdDateFrom || filters.createdDateTo) count++;
     if (filters.followUpDateFrom || filters.followUpDateTo) count++;
     if (filters.lastContactedDays) count++;
@@ -406,12 +466,7 @@ export default function Leads() {
       ["Created Date", "createdDate"],
     ];
 
-    const escapeCsv = (value) => {
-      const text = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-      return '"' + text.replace(/"/g, '""') + '"';
-    };
-
-    const rows = selectedLeads.map((lead) => columns.map(([_, key]) => {
+    const rows = selectedLeads.map((lead) => Object.fromEntries(columns.map(([label, key]) => {
       const value = key === "status"
         ? formatStatus(lead[key])
         : key === "source"
@@ -419,22 +474,25 @@ export default function Leads() {
           : key === "createdDate" || key === "followUpDate"
             ? (lead[key] ? fmtDate(lead[key]) : "")
             : lead[key];
-      return escapeCsv(value);
-    }).join(","));
+      return [label, value ?? ""];
+    })));
 
-    const csv = [columns.map(([label]) => escapeCsv(label)).join(","), ...rows].join("\r\n");
-    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `sales-crm-leads-${todayStr()}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
+    XLSX.writeFile(workbook, `sales-crm-leads-${todayStr()}.xlsx`);
   };
 
-  const filtered = useMemo(() => leads.filter((lead) => {
+  const enrichedLeads = useMemo(() => leads.map((lead) => {
+    const followUpInfo = followUpBuckets[lead.id];
+    return {
+      ...lead,
+      followUpBucket: followUpInfo?.bucket || "All",
+      followUpBucketDueDate: followUpInfo?.dueDate || lead.followUpDate || lead.nextFollowUpAt || "",
+    };
+  }), [followUpBuckets, leads]);
+
+  const filtered = useMemo(() => enrichedLeads.filter((lead) => {
     const query = search.trim().toLowerCase();
     const locationText = buildLocationText(lead);
     const cityText = normalizeFilterText(lead.city);
@@ -454,6 +512,7 @@ export default function Leads() {
     if (filters.status !== "All" && lead.status !== filters.status) return false;
     if (filters.source !== "All" && lead.source !== filters.source) return false;
     if (filters.assignee !== "All" && lead.assignee !== filters.assignee) return false;
+    if (filters.followUp !== "All" && String(lead.followUpBucket || "").toLowerCase() !== String(filters.followUp).toLowerCase()) return false;
     if (filters.createdDateFrom || filters.createdDateTo) {
       const leadCreatedAt = lead.createdAt ? new Date(lead.createdAt) : lead.createdDate ? new Date(`${lead.createdDate}T00:00:00`) : null;
       if (filters.createdDateFrom && leadCreatedAt && leadCreatedAt < new Date(filters.createdDateFrom)) return false;
@@ -478,7 +537,7 @@ export default function Leads() {
     const bv = sortBy === "score" ? b.score : b[sortBy] ?? "";
     const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
     return sortDir === "desc" ? -cmp : cmp;
-  }), [filters, leads, search, searchField, sortBy, sortDir]);
+  }), [enrichedLeads, filters, search, searchField, sortBy, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const paginated = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
@@ -498,7 +557,7 @@ export default function Leads() {
     return next;
   });
 
-  const handleClearFilters = useCallback(() => setFilters(CLEARED_FILTERS), []);
+  const handleClearFilters = useCallback(() => setFilters({ ...CLEARED_FILTERS, followUp: "All" }), []);
   const hasActiveFilters = Boolean(search) || activeFilterCount > 0;
   const handleBulkDelete = async () => {
     const ids = Array.from(selected);
@@ -587,9 +646,9 @@ export default function Leads() {
     <div className="page sales-leads-page">
       <div className="stat-grid">{STAT_CARDS.map(({ label, key, detailKey, detailLabel, helper, icon, alert, c }, index) => <StatCard key={label} label={label} value={stats[key] ?? 0} detailValue={stats[detailKey] ?? 0} detailLabel={detailLabel} helper={helper} icon={icon} alert={alert} c={c} delay={`${index * 0.07}s`} />)}</div>
 
-      <div className="toolbar"><div className="toolbar-mid"><button className={`btn-ghost ${activeFilterCount > 0 ? "btn-ghost--active" : ""}`} onClick={() => setShowFilter(true)}><IFilter s={12} />&ensp;Filter{activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}</button><div className="toolbar-divider" /><div style={{ display: "flex", border: "1.5px solid #e5e7eb", borderRadius: "8px", overflow: "hidden", background: "white" }}>{[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", border: "none", borderRight: k === "list" ? "1px solid #e5e7eb" : "none", background: viewMode === k ? "#eef2ff" : "transparent", color: viewMode === k ? "#4f46e5" : "#6b7280" }}><I s={13} />{l}</button>)}</div><div className="toolbar-divider" /><div className="unified-search"><select className="search-field-select" value={searchField} onChange={(event) => setSearchField(event.target.value)}>{SEARCH_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><div className="unified-divider" /><div className="search-wrap"><span className="search-ico"><ISearch s={14} c="#9ca3af" /></span><input type="text" className="search-inp unified-inp" placeholder={`Search by ${activeSearchFieldLabel.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} /></div></div><div className="toolbar-divider" /><button className={`icon-btn-outline ${showChart ? "icon-btn-outline--on" : ""}`} onClick={() => setShowChart(!showChart)}><BarChart3 size={14} /></button><div className="toolbar-divider" /><AddLeadDropdown onSelectType={handleAddLeadType} /></div></div>
+      <div className="toolbar"><div className="toolbar-mid"><button className={`btn-ghost ${activeFilterCount > 0 ? "btn-ghost--active" : ""}`} onClick={() => setShowFilter(true)}><IFilter s={12} />&ensp;Filter{activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}</button><div className="toolbar-divider" /><div style={{ display: "flex", height: 32, border: "1.5px solid var(--cborder)", borderRadius: "8px", overflow: "hidden", background: "var(--cs)", boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)" }}>{[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: "5px", height: "100%", padding: "0 12px", border: "none", borderRight: k === "list" ? "1px solid var(--cborder)" : "none", background: viewMode === k ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "transparent", color: viewMode === k ? "var(--ci)" : "var(--cm)" }}><I s={13} />{l}</button>)}</div><div className="toolbar-divider" /><div className="unified-search"><select className="search-field-select" value={searchField} onChange={(event) => setSearchField(event.target.value)}>{SEARCH_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><div className="unified-divider" /><div className="search-wrap"><span className="search-ico"><ISearch s={14} c="#9ca3af" /></span><input type="text" className="search-inp unified-inp" placeholder={`Search by ${activeSearchFieldLabel.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} /></div></div><div className="toolbar-divider" /><button className={`icon-btn-outline ${showChart ? "icon-btn-outline--on" : ""}`} onClick={() => setShowChart(!showChart)}><BarChart3 size={14} /></button><div className="toolbar-divider" /><AddLeadDropdown onSelectType={handleAddLeadType} /></div></div>
 
-      {hasActiveFilters && <div className="chips-bar sales-leads-filter-chips">{search && <span className="chip sales-leads-filter-chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip sales-leads-filter-chip"><span className="chip-dot sales-leads-filter-chip-dot" style={{ background: STATUS_META[filters.status]?.color || "#4f46e5" }} />Status: {formatStatus(filters.status)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, status: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip sales-leads-filter-chip">Source: {formatLeadSource(filters.source)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, source: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip sales-leads-filter-chip">Assignee: {filters.assignee}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, assignee: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{sameFilterDay(filters.createdDateFrom, filters.createdDateTo) ? <span className="chip sales-leads-filter-chip">Created Date: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "", createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.createdDateFrom && <span className="chip sales-leads-filter-chip">Created from: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateTo && <span className="chip sales-leads-filter-chip">Created to: {formatFilterChipDate(filters.createdDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{sameFilterDay(filters.followUpDateFrom, filters.followUpDateTo) ? <span className="chip sales-leads-filter-chip">Follow-up: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "", followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.followUpDateFrom && <span className="chip sales-leads-filter-chip">Follow-up from: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateTo && <span className="chip sales-leads-filter-chip">Follow-up to: {formatFilterChipDate(filters.followUpDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{filters.address && <span className="chip sales-leads-filter-chip">Address: {filters.address}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, address: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.city && <span className="chip sales-leads-filter-chip">City: {filters.city}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, city: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.state && <span className="chip sales-leads-filter-chip">State: {filters.state}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, state: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.country && <span className="chip sales-leads-filter-chip">Country: {filters.country}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, country: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.zip && <span className="chip sales-leads-filter-chip">Zip: {filters.zip}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, zip: "" }))}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall sales-leads-filter-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
+      {hasActiveFilters && <div className="chips-bar sales-leads-filter-chips">{search && <span className="chip sales-leads-filter-chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip sales-leads-filter-chip"><span className="chip-dot sales-leads-filter-chip-dot" style={{ background: STATUS_META[filters.status]?.color || "#4f46e5" }} />Status: {formatStatus(filters.status)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, status: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip sales-leads-filter-chip">Source: {formatLeadSource(filters.source)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, source: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip sales-leads-filter-chip">Assignee: {filters.assignee}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, assignee: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUp !== "All" && <span className="chip sales-leads-filter-chip">Follow-up bucket: {filters.followUp}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUp: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{sameFilterDay(filters.createdDateFrom, filters.createdDateTo) ? <span className="chip sales-leads-filter-chip">Created Date: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "", createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.createdDateFrom && <span className="chip sales-leads-filter-chip">Created from: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateTo && <span className="chip sales-leads-filter-chip">Created to: {formatFilterChipDate(filters.createdDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{sameFilterDay(filters.followUpDateFrom, filters.followUpDateTo) ? <span className="chip sales-leads-filter-chip">Follow-up: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "", followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.followUpDateFrom && <span className="chip sales-leads-filter-chip">Follow-up from: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateTo && <span className="chip sales-leads-filter-chip">Follow-up to: {formatFilterChipDate(filters.followUpDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{filters.address && <span className="chip sales-leads-filter-chip">Address: {filters.address}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, address: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.city && <span className="chip sales-leads-filter-chip">City: {filters.city}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, city: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.state && <span className="chip sales-leads-filter-chip">State: {filters.state}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, state: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.country && <span className="chip sales-leads-filter-chip">Country: {filters.country}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, country: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.zip && <span className="chip sales-leads-filter-chip">Zip: {filters.zip}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, zip: "" }))}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall sales-leads-filter-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
 
       {selected.size > 0 && <div className="bulk-bar sales-leads-bulk-bar"><span className="bulk-cnt sales-leads-bulk-count">{selected.size} selected</span><button className="bulk-btn sales-leads-bulk-button">Assign Assignee</button>{showBulkStatusPicker ? <><select className="bulk-select sales-leads-bulk-select" value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}>{STATUS_LIST.map((status) => <option key={status} value={status}>{formatStatus(status)}</option>)}</select><button className="bulk-btn sales-leads-bulk-button" onClick={handleBulkStatusChange}>Apply Status</button><button className="bulk-btn sales-leads-bulk-button" onClick={() => setShowBulkStatusPicker(false)}>Cancel</button></> : <button className="bulk-btn sales-leads-bulk-button" onClick={() => setShowBulkStatusPicker(true)}>Change Status</button>}<button className="bulk-btn sales-leads-bulk-button" onClick={handleExportSelected}>Export</button><button className="bulk-btn bulk-btn--danger sales-leads-bulk-button" onClick={handleBulkDelete}>Delete</button><button className="bulk-close sales-leads-bulk-close" onClick={() => { setSelected(new Set()); setShowBulkStatusPicker(false); }}><IX s={12} c="#6b7280" /></button></div>}
 
@@ -601,7 +660,7 @@ export default function Leads() {
 
       {viewMode === "kanban" && <KanbanBoard leads={filtered} groupBy={kanbanGroupBy} setGroupBy={setKanbanGroupBy} onUpdateLead={updateLead} onOpenDetails={fetchLeadDetail} />}
 
-      {viewMode === "list" && <div className="table-card-shell sales-leads-table-shell"><div className="table-card sales-leads-table-card"><div className="table-scroll sales-leads-table-scroll"><table className={`table sales-leads-table ${wrapText ? "table--wrap" : ""}`}><thead><tr className="thead-row sales-leads-table-head-row"><th className="th th-check"><input type="checkbox" className="cb" checked={allOnPageSel} onChange={toggleAll} /></th>{activeCols.map((col) => <th key={col.key} className={`th sales-leads-table-head-cell th-${col.key}`} onClick={() => { if (sortBy === col.key) setSortDir((current) => current === "asc" ? "desc" : "asc"); else { setSortBy(col.key); setSortDir("asc"); } }}><span className="th-inner">{col.label}<SortIcon sortBy={sortBy} sortDir={sortDir} col={col.key} /></span></th>)}<th className="th th-actions sales-leads-table-head-cell"><button className={`icon-btn-outline ${showColPanel ? "icon-btn-outline--on" : ""}`} onClick={() => setShowColPanel(true)}><ISettings s={13} /></button></th></tr></thead><tbody>{paginated.map((lead, rowIndex) => { const serial = (page - 1) * rowsPerPage + rowIndex + 1; const initials = getInitials(lead.name); const isSel = selected.has(lead.id); return <tr key={lead.id} className={`row sales-leads-table-row ${isSel ? "row--sel" : ""}`}><td className="td td-check"><input type="checkbox" className="cb" checked={isSel} onChange={() => toggleOne(lead.id)} /></td>{activeCols.map((col) => { switch (col.key) { case "serial": return <td key="serial" className="td"><span className="cell-txt">{serial}</span></td>; case "name": return <td key="name" className="td td-name"><div className="name-cell sales-leads-name-cell"><div className="avatar sales-leads-avatar" style={{ background: lead.avatarBg }}>{initials}</div><div className="name-block sales-leads-name-block"><button className="name-link sales-leads-name-link" onClick={() => fetchLeadDetail(lead.id)}>{lead.name}</button></div></div></td>; case "status": return <td key="status" className="td td-status"><StatusCell value={lead.status} onChange={(value) => updateLead(lead.id, "status", value)} /></td>; case "followUp": return <td key="followUp" className="td td-followup"><FollowUpCell value={lead.followUpDate} onChange={(value) => updateLead(lead.id, "followUpDate", value)} /></td>; case "source": return <td key="source" className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td>; case "score": return <td key="score" className="td td-score"><ScoreBar score={lead.score} /></td>; case "company": return <td key="company" className="td"><span className="cell-txt">{lead.company}</span></td>; case "contact": return <td key="contact" className="td td-contact"><div className="contact-cell sales-leads-contact-cell">{lead.email ? <span className="contact-email">{lead.email}</span> : null}{lead.phone ? <span className="contact-phone">{lead.phone}</span> : null}{!lead.email && !lead.phone ? <span className="cell-txt">-</span> : null}</div></td>; case "assignee": return <td key="assignee" className="td td-assignee"><AssigneeCell value={lead.assignee} options={salesUserOptions} onChange={(value) => updateLead(lead.id, "assignee", value)} /></td>; case "createdDate": return <td key="createdDate" className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td>; default: return <td key={col.key} className="td"><span className="cell-txt">{String(lead[col.key] ?? "")}</span></td>; } })}<td className="td td-actions"><div className="row-acts sales-leads-row-actions"><button className="act-btn act-btn--edit" onClick={async () => { const detailedLead = await fetchLeadForEdit(lead.id); setEditLead(detailedLead || lead); }}><IEdit s={12} /></button></div></td></tr>; })}</tbody></table></div></div></div>}
+      {viewMode === "list" && <div className="table-card-shell sales-leads-table-shell"><div className="table-card sales-leads-table-card"><div className="table-scroll sales-leads-table-scroll"><table className={`table sales-leads-table ${wrapText ? "table--wrap" : ""}`}><thead><tr className="thead-row sales-leads-table-head-row"><th className="th th-check"><input type="checkbox" className="cb" checked={allOnPageSel} onChange={toggleAll} /></th>{activeCols.map((col) => <th key={col.key} className={`th sales-leads-table-head-cell th-${col.key}`} onClick={() => { if (sortBy === col.key) setSortDir((current) => current === "asc" ? "desc" : "asc"); else { setSortBy(col.key); setSortDir("asc"); } }}><span className="th-inner">{col.label}<SortIcon sortBy={sortBy} sortDir={sortDir} col={col.key} /></span></th>)}<th className="th th-actions sales-leads-table-head-cell"><button className={`icon-btn-outline ${showColPanel ? "icon-btn-outline--on" : ""}`} onClick={() => setShowColPanel(true)}><ISettings s={13} /></button></th></tr></thead><tbody>{paginated.map((lead, rowIndex) => { const serial = (page - 1) * rowsPerPage + rowIndex + 1; const initials = getInitials(lead.name); const isSel = selected.has(lead.id); return <tr key={lead.id} className={`row sales-leads-table-row ${isSel ? "row--sel" : ""}`}><td className="td td-check"><input type="checkbox" className="cb" checked={isSel} onChange={() => toggleOne(lead.id)} /></td>{activeCols.map((col) => { switch (col.key) { case "serial": return <td key="serial" className="td"><span className="cell-txt">{serial}</span></td>; case "name": return <td key="name" className="td td-name"><div className="name-cell sales-leads-name-cell"><div className="avatar sales-leads-avatar" style={{ background: lead.avatarBg }}>{initials}</div><div className="name-block sales-leads-name-block"><span className="sales-leads-name-link__label sales-leads-name-text">{lead.name}</span><button className="name-link sales-leads-name-link" onClick={() => fetchLeadDetail(lead.id)} title={`Open ${lead.name || "lead"} details`} aria-label={`Open ${lead.name || "lead"} details`}><span className="sales-leads-name-link__meta">View <IChevR s={11} /></span></button></div></div></td>; case "status": return <td key="status" className="td td-status"><StatusCell value={lead.status} onChange={(value) => updateLead(lead.id, "status", value)} /></td>; case "followUp": return <td key="followUp" className="td td-followup"><FollowUpCell value={lead.followUpBucketDueDate || lead.followUpDate} bucket={lead.followUpBucket} leadId={lead.id} onChange={(value) => updateLead(lead.id, "followUpDate", value)} /></td>; case "source": return <td key="source" className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td>; case "score": return <td key="score" className="td td-score"><ScoreBar score={lead.score} /></td>; case "company": return <td key="company" className="td"><span className="cell-txt">{lead.company}</span></td>; case "contact": return <td key="contact" className="td td-contact"><div className="contact-cell sales-leads-contact-cell">{lead.email ? <span className="contact-email">{lead.email}</span> : null}{lead.phone ? <span className="contact-phone">{lead.phone}</span> : null}{!lead.email && !lead.phone ? <span className="cell-txt">-</span> : null}</div></td>; case "assignee": return <td key="assignee" className="td td-assignee"><AssigneeCell value={lead.assignee} options={salesUserOptions} onChange={(value) => updateLead(lead.id, "assignee", value)} /></td>; case "createdDate": return <td key="createdDate" className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td>; default: return <td key={col.key} className={`td ${col.key === "comments" ? "td-wrap-limit td-comments" : ""}`}><span className="cell-txt">{String(lead[col.key] ?? "")}</span></td>; } })}<td className="td td-actions"><div className="row-acts sales-leads-row-actions"><button className="act-btn act-btn--edit" onClick={async () => { const detailedLead = await fetchLeadForEdit(lead.id); setEditLead(detailedLead || lead); }}><IEdit s={12} /></button></div></td></tr>; })}</tbody></table></div></div></div>}
 
       <DeletedLeadsPanel leads={deletedLeads} />
 
@@ -615,6 +674,4 @@ export default function Leads() {
     </div>
   );
 }
-
-
 

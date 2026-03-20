@@ -35,7 +35,7 @@ export default function useAnalytics(days = 7, platform = null, sortBy = "engage
     setSyncResult(null);
     try {
       const result = await syncAnalytics();
-      setSyncResult({ message: result.message, errors: result.errors ?? [] });
+      setSyncResult({ message: result.message, errors: result.errors ?? [], postsSynced: result.postsSynced ?? 0 });
       // Reload dashboard data after sync
       await load();
     } catch (err) {
