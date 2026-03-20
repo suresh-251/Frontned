@@ -103,10 +103,10 @@ const Login = () => {
     let animationFrameId = 0;
     let particles = [];
 
-    const createParticles = (width, height) => Array.from({ length: 110 }, () => ({
+    const createParticles = (width, height) => Array.from({ length: 150 }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      r: Math.random() * 2.0 + 0.45,
+      r: Math.random() * 0.8 + 0.4,
       dx: (Math.random() - 0.5) * 0.28,
       dy: (Math.random() - 0.5) * 0.28,
       hue: Math.random() > 0.5 ? "99, 102, 241" : "59, 130, 246",

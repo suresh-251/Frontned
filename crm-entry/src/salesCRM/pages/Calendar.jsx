@@ -53,7 +53,7 @@ const endOfWeek = (date) => addDays(startOfWeek(date), 6);
 const endOfWorkWeek = (date) => addDays(startOfWorkWeek(date), 4);
 const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const endOfMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
-const toApiDateTime = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+const toApiDateTime = (date) => date.toISOString();
 const toInputDate = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const sameDay = (left, right) => startOfDay(left).getTime() === startOfDay(right).getTime();
 const fmtHeaderMonth = (date) => date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
@@ -75,6 +75,19 @@ const fmtTime = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+};
+const fmtLongDateTime = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 };
 const fmtRangeHeaderSafe = (start, end) => {
   if (sameDay(start, end)) {
@@ -151,6 +164,8 @@ const layoutDayEvents = (items) => {
       height: (visualMinutes / 60) * HOUR_HEIGHT,
       column: 0,
       columnCount: 1,
+      clusterId: "",
+      clusterSize: 1,
     };
   }).sort((left, right) => {
     const leftTime = left.date ? left.date.getTime() : 0;
@@ -171,6 +186,8 @@ const layoutDayEvents = (items) => {
     }
 
     const columns = [];
+    const clusterId = `${positioned[clusterStart].date?.getTime() || clusterStart}-${clusterStart}`;
+    const clusterSize = (clusterEnd - clusterStart) + 1;
     for (let index = clusterStart; index <= clusterEnd; index += 1) {
       const event = positioned[index];
       let assignedColumn = columns.findIndex((endAt) => (event.date?.getTime() || 0) >= endAt);
@@ -181,10 +198,14 @@ const layoutDayEvents = (items) => {
       columns[assignedColumn] = event.endDate?.getTime() || 0;
       event.column = assignedColumn;
       event.columnCount = columns.length;
+      event.clusterId = clusterId;
+      event.clusterSize = clusterSize;
     }
 
     for (let index = clusterStart; index <= clusterEnd; index += 1) {
       positioned[index].columnCount = columns.length;
+      positioned[index].clusterId = clusterId;
+      positioned[index].clusterSize = clusterSize;
     }
 
     clusterStart = clusterEnd + 1;
@@ -203,7 +224,7 @@ const getPresetDates = (mode, customStart, customEnd) => {
   return { start: today, end: endOfDay(addDays(today, days - 1)) };
 };
 
-function EventCard({ item, onEdit }) {
+function EventCard({ item, onOpen }) {
   const meta = activityTypeMeta(item?.type);
   const title = item?.subject || item?.title || meta.label;
   const description = (item?.description || "").trim();
@@ -212,35 +233,36 @@ function EventCard({ item, onEdit }) {
       title={`${title}\n${fmtTime(item?.date)}${description ? `\n${description}` : ""}`}
       onClick={(event) => {
         event.stopPropagation();
-        onEdit(item);
+        onOpen(item);
       }}
       style={{
         position: "absolute",
-        left: `${6 + ((item.column || 0) * item.eventWidth)}px`,
-        width: `${item.eventWidth - 12}px`,
-        minHeight: 48,
-        padding: "6px 10px",
-        borderRadius: 10,
-        background: meta.background,
+        left: `${8 + ((item.column || 0) * item.eventWidth)}px`,
+        width: `${Math.max(108, item.eventWidth - 14)}px`,
+        minHeight: 58,
+        padding: "9px 10px 9px 12px",
+        borderRadius: 14,
+        background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96))",
         color: meta.color,
-        border: "1px solid rgba(15, 23, 42, 0.08)",
-        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.14)",
+        border: "1px solid rgba(148, 163, 184, 0.18)",
+        boxShadow: "0 10px 18px rgba(15, 23, 42, 0.08)",
         overflow: "hidden",
         cursor: "pointer",
       }}
     >
-      <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 4, borderRadius: 999, background: meta.color, opacity: 0.9 }} />
+      <div style={{ display: "grid", gap: 7 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", padding: "1px 6px", borderRadius: 999, background: "rgba(255,255,255,0.85)", fontSize: 9, fontWeight: 700, letterSpacing: "0.02em" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 7px", borderRadius: 999, background: meta.background, color: meta.color, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em" }}>
             {meta.label}
           </span>
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>{fmtTime(item?.date)}</span>
+          <span style={{ fontSize: 10.5, fontWeight: 800, color: "#334155", whiteSpace: "nowrap" }}>{fmtTime(item?.date)}</span>
         </div>
-        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 11.5, fontWeight: 800, color: "#0f172a", lineHeight: 1.32, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
           {title}
         </div>
         {description ? (
-          <div style={{ fontSize: 10, color: "#475467", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+          <div style={{ fontSize: 10, color: "#64748b", lineHeight: 1.35, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" }}>
             {description}
           </div>
         ) : null}
@@ -249,7 +271,83 @@ function EventCard({ item, onEdit }) {
   );
 }
 
-function DayColumn({ day, items, columnWidth, onCreateEvent, onEditEvent }) {
+function EventClusterCard({ items, height, columnWidth, onOpen }) {
+  const previewItems = items.slice(0, 3);
+  const hiddenCount = Math.max(0, items.length - previewItems.length);
+  const firstDate = parseActivityDate(items[0]);
+  const lastDate = parseActivityDate(items[items.length - 1]);
+  const timeSummary = firstDate
+    ? `${fmtTime(firstDate)}${lastDate && lastDate.getTime() !== firstDate.getTime() ? ` - ${fmtTime(lastDate)}` : ""}`
+    : "All day";
+  return (
+    <div
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen(items);
+      }}
+      style={{
+        position: "absolute",
+        left: 8,
+        width: Math.max(132, columnWidth - 16),
+        minHeight: 82,
+        height,
+        padding: "10px 10px 9px",
+        borderRadius: 14,
+        background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(239,246,255,0.96))",
+        border: "1px solid rgba(148, 163, 184, 0.24)",
+        boxShadow: "0 12px 24px rgba(15, 23, 42, 0.08)",
+        overflow: "hidden",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "grid", gap: 8, height: "100%" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 24, padding: "0 7px", borderRadius: 999, background: "#2563eb", color: "#fff", fontSize: 10.5, fontWeight: 800 }}>
+              {items.length}
+            </span>
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: "#1e3a8a" }}>Events in this slot</div>
+          </div>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: "#475569", whiteSpace: "nowrap" }}>{timeSummary}</div>
+        </div>
+
+        <div style={{ display: "grid", gap: 6, overflow: "hidden" }}>
+          {previewItems.map((item) => {
+            const itemMeta = activityTypeMeta(item?.type);
+            const title = item?.subject || item?.title || itemMeta.label;
+            return (
+              <div
+                key={item.id ?? `${title}-${item.date}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "62px minmax(0, 1fr)",
+                  alignItems: "center",
+                  gap: 8,
+                  width: "100%",
+                  borderRadius: 10,
+                  background: "rgba(255,255,255,0.88)",
+                  border: "1px solid rgba(219, 234, 254, 0.92)",
+                  padding: "7px 8px",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: "#1d4ed8" }}>{fmtTime(parseActivityDate(item))}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+              </div>
+            );
+          })}
+          {hiddenCount > 0 ? (
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#475569", paddingLeft: 2 }}>
+              +{hiddenCount} more event{hiddenCount > 1 ? "s" : ""}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DayColumn({ day, items, columnWidth, onCreateEvent, onOpenEvent, onOpenCluster }) {
   const totalHeight = (HOUR_END - HOUR_START) * HOUR_HEIGHT;
 
   const positionedItems = layoutDayEvents(items).map((item) => {
@@ -258,6 +356,36 @@ function DayColumn({ day, items, columnWidth, onCreateEvent, onEditEvent }) {
       ...item,
       eventWidth: usableWidth / Math.max(1, item.columnCount || 1),
     };
+  });
+  const renderItems = [];
+  const handledClusters = new Set();
+
+  positionedItems.forEach((item) => {
+    if (handledClusters.has(item.clusterId)) return;
+    const clusterItems = positionedItems.filter((entry) => entry.clusterId === item.clusterId);
+    handledClusters.add(item.clusterId);
+
+    if (clusterItems.length > 1) {
+      const top = Math.min(...clusterItems.map((entry) => entry.top));
+      const bottom = Math.max(...clusterItems.map((entry) => entry.top + entry.height));
+      renderItems.push({
+        type: "cluster",
+        clusterId: item.clusterId,
+        top,
+        height: Math.max(88, Math.min(132, bottom - top + 18)),
+        items: clusterItems,
+      });
+      return;
+    }
+
+    clusterItems.forEach((entry) => {
+      renderItems.push({
+        type: "event",
+        event: entry,
+        top: entry.top,
+        height: entry.height,
+      });
+    });
   });
 
   return (
@@ -274,9 +402,13 @@ function DayColumn({ day, items, columnWidth, onCreateEvent, onEditEvent }) {
             <div style={{ position: "absolute", left: 0, right: 0, top: HOUR_HEIGHT / 2, borderBottom: "1px dashed color-mix(in srgb, var(--border-color) 52%, #cbd5e1)" }} />
           </div>
         ))}
-        {positionedItems.map((item) => (
-          <div key={`${item.id}-${item.subject || item.title || item.date}`} style={{ position: "absolute", top: item.top, left: 0, right: 0, height: item.height }}>
-            <EventCard item={item} onEdit={onEditEvent} />
+        {renderItems.map((entry) => (
+          <div key={entry.type === "cluster" ? entry.clusterId : `${entry.event.id}-${entry.event.subject || entry.event.title || entry.event.date}`} style={{ position: "absolute", top: entry.top, left: 0, right: 0, height: entry.height }}>
+            {entry.type === "cluster" ? (
+              <EventClusterCard items={entry.items} height={entry.height} columnWidth={columnWidth} onOpen={onOpenCluster} />
+            ) : (
+              <EventCard item={entry.event} onOpen={onOpenEvent} />
+            )}
           </div>
         ))}
       </div>
@@ -294,6 +426,8 @@ export default function CalendarPage() {
   const [localItems, setLocalItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailItems, setDetailItems] = useState([]);
   const [userOptions, setUserOptions] = useState([]);
   const [userLoading, setUserLoading] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -361,13 +495,7 @@ export default function CalendarPage() {
   }, []);
 
   const loadCalendar = useCallback(async () => {
-    const activeUserId = selectedUserId || userId;
-    if (!activeUserId) {
-      setItems([]);
-      setError("Select a user to load calendar activities.");
-      setLoading(false);
-      return;
-    }
+    const activeUserId = Number(selectedUserId || userId || 0) || null;
 
     setLoading(true);
     setError("");
@@ -376,7 +504,7 @@ export default function CalendarPage() {
       const data = await activitiesAPI.getCalendar({
         startDate: toApiDateTime(startOfDay(start)),
         endDate: toApiDateTime(endOfDay(end)),
-        userId: activeUserId,
+        ...(activeUserId ? { userId: activeUserId } : {}),
       });
       setItems(Array.isArray(data) ? data.map((item) => ({
         ...item,
@@ -434,6 +562,15 @@ export default function CalendarPage() {
     setEditorValue(payload);
     setEditorOpen(true);
   };
+  const openDetailView = (events) => {
+    const nextItems = [...events].sort((left, right) => {
+      const leftDate = parseActivityDate(left)?.getTime() || 0;
+      const rightDate = parseActivityDate(right)?.getTime() || 0;
+      return leftDate - rightDate;
+    });
+    setDetailItems(nextItems);
+    setDetailOpen(true);
+  };
 
   const handleCreateEvent = (day, offsetY) => {
     const hoursFromStart = Math.min(HOUR_END - HOUR_START, Math.max(0, offsetY / HOUR_HEIGHT));
@@ -451,17 +588,8 @@ export default function CalendarPage() {
     });
   };
 
-  const handleEditEvent = (item) => {
-    const baseDate = parseActivityDate(item) || new Date();
-    openEditor({
-      id: item.id ?? `local-${baseDate.getTime()}`,
-      title: item.subject || item.title || "",
-      type: activityTypeMeta(item?.type).label,
-      date: baseDate,
-      duration: getEventDurationMinutes(item),
-      description: item.description || "",
-    });
-  };
+  const handleOpenEvent = (item) => openDetailView([item]);
+  const handleOpenCluster = (events) => openDetailView(events);
 
   const handleSaveEvent = () => {
     const start = editorValue.date instanceof Date ? editorValue.date : new Date(editorValue.date);
@@ -591,13 +719,111 @@ export default function CalendarPage() {
                   items={itemsByDay[toInputDate(day)] || []}
                   columnWidth={columnWidth}
                   onCreateEvent={handleCreateEvent}
-                  onEditEvent={handleEditEvent}
+                  onOpenEvent={handleOpenEvent}
+                  onOpenCluster={handleOpenCluster}
                 />
               ))}
             </div>
           </div>
         </div>
       </section>
+
+      {detailOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 390,
+            padding: 16,
+          }}
+          onClick={() => setDetailOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              maxHeight: "80vh",
+              overflow: "auto",
+              background: "var(--bg-card)",
+              borderRadius: 18,
+              padding: 18,
+              boxShadow: "0 24px 60px rgba(15, 23, 42, 0.2)",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-main)" }}>
+                  {detailItems.length > 1 ? `${detailItems.length} events in this slot` : "Event details"}
+                </div>
+                <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 58%, #6b7280)", marginTop: 4 }}>
+                  {detailItems.length > 1 ? "Review each event clearly, one after another." : "Calendar event information"}
+                </div>
+              </div>
+              <button type="button" style={modalGhostStyle} onClick={() => setDetailOpen(false)}>Close</button>
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              {detailItems.map((item, index) => {
+                const meta = activityTypeMeta(item?.type);
+                const startDate = parseActivityDate(item);
+                const endDate = item?.endTime || item?.dueDateEnd || item?.scheduledEndTime || null;
+                const title = item?.subject || item?.title || meta.label;
+                const description = (item?.description || "").trim();
+                return (
+                  <div
+                    key={item.id ?? `${title}-${index}-${startDate?.getTime() || 0}`}
+                    style={{
+                      border: "1px solid color-mix(in srgb, var(--border-color) 84%, #dbeafe)",
+                      borderRadius: 16,
+                      padding: 14,
+                      background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 92%, #eff6ff), var(--bg-card))",
+                      boxShadow: "0 8px 20px rgba(15, 23, 42, 0.06)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: 999, fontSize: 10.5, fontWeight: 800, background: meta.background, color: meta.color }}>
+                            {meta.label}
+                          </span>
+                          {detailItems.length > 1 ? (
+                            <span style={{ fontSize: 10.5, fontWeight: 700, color: "color-mix(in srgb, var(--text-main) 58%, #6b7280)" }}>
+                              Event {index + 1}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text-main)", lineHeight: 1.25 }}>{title}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 10 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "110px minmax(0, 1fr)", gap: 10 }}>
+                        <div style={detailLabelStyle}>Starts</div>
+                        <div style={detailValueStyle}>{fmtLongDateTime(startDate)}</div>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "110px minmax(0, 1fr)", gap: 10 }}>
+                        <div style={detailLabelStyle}>Ends</div>
+                        <div style={detailValueStyle}>{endDate ? fmtLongDateTime(endDate) : `${getEventDurationMinutes(item)} minutes`}</div>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "110px minmax(0, 1fr)", gap: 10 }}>
+                        <div style={detailLabelStyle}>Summary</div>
+                        <div style={{ ...detailValueStyle, lineHeight: 1.5 }}>{description || "No additional notes for this event."}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {editorOpen ? (
         <div
@@ -769,6 +995,21 @@ const modalPrimaryStyle = {
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
+};
+
+const detailLabelStyle = {
+  fontSize: 11,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "color-mix(in srgb, var(--text-main) 48%, #94a3b8)",
+};
+
+const detailValueStyle = {
+  fontSize: 13.5,
+  fontWeight: 600,
+  color: "var(--text-main)",
+  minWidth: 0,
 };
 
 const errorStyle = {

@@ -3,6 +3,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { useEffect, useMemo, useState } from "react";
 import DatePicker from "react-datepicker";
 import { Plus, Trash2 } from "lucide-react";
+import * as XLSX from "xlsx";
 import dealsAPI from "../api/deals.api";
 import Toast from "../utils/toast";
 import { IFilter, IKanban, IRows, ISearch, IX } from "./leads/shared";
@@ -55,6 +56,7 @@ const normalizeStage = (deal) => deal?.stage || deal?.dealStage || deal?.status 
 const normalizeAmount = (deal) => Number(deal?.amount ?? deal?.dealValue ?? deal?.value ?? 0) || 0;
 const normalizeClosingDate = (deal) => deal?.closingDate || deal?.expectedCloseDate || deal?.closeDate || null;
 const getDealTitle = (deal) => deal?.dealName || deal?.title || deal?.subject || deal?.name || `Deal #${deal?.dealId ?? deal?.id ?? ""}`;
+const getDealId = (deal) => Number(deal?.dealId ?? deal?.id ?? 0);
 const formatStageLabel = (value = "") => String(value).replace(/([a-z])([A-Z])/g, "$1 $2").trim();
 
 const SEARCH_FIELD_OPTIONS = [
@@ -358,6 +360,9 @@ export default function Deals() {
   const [detailDeal, setDetailDeal] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkStage, setBulkStage] = useState("New");
+  const [bulkOwner, setBulkOwner] = useState("");
   const [createForm, setCreateForm] = useState({
     dealName: "",
     amount: "",
@@ -391,6 +396,14 @@ export default function Deals() {
   useEffect(() => {
     loadDeals();
   }, []);
+
+  useEffect(() => {
+    setSelected((current) => {
+      const validIds = new Set(deals.map((deal) => getDealId(deal)).filter(Boolean));
+      const next = new Set([...current].filter((id) => validIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [deals]);
 
   const totalValue = useMemo(() => deals.reduce((sum, deal) => sum + normalizeAmount(deal), 0), [deals]);
   const convertedCount = deals.filter((deal) => normalizeStage(deal) === "ClosedWon").length;
@@ -463,6 +476,38 @@ export default function Deals() {
     return true;
   }), [deals, filters, search, searchField]);
 
+  const selectedDeals = useMemo(
+    () => filteredDeals.filter((deal) => selected.has(getDealId(deal))),
+    [filteredDeals, selected]
+  );
+  const allFilteredSelected = filteredDeals.length > 0 && filteredDeals.every((deal) => selected.has(getDealId(deal)));
+
+  const toggleAllFiltered = () => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (allFilteredSelected) {
+        filteredDeals.forEach((deal) => next.delete(getDealId(deal)));
+      } else {
+        filteredDeals.forEach((deal) => {
+          const dealId = getDealId(deal);
+          if (dealId) next.add(dealId);
+        });
+      }
+      return next;
+    });
+  };
+
+  const toggleOne = (dealId) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(dealId)) next.delete(dealId);
+      else next.add(dealId);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
   const handleOpenDeal = async (deal) => {
     const dealId = deal?.dealId || deal?.id;
     if (!dealId) return;
@@ -481,7 +526,7 @@ export default function Deals() {
   };
 
   const handleDeleteDeal = async (deal) => {
-    const dealId = deal?.dealId || deal?.id;
+    const dealId = getDealId(deal);
     if (!dealId) return;
     const ok = window.confirm("Delete this deal? This cannot be undone.");
     if (!ok) return;
@@ -491,6 +536,83 @@ export default function Deals() {
       loadDeals();
     } catch (error) {
       Toast.error(error?.response?.data?.message || "Failed to delete deal");
+    }
+  };
+
+  const handleExportSelected = () => {
+    if (!selectedDeals.length) return;
+    const rows = selectedDeals.map((deal) => ({
+      "Deal ID": getDealId(deal),
+      "Deal Name": getDealTitle(deal),
+      Stage: formatStageLabel(normalizeStage(deal)),
+      Amount: normalizeAmount(deal),
+      Probability: deal.probability ?? "",
+      "Expected Revenue": Number(deal.expectedRevenue || 0) || 0,
+      Account: deal.accountName || "",
+      Contact: deal.contactName || "",
+      Owner: deal.dealOwner || "",
+      "Next Step": deal.nextStep || "",
+      "Next Activity": deal.nextActivity || "",
+      "Lead Source": deal.leadSource || "",
+      "Campaign Source": deal.campaignSource || "",
+      Priority: deal.priority || "",
+      Tags: deal.tags || "",
+      "Closing Date": normalizeClosingDate(deal) || "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Deals");
+    XLSX.writeFile(workbook, "sales-crm-deals.xlsx");
+  };
+
+  const handleBulkStageUpdate = async () => {
+    const ids = selectedDeals.map((deal) => getDealId(deal)).filter(Boolean);
+    if (!ids.length || !bulkStage) return;
+    try {
+      await Promise.all(ids.map((id) => dealsAPI.updateStage(id, bulkStage)));
+      setDeals((current) => current.map((deal) => (
+        ids.includes(getDealId(deal)) ? { ...deal, stage: bulkStage, dealStage: bulkStage, status: bulkStage } : deal
+      )));
+      Toast.success(`Updated stage for ${ids.length} deal${ids.length > 1 ? "s" : ""}`);
+      clearSelection();
+      await loadDeals();
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || "Unable to update deal stages");
+    }
+  };
+
+  const handleBulkOwnerUpdate = async () => {
+    const ids = selectedDeals.map((deal) => getDealId(deal)).filter(Boolean);
+    const ownerName = String(bulkOwner || "").trim();
+    if (!ids.length || !ownerName) return;
+    try {
+      await Promise.all(ids.map((id) => dealsAPI.update(id, { dealOwner: ownerName })));
+      setDeals((current) => current.map((deal) => (
+        ids.includes(getDealId(deal)) ? { ...deal, dealOwner: ownerName } : deal
+      )));
+      Toast.success(`Updated owner for ${ids.length} deal${ids.length > 1 ? "s" : ""}`);
+      setBulkOwner("");
+      clearSelection();
+      await loadDeals();
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || "Unable to update deal owners");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = selectedDeals.map((deal) => getDealId(deal)).filter(Boolean);
+    if (!ids.length) return;
+    const ok = window.confirm(`Delete ${ids.length} selected deal${ids.length > 1 ? "s" : ""}? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      await Promise.all(ids.map((id) => dealsAPI.delete(id)));
+      setDeals((current) => current.filter((deal) => !ids.includes(getDealId(deal))));
+      Toast.success(`Deleted ${ids.length} deal${ids.length > 1 ? "s" : ""}`);
+      clearSelection();
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || "Unable to delete selected deals");
+      await loadDeals();
     }
   };
 
@@ -514,7 +636,10 @@ export default function Deals() {
         nextActivityDate: createForm.nextActivityDate ? createForm.nextActivityDate.toISOString() : null,
         leadSource: createForm.leadSource || "",
         campaignSource: createForm.campaignSource || "",
-        tags: createForm.tags || "",
+        tags: String(createForm.tags || "")
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
         description: createForm.description || "",
       });
       Toast.success("Deal created");
@@ -576,6 +701,29 @@ export default function Deals() {
         </div>
       </div>
 
+      {viewMode === "list" && selectedDeals.length ? (
+        <div className="table-card-shell" style={{ marginBottom: 16 }}>
+          <div className="table-card" style={{ padding: "12px 14px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-main)" }}>{selectedDeals.length} deal{selectedDeals.length > 1 ? "s" : ""} selected</div>
+            <button className="btn-ghost" onClick={handleExportSelected}>Export selected</button>
+            <select value={bulkStage} onChange={(event) => setBulkStage(event.target.value)} style={{ minWidth: 150, padding: "8px 10px", border: "1.5px solid var(--cborder)", borderRadius: 10, background: "var(--cs)", color: "var(--text-main)" }}>
+              {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
+            </select>
+            <button className="btn-ghost" onClick={handleBulkStageUpdate}>Change stage</button>
+            <input
+              type="text"
+              value={bulkOwner}
+              onChange={(event) => setBulkOwner(event.target.value)}
+              placeholder="Assign owner"
+              style={{ minWidth: 160, padding: "8px 10px", border: "1.5px solid var(--cborder)", borderRadius: 10, background: "var(--cs)", color: "var(--text-main)", outline: "none" }}
+            />
+            <button className="btn-ghost" onClick={handleBulkOwnerUpdate} disabled={!bulkOwner.trim()}>Assign owner</button>
+            <button className="btn-ghost" onClick={handleBulkDelete} style={{ color: "#dc2626", borderColor: "color-mix(in srgb, #dc2626 18%, var(--cborder))" }}>Delete</button>
+            <button className="btn-ghost" onClick={clearSelection}>Clear</button>
+          </div>
+        </div>
+      ) : null}
+
       {viewMode === "kanban" ? <DealsKanban deals={filteredDeals} onOpenDeal={handleOpenDeal} onDeleteDeal={handleDeleteDeal} /> : (
         <div className="table-card-shell sales-deals-table-shell">
           <div className="table-card sales-deals-table-card">
@@ -583,6 +731,7 @@ export default function Deals() {
               <table className="table sales-deals-table">
                 <thead>
                   <tr className="thead-row">
+                    <th className="th th-check"><input type="checkbox" className="cb" checked={allFilteredSelected} onChange={toggleAllFiltered} /></th>
                     <th className="th sales-deals-table-head-cell">Deal Name</th>
                     <th className="th sales-deals-table-head-cell">Stage</th>
                     <th className="th sales-deals-table-head-cell">Amount</th>
@@ -602,14 +751,16 @@ export default function Deals() {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? <tr><td className="td" colSpan={16}><span className="cell-txt">Loading deals...</span></td></tr> : null}
-                  {!loading && !deals.length ? <tr><td className="td" colSpan={16}><span className="cell-txt">No deals available yet. Convert a lead to see it here.</span></td></tr> : null}
+                  {loading ? <tr><td className="td" colSpan={17}><span className="cell-txt">Loading deals...</span></td></tr> : null}
+                  {!loading && !deals.length ? <tr><td className="td" colSpan={17}><span className="cell-txt">No deals available yet. Convert a lead to see it here.</span></td></tr> : null}
                   {!loading && filteredDeals.map((deal) => {
                     const dealStage = normalizeStage(deal);
                     const dealStageMeta = STAGE_META[dealStage] || { color: "#475569", bg: "#e2e8f0" };
                     const dealInitials = getInitials(getDealTitle(deal));
+                    const dealId = getDealId(deal);
                     return (
-                    <tr key={deal.dealId || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} className="row sales-deals-table-row">
+                    <tr key={dealId || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} className="row sales-deals-table-row">
+                      <td className="td td-check"><input type="checkbox" className="cb" checked={selected.has(dealId)} onChange={() => toggleOne(dealId)} /></td>
                       <td className="td td-name">
                         <div className="name-cell sales-deals-name-cell">
                           <div className="avatar sales-deals-avatar" style={{ background: dealStageMeta.color }}>{dealInitials}</div>
@@ -771,7 +922,7 @@ export default function Deals() {
                 { key: "nextStep", label: "Next Step", span: 2 },
                 { key: "leadSource", label: "Lead Source" },
                 { key: "campaignSource", label: "Campaign Source" },
-                { key: "tags", label: "Tags", span: 2 },
+                { key: "tags", label: "Tags (comma separated)", span: 2 },
               ].map((field) => (
                 <div key={field.key} style={{ gridColumn: field.span === 2 ? "1 / -1" : "auto" }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>{field.label}</label>

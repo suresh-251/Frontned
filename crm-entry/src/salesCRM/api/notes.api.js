@@ -24,23 +24,17 @@ const notesAPI = {
     return response.data;
   },
 
+  // Update note
+  update: async (id, noteData) => {
+    const response = await apiClient.put(`/Notes/${id}`, noteData);
+    return response.data;
+  },
+
   // Delete note
   delete: async (id) => {
     const response = await apiClient.delete(`/Notes/${id}`);
     return response.data;
-  },
-
-  // Get notes by related entity ID
-  getByRelatedId: async (relatedId) => {
-    const response = await apiClient.get(`/Notes/related/${relatedId}`);
-    return response.data;
-  },
-
-  // Get notes by type
-  getByType: async (type) => {
-    const response = await apiClient.get(`/Notes/type/${type}`);
-    return response.data;
-  },
+  }
 };
 
 export default notesAPI;

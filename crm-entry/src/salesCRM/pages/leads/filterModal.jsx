@@ -91,6 +91,12 @@ export function FilterModal({ onClose, filters, activeFilterCount, onApply, assi
           <div style={{ marginBottom: "20px" }}>
             <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Activity</h4>
             <div style={{ marginBottom: "12px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 500, color: mutedText, display: "block", marginBottom: "4px" }}>Follow-Up Bucket</label>
+              <select value={localFilters.followUp || "All"} onChange={(event) => updateFilter("followUp", event.target.value)} style={{ ...fieldStyle, cursor: "pointer" }}>
+                {["All", "Today", "Overdue", "Upcoming"].map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: "12px" }}>
               <label style={{ fontSize: "12px", fontWeight: 500, color: mutedText, display: "block", marginBottom: "4px" }}>Last Contacted (days)</label>
               <input type="number" placeholder="Enter days" min="0" value={localFilters.lastContactedDays} onChange={(event) => updateFilter("lastContactedDays", event.target.value)} style={fieldStyle} />
             </div>

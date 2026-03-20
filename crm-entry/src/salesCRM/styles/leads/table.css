@@ -231,7 +231,7 @@
 }
 
 .th {
-  padding: 9px 10px;
+  padding: 9px 6px;
   text-align: left;
   font-size: 11px;
   font-weight: 600;
@@ -317,7 +317,7 @@
 }
 
 .td {
-  padding: 10px 12px;
+  padding: 10px 6px;
   color: var(--ct2);
   vertical-align: middle;
   border-bottom: 1px solid var(--cborder);
@@ -388,9 +388,14 @@
 .name-block {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .name-link {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   background: none;
   border: none;
   font-size: 12px;
@@ -405,7 +410,12 @@
 
 .name-link:hover {
   color: var(--ci-d);
-  text-decoration: underline;
+}
+
+.name-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ci) 28%, white);
+  outline-offset: 3px;
+  border-radius: 8px;
 }
 
 .sales-leads-name-link {
@@ -414,6 +424,39 @@
 
 .sales-leads-name-link:hover {
   color: color-mix(in srgb, var(--text-main) 82%, #94a3b8);
+}
+
+.sales-leads-name-link__label {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.sales-leads-name-text {
+  color: var(--text-main);
+}
+
+.sales-leads-name-link__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.01em;
+  transition: color 0.16s ease, transform 0.16s ease;
+}
+
+.sales-leads-name-link:hover .sales-leads-name-link__label {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+}
+
+.sales-leads-name-link:hover .sales-leads-name-link__meta,
+.sales-leads-name-link:focus-visible .sales-leads-name-link__meta {
+  color: var(--ci);
+  transform: translateX(1px);
 }
 
 .sales-deals-name-link {
@@ -457,19 +500,19 @@
 }
 
 .sales-accounts-page .th {
-  padding: 8px 10px;
+  padding: 8px 8px;
   font-size: 11px;
   letter-spacing: 0.03em;
 }
 
 .sales-leads-table .th {
-  padding: 8px 10px;
+  padding: 8px 8px;
   font-size: 11px;
   letter-spacing: 0.03em;
 }
 
 .sales-leads-table .td {
-  padding: 10px 12px;
+  padding: 10px 8px;
   font-size: 13px;
   line-height: 1.45;
 }
@@ -531,13 +574,13 @@
 }
 
 .sales-deals-table .th {
-  padding: 8px 10px;
+  padding: 8px;
   font-size: 11px;
   letter-spacing: 0.03em;
 }
 
 .sales-deals-table .td {
-  padding: 10px 12px;
+  padding: 10px 8px;
   font-size: 13px;
   line-height: 1.45;
 }
@@ -566,7 +609,7 @@
 }
 
 .sales-accounts-page .td {
-  padding: 10px 12px;
+  padding: 10px 8px;
   font-size: 13px;
   line-height: 1.45;
 }

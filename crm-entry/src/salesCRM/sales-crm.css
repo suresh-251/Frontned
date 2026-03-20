@@ -49,6 +49,17 @@
   background: #94a3b8;
 }
 
+.salescrm-scroll-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.salescrm-scroll-hidden::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* Animation utilities */
 @keyframes fadeIn {
   from {
@@ -257,6 +268,7 @@ button, a, input, select {
   min-height: 100vh;
   width: 100%;
   overflow: hidden;
+  background: var(--bg-body);
 }
 
 .salescrm-layout__content {
@@ -265,6 +277,8 @@ button, a, input, select {
   display: flex;
   flex-direction: column;
   overflow: auto;
+  border-left: 1px solid var(--border-color);
+  margin-left: -1px;
 }
 
 .salescrm-layout__main {
@@ -276,7 +290,6 @@ button, a, input, select {
   width: 196px;
   min-width: 196px;
   background: var(--bg-card);
-  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -308,7 +321,6 @@ button, a, input, select {
 
 .salescrm-sidebar__header {
   padding: 10px;
-  margin-bottom: 6px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
@@ -375,7 +387,7 @@ button, a, input, select {
 
 .salescrm-sidebar__nav {
   flex: 1;
-  padding: 0 8px 12px;
+  padding: 6px 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -463,6 +475,8 @@ button, a, input, select {
 @media (max-width: 1023px) {
   .salescrm-layout__content {
     width: 100%;
+    border-left: none;
+    margin-left: 0;
   }
 
   .salescrm-layout__main {

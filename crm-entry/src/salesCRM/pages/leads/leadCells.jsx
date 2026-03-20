@@ -1,10 +1,10 @@
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import DatePicker from "react-datepicker";
+import activitiesAPI from "../../api/activities.api";
 import { LEAD_SOURCE_OPTIONS, STATUS_LIST, STATUS_META } from "./constants";
 import { formatLeadSource, formatStatus, getFollowUpLabel, getScoreTier, offsetDay, todayStr } from "./utils";
-import { ICal, IChevD, parseDateTimeValue, toDateTimeValue, useClickOutside } from "./shared";
+import { ICal, IChevD, useClickOutside } from "./shared";
 
 export function StatusCell({ value, onChange }) {
   const [open, setOpen] = useState(false);
@@ -132,18 +132,30 @@ export function AssigneeCell({ value, options = [], onChange }) {
   );
 }
 
-export function FollowUpCell({ value, onChange }) {
+export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   const panelRef = useRef(null);
   const [panelPos, setPanelPos] = useState(null);
-  const info = value ? getFollowUpLabel(value) : null;
+  const [followUpItems, setFollowUpItems] = useState([]);
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [followUpError, setFollowUpError] = useState("");
+  const [followUpView, setFollowUpView] = useState("");
+  const bucketLower = String(bucket || "").toLowerCase();
+  const activeFollowUpOption = followUpView || "all";
+  const info = bucketLower === "today"
+    ? { label: "Today", type: "today" }
+    : bucketLower === "overdue"
+      ? { label: "Overdue", type: "overdue" }
+      : bucketLower === "upcoming"
+        ? { label: "Upcoming", type: "normal" }
+        : value ? getFollowUpLabel(value) : null;
 
   const getPanelPos = () => {
     if (!ref.current) return null;
     const rect = ref.current.getBoundingClientRect();
-    const panelHeight = 262;
-    const panelWidth = 232;
+    const panelHeight = followUpView ? 336 : 190;
+    const panelWidth = 260;
     const viewportPadding = 12;
     const gap = 8;
     const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
@@ -177,10 +189,91 @@ export function FollowUpCell({ value, onChange }) {
     };
   }, [editing]);
 
+  const closePicker = () => {
+    setEditing(false);
+    setPanelPos(null);
+    setFollowUpView("");
+    setFollowUpError("");
+  };
+
+  const fmtPopupDate = (value) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const fmtPopupLabel = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "-";
+    return raw.replace(/([a-z])([A-Z])/g, "$1 $2");
+  };
+
+  const handleTodayClick = async () => {
+    setFollowUpView("today");
+    setFollowUpLoading(true);
+    setFollowUpError("");
+    try {
+      const data = await activitiesAPI.getFollowUpsToday({ leadId });
+      setFollowUpItems(Array.isArray(data) ? data : []);
+      setPanelPos(getPanelPos());
+    } catch (error) {
+      setFollowUpItems([]);
+      setFollowUpError(error?.response?.data?.message || "Unable to load today's follow-ups.");
+      setPanelPos(getPanelPos());
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
+  const handleOverdueClick = async () => {
+    setFollowUpView("overdue");
+    setFollowUpLoading(true);
+    setFollowUpError("");
+    try {
+      const data = await activitiesAPI.getFollowUpsOverdue();
+      const filtered = (Array.isArray(data) ? data : []).filter((item) => Number(item?.leadId || item?.leadID || item?.lead?.id || 0) === Number(leadId));
+      setFollowUpItems(filtered);
+      setPanelPos(getPanelPos());
+    } catch (error) {
+      setFollowUpItems([]);
+      setFollowUpError(error?.response?.data?.message || "Unable to load overdue follow-ups.");
+      setPanelPos(getPanelPos());
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
+  const handleUpcomingClick = async () => {
+    setFollowUpView("upcoming");
+    setFollowUpLoading(true);
+    setFollowUpError("");
+    try {
+      const now = new Date();
+      const data = await activitiesAPI.getFollowUps({
+        leadId,
+        fromDate: now.toISOString(),
+        status: "Pending",
+      });
+      setFollowUpItems(Array.isArray(data) ? data : []);
+      setPanelPos(getPanelPos());
+    } catch (error) {
+      setFollowUpItems([]);
+      setFollowUpError(error?.response?.data?.message || "Unable to load upcoming follow-ups.");
+      setPanelPos(getPanelPos());
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
   const toggleEditing = () => {
     if (editing) {
-      setEditing(false);
-      setPanelPos(null);
+      closePicker();
       return;
     }
     setPanelPos(getPanelPos());
@@ -194,30 +287,65 @@ export function FollowUpCell({ value, onChange }) {
         {info ? <span>{info.label}</span> : <span>No follow-up</span>}
       </button>
       {editing && panelPos && createPortal(
-          <div className="followup-picker followup-picker--cute" ref={panelRef} style={{ position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 5000 }}>
-            <div className="followup-quick">
-            <button onClick={() => { onChange(toDateTimeValue(new Date())); setEditing(false); setPanelPos(null); }}>Today</button>
-            <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 1); onChange(toDateTimeValue(d)); setEditing(false); setPanelPos(null); }}>Tomorrow</button>
-            <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 3); onChange(toDateTimeValue(d)); setEditing(false); setPanelPos(null); }}>+3 days</button>
+          <div className="followup-picker followup-picker--plain" ref={panelRef} style={{ position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 5000 }}>
+          <div className="followup-picker__topbar">
+            <div className="followup-picker__eyebrow">Follow-Up</div>
+            <div className="followup-picker__title">Quick filters</div>
           </div>
-
-          <DatePicker
-            selected={value ? parseDateTimeValue(value) : null}
-            onChange={(date) => {
-              onChange(toDateTimeValue(date));
-              setEditing(false);
-              setPanelPos(null);
-            }}
-            inline
-            showTimeSelect
-            timeIntervals={15}
-            dateFormat="MMM d, yyyy h:mm aa"
-            showMonthDropdown
-            showYearDropdown
-            dropdownMode="select"
-            yearDropdownItemNumber={12}
-            calendarClassName="followup-datepicker"
-          />
+          {onChange && (
+            <div className="followup-picker__header">
+              {onChange ? (
+                <div className="followup-picker__actions">
+                  {["Today", "Overdue", "Upcoming", "All"].map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={`followup-picker__action ${activeFollowUpOption === option.toLowerCase() ? "followup-picker__action--active" : ""}`}
+                      onClick={() => {
+                        if (option === "Today") {
+                          handleTodayClick();
+                          return;
+                        }
+                        if (option === "Overdue") {
+                          handleOverdueClick();
+                          return;
+                        }
+                        if (option === "Upcoming") {
+                          handleUpcomingClick();
+                          return;
+                        }
+                        setFollowUpView("");
+                        setFollowUpItems([]);
+                        setFollowUpError("");
+                      }}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )}
+          {followUpView ? (
+            <div className="followup-picker__results">
+              <div className="followup-picker__results-title">{followUpView === "overdue" ? "Overdue follow-ups" : followUpView === "upcoming" ? "Upcoming pending follow-ups" : "Today's follow-ups"}</div>
+              {followUpLoading ? <div className="followup-picker__results-empty">Loading follow-ups...</div> : null}
+              {!followUpLoading && followUpError ? <div className="followup-picker__results-empty">{followUpError}</div> : null}
+              {!followUpLoading && !followUpError && !followUpItems.length ? <div className="followup-picker__results-empty">{followUpView === "overdue" ? "No overdue follow-ups for this lead." : followUpView === "upcoming" ? "No pending upcoming follow-ups for this lead." : "No follow-ups for today."}</div> : null}
+              {!followUpLoading && !followUpError && followUpItems.length ? (
+                <div className="followup-picker__results-list">
+                  {followUpItems.map((item, index) => (
+                    <div key={item?.id || `${item?.title || item?.type || "followup"}-${index}`} className="followup-picker__result-item">
+                      <div className="followup-picker__result-title">{item?.title || item?.name || item?.type || "Follow-up"}</div>
+                      <div className="followup-picker__result-meta"><strong>Subject:</strong> {fmtPopupLabel(item?.subject || item?.title || item?.name)}</div>
+                      <div className="followup-picker__result-meta"><strong>Type:</strong> {fmtPopupLabel(item?.type)}</div>
+                      <div className="followup-picker__result-meta">{fmtPopupDate(item?.dueDate || item?.activityDate || item?.date || item?.createdAt)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>,
         document.body
       )}

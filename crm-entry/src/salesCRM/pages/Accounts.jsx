@@ -1,6 +1,7 @@
 import "../styles/Leads.css";
 import { useEffect, useMemo, useState } from "react";
 import { Building2, Pencil, Plus, Trash2 } from "lucide-react";
+import * as XLSX from "xlsx";
 import accountsAPI from "../api/accounts.api";
 import Toast from "../utils/toast";
 import { IFilter, ISettings, ISearch, IX } from "./leads/shared";
@@ -58,6 +59,8 @@ const normalizeAccount = (account = {}) => ({
   website: account.website || "",
   phone: account.phone || "",
   category: account.category || "",
+  owner: account.owner || account.accountOwner || account.ownerName || "",
+  status: account.status || account.accountStatus || "",
   score: account.score ?? 0,
   creditLimit: account.creditLimit ?? 0,
   region: account.region || "",
@@ -72,6 +75,22 @@ const normalizeCurrency = (value) => {
 };
 
 const normalizeAccountName = (value) => String(value || "").trim().toLowerCase();
+
+const getApiErrorMessage = (error, fallback) => {
+  const payload = error?.response?.data;
+  if (typeof payload === "string" && payload.trim()) return payload.trim();
+  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message.trim();
+  if (typeof payload?.title === "string" && payload.title.trim()) return payload.title.trim();
+  if (Array.isArray(payload?.errors)) {
+    const firstError = payload.errors.find((item) => typeof item === "string" && item.trim());
+    if (firstError) return firstError.trim();
+  }
+  if (payload?.errors && typeof payload.errors === "object") {
+    const firstEntry = Object.values(payload.errors).flat().find((item) => typeof item === "string" && item.trim());
+    if (firstEntry) return firstEntry.trim();
+  }
+  return fallback;
+};
 
 const getAccountNameError = (companyName, existingAccounts = [], currentAccountId = 0) => {
   const normalizedName = normalizeAccountName(companyName);
@@ -88,19 +107,23 @@ const getAccountNameError = (companyName, existingAccounts = [], currentAccountI
 function AccountDetailModal({ accountId, onClose, onEdit }) {
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let active = true;
     const loadAccount = async () => {
       setLoading(true);
+      setLoadError("");
       try {
         const data = await accountsAPI.getById(accountId);
         if (!active) return;
         setAccount(normalizeAccount(data));
       } catch (error) {
         if (!active) return;
-        Toast.error(error?.response?.data?.message || "Unable to load account");
+        const message = getApiErrorMessage(error, "Unable to load account");
+        Toast.error(message);
         setAccount(null);
+        setLoadError(message);
       } finally {
         if (active) setLoading(false);
       }
@@ -156,7 +179,7 @@ function AccountDetailModal({ accountId, onClose, onEdit }) {
               </div>
             </>
           ) : null}
-          {!loading && !account ? <div style={{ fontSize: 13, color: "#ef4444" }}>Unable to load account details.</div> : null}
+          {!loading && !account ? <div style={{ fontSize: 13, color: "#ef4444" }}>{loadError || "Unable to load account details."}</div> : null}
         </div>
         <div className="modal-footer">
           <button className="btn-ghost" onClick={onClose}>Close</button>
@@ -351,6 +374,9 @@ export default function Accounts() {
   const [editAccount, setEditAccount] = useState(null);
   const [saving, setSaving] = useState(false);
   const [accountFormError, setAccountFormError] = useState("");
+  const [selected, setSelected] = useState(new Set());
+  const [bulkOwner, setBulkOwner] = useState("");
+  const [bulkStatus, setBulkStatus] = useState("Active");
 
   useEffect(() => {
     localStorage.setItem(VISIBLE_ACCOUNT_COLUMNS_STORAGE_KEY, JSON.stringify(visibleCols));
@@ -363,7 +389,7 @@ export default function Accounts() {
       const items = Array.isArray(data) ? data : Array.isArray(data?.accounts) ? data.accounts : [];
       setAccounts(items.map(normalizeAccount));
     } catch (error) {
-      Toast.error(error?.response?.data?.message || "Unable to load accounts");
+      Toast.error(getApiErrorMessage(error, "Unable to load accounts"));
       setAccounts([]);
     } finally {
       setLoading(false);
@@ -373,6 +399,14 @@ export default function Accounts() {
   useEffect(() => {
     loadAccounts();
   }, []);
+
+  useEffect(() => {
+    setSelected((current) => {
+      const validIds = new Set(accounts.map((account) => Number(account.id || 0)).filter(Boolean));
+      const next = new Set([...current].filter((id) => validIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [accounts]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -399,6 +433,38 @@ export default function Accounts() {
     });
   }, [accounts, filters, search, searchField]);
 
+  const selectedAccounts = useMemo(
+    () => filteredAccounts.filter((account) => selected.has(Number(account.id || 0))),
+    [filteredAccounts, selected]
+  );
+  const allFilteredSelected = filteredAccounts.length > 0 && filteredAccounts.every((account) => selected.has(Number(account.id || 0)));
+
+  const toggleAllFiltered = () => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (allFilteredSelected) {
+        filteredAccounts.forEach((account) => next.delete(Number(account.id || 0)));
+      } else {
+        filteredAccounts.forEach((account) => {
+          const accountId = Number(account.id || 0);
+          if (accountId) next.add(accountId);
+        });
+      }
+      return next;
+    });
+  };
+
+  const toggleOne = (accountId) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(accountId)) next.delete(accountId);
+      else next.add(accountId);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
   const handleCreateAccount = async (form) => {
     if (!String(form.companyName).trim()) {
       Toast.error("Company name is required");
@@ -423,11 +489,11 @@ export default function Accounts() {
       setShowCreate(false);
       await loadAccounts();
     } catch (error) {
-      const message = String(error?.response?.data?.message || error?.response?.data || "");
+      const message = getApiErrorMessage(error, "Unable to create account");
       if (message.toLowerCase().includes("unique")) {
         setAccountFormError("Account name must be unique");
       } else {
-        Toast.error(message || "Unable to create account");
+        Toast.error(message);
       }
     } finally {
       setSaving(false);
@@ -462,11 +528,11 @@ export default function Accounts() {
       setEditAccount(null);
       await loadAccounts();
     } catch (error) {
-      const message = String(error?.response?.data?.message || error?.response?.data || "");
+      const message = getApiErrorMessage(error, "Unable to update account");
       if (message.toLowerCase().includes("unique")) {
         setAccountFormError("Account name must be unique");
       } else {
-        Toast.error(message || "Unable to update account");
+        Toast.error(message);
       }
     } finally {
       setSaving(false);
@@ -481,7 +547,79 @@ export default function Accounts() {
       setAccounts((current) => current.filter((item) => item.id !== account.id));
       if (detailAccountId === account.id) setDetailAccountId(null);
     } catch (error) {
-      Toast.error(error?.response?.data?.message || "Unable to delete account");
+      Toast.error(getApiErrorMessage(error, "Unable to delete account"));
+    }
+  };
+
+  const handleExportSelected = () => {
+    if (!selectedAccounts.length) return;
+    const rows = selectedAccounts.map((account) => ({
+      "Account ID": account.id,
+      Company: account.companyName || "",
+      Industry: account.industry || "",
+      Website: account.website || "",
+      Phone: account.phone || "",
+      Category: account.category || "",
+      Owner: account.owner || "",
+      Status: account.status || "",
+      "Credit Limit": account.creditLimit || 0,
+      Region: account.region || "",
+      Created: account.createdAt || "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Accounts");
+    XLSX.writeFile(workbook, "sales-crm-accounts.xlsx");
+  };
+
+  const handleBulkOwnerUpdate = async () => {
+    const ids = selectedAccounts.map((account) => Number(account.id || 0)).filter(Boolean);
+    const ownerName = String(bulkOwner || "").trim();
+    if (!ids.length || !ownerName) return;
+    try {
+      await Promise.all(ids.map((id) => accountsAPI.update(id, { owner: ownerName, accountOwner: ownerName, ownerName })));
+      setAccounts((current) => current.map((account) => (
+        ids.includes(Number(account.id || 0)) ? { ...account, owner: ownerName } : account
+      )));
+      Toast.success(`Updated owner for ${ids.length} account${ids.length > 1 ? "s" : ""}`);
+      setBulkOwner("");
+      clearSelection();
+      await loadAccounts();
+    } catch (error) {
+      Toast.error(getApiErrorMessage(error, "Unable to update account owners"));
+    }
+  };
+
+  const handleBulkStatusUpdate = async () => {
+    const ids = selectedAccounts.map((account) => Number(account.id || 0)).filter(Boolean);
+    if (!ids.length || !bulkStatus) return;
+    try {
+      await Promise.all(ids.map((id) => accountsAPI.update(id, { status: bulkStatus, accountStatus: bulkStatus })));
+      setAccounts((current) => current.map((account) => (
+        ids.includes(Number(account.id || 0)) ? { ...account, status: bulkStatus } : account
+      )));
+      Toast.success(`Updated status for ${ids.length} account${ids.length > 1 ? "s" : ""}`);
+      clearSelection();
+      await loadAccounts();
+    } catch (error) {
+      Toast.error(getApiErrorMessage(error, "Unable to update account statuses"));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = selectedAccounts.map((account) => Number(account.id || 0)).filter(Boolean);
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} selected account${ids.length > 1 ? "s" : ""}?`)) return;
+    try {
+      await Promise.all(ids.map((id) => accountsAPI.delete(id)));
+      setAccounts((current) => current.filter((account) => !ids.includes(Number(account.id || 0))));
+      Toast.success(`Deleted ${ids.length} account${ids.length > 1 ? "s" : ""}`);
+      clearSelection();
+      if (detailAccountId && ids.includes(Number(detailAccountId))) setDetailAccountId(null);
+    } catch (error) {
+      Toast.error(getApiErrorMessage(error, "Unable to delete selected accounts"));
+      await loadAccounts();
     }
   };
 
@@ -510,6 +648,29 @@ export default function Accounts() {
         </div>
       </div>
 
+      {selectedAccounts.length ? (
+        <div className="table-card-shell" style={{ marginBottom: 16 }}>
+          <div className="table-card" style={{ padding: "12px 14px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-main)" }}>{selectedAccounts.length} account{selectedAccounts.length > 1 ? "s" : ""} selected</div>
+            <button className="btn-ghost" onClick={handleExportSelected}>Export selected</button>
+            <input
+              type="text"
+              value={bulkOwner}
+              onChange={(event) => setBulkOwner(event.target.value)}
+              placeholder="Assign owner"
+              style={{ minWidth: 160, padding: "8px 10px", border: "1.5px solid var(--cborder)", borderRadius: 10, background: "var(--cs)", color: "var(--text-main)", outline: "none" }}
+            />
+            <button className="btn-ghost" onClick={handleBulkOwnerUpdate} disabled={!bulkOwner.trim()}>Assign owner</button>
+            <select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)} style={{ minWidth: 140, padding: "8px 10px", border: "1.5px solid var(--cborder)", borderRadius: 10, background: "var(--cs)", color: "var(--text-main)" }}>
+              {["Active", "Inactive", "Prospect", "Customer"].map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+            <button className="btn-ghost" onClick={handleBulkStatusUpdate}>Change status</button>
+            <button className="btn-ghost" onClick={handleBulkDelete} style={{ color: "#dc2626", borderColor: "color-mix(in srgb, #dc2626 18%, var(--cborder))" }}>Delete</button>
+            <button className="btn-ghost" onClick={clearSelection}>Clear</button>
+          </div>
+        </div>
+      ) : null}
+
       {(search || activeFilterCount > 0) ? (
         <div className="chips-bar">
           {search ? <span className="chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span> : null}
@@ -526,15 +687,17 @@ export default function Accounts() {
             <table className={`table ${wrapText ? "table--wrap" : ""}`}>
               <thead>
                 <tr className="thead-row">
+                  <th className="th th-check"><input type="checkbox" className="cb" checked={allFilteredSelected} onChange={toggleAllFiltered} /></th>
                   {activeCols.map((col) => <th key={col.key} className={`th th-${col.key}`}>{col.label}</th>)}
                   <th className="th th-actions"><span className="th-inner">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
-                {loading ? <tr><td className="td" colSpan={activeCols.length + 1}><span className="cell-txt">Loading accounts...</span></td></tr> : null}
-                {!loading && !filteredAccounts.length ? <tr><td className="td" colSpan={activeCols.length + 1}><span className="cell-txt">No accounts found.</span></td></tr> : null}
+                {loading ? <tr><td className="td" colSpan={activeCols.length + 2}><span className="cell-txt">Loading accounts...</span></td></tr> : null}
+                {!loading && !filteredAccounts.length ? <tr><td className="td" colSpan={activeCols.length + 2}><span className="cell-txt">No accounts found.</span></td></tr> : null}
                 {!loading && filteredAccounts.map((account, index) => (
                   <tr key={account.id || `${account.companyName}-${index}`} className="row">
+                    <td className="td td-check"><input type="checkbox" className="cb" checked={selected.has(Number(account.id || 0))} onChange={() => toggleOne(Number(account.id || 0))} /></td>
                     {activeCols.map((col) => {
                       switch (col.key) {
                         case "serial":

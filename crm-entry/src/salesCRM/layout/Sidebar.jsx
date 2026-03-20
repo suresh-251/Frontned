@@ -1,11 +1,10 @@
 import { NavLink } from "react-router-dom";
-import { Building2, CalendarDays, LayoutGrid, Layers, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Building2, LayoutGrid, Layers, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 const navItems = [
   { label: "Leads", path: "/crm/sales/leads", Icon: LayoutGrid },
   { label: "Deals", path: "/crm/sales/deals", Icon: Layers },
   { label: "Accounts", path: "/crm/sales/accounts", Icon: Building2 },
-  { label: "Calendar", path: "/crm/sales/calendar", Icon: CalendarDays },
 ];
 
 export default function Sidebar({
