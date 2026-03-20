@@ -31,6 +31,7 @@ import EmployeeTraining from "../pages/Recruitment/EmployeeTraining";
 import DigitalSignature from "../pages/Recruitment/DigitalSignature";
 import Payroll from "../pages/PayRoll";
 import Learning from "../pages/Learning";
+import Profile from "../pages/Profile";
 
 export default function HrRoutes() {
   const user = getAuthDetails();
@@ -95,6 +96,9 @@ export default function HrRoutes() {
         {isAllowed("department-budget") && <Route path="department-budget" element={<DeptBudget />} />}
         {isAllowed("budget-change") && <Route path="budget-change" element={<BudgetChange />} />}
         {isAllowed("department-role") && <Route path="department-role" element={<DeptRole />} />}
+
+        {/* PROFILE — always accessible, opened from topbar */}
+        <Route path="profile" element={<Profile />} />
 
         {/* FALLBACK */}
         <Route path="*" element={<Navigate to="/crm/hr/dashboard" replace />} />

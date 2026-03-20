@@ -83,6 +83,7 @@ export const USER_MENU = [
     children: [
       { label: "OffBoarding", path: "/crm/hr/offboarding" },
       { label: "Exit Interview", path: "/crm/hr/exit-interview" },
+      { label: "Employee Training", path: "/crm/hr/employee-training" }, 
       { label: "Digital Signature", path: "/crm/hr/digital-signature" }
     ]
   },
@@ -98,7 +99,7 @@ export const USER_MENU = [
   },
 
   { type: 'link', label: "Project", path: "/crm/hr/project", icon: FolderKanban },
-   { type: 'link', label: "Payroll", path: "/crm/hr/payroll", icon: Banknote },
+  
   { 
     type: 'dropdown', label: "Departments", icon: Building2, stateKey: 'isDeptOpen',
     children: [

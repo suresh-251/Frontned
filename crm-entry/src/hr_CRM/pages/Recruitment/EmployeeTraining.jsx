@@ -691,21 +691,27 @@
 
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { 
-  getAllTrainings, assignTraining, updateTrainingStatus, deleteTraining, getTrainingByUser 
+import {
+  getAllTrainings, assignTraining, updateTrainingStatus, deleteTraining, getTrainingByUser
 } from "../../api/recruitment/hr.employeeTraining";
 import { getAdminUsers } from "../../../api/admin/users.api";
 import { onboardingApi } from "../../api/onboarding.api";
-import { useRole } from "../../hooks/useRole";
-import { jwtDecode } from "jwt-decode";
-import { 
-  Plus, Loader2, X, Search, Trash2, Eye, Edit3, ShieldCheck, AlertTriangle, ChevronLeft, ChevronRight 
+import { hasPermission, getAuthDetails } from "../../configs/auth.utils";
+import {
+  Plus, Loader2, X, Search, Trash2, Eye, Edit3, ShieldCheck, AlertTriangle, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 
+const canView   = () => hasPermission("EMPLOYEETRAINING_VIEW");
+const canAssign = () => hasPermission("EMPLOYEETRAINING_ASSIGN");
+const canDelete = () => hasPermission("EMPLOYEETRAINING_DELETE");
+
 export default function EmployeeTraining() {
-  const { isManager } = useRole();
+  const authDetails = useMemo(() => getAuthDetails(), []);
+  const isManager   = !!(authDetails?.isAdmin || authDetails?.role === "HR_MANAGER");
+  const currentAuth = useMemo(() => ({ id: authDetails?.userId ? Number(authDetails.userId) : 0 }), [authDetails]);
+
   const [records, setRecords] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -718,7 +724,7 @@ export default function EmployeeTraining() {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 9;
 
-  const [empSearchQuery, setEmpSearchQuery] = useState(""); 
+  const [empSearchQuery, setEmpSearchQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -726,28 +732,30 @@ export default function EmployeeTraining() {
     trainingProvider: "", category: "", durationHours: "", dueDate: ""
   });
 
-  const currentAuth = useMemo(() => {
-    try {
-      const token = localStorage.getItem("accessToken");
-      if (!token) return { id: 0 };
-      const decoded = jwtDecode(token);
-      return { id: Number(decoded.sub || decoded.id || decoded.nameid) };
-    } catch { return { id: 0 }; }
-  }, []);
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [empRes, onboardRes] = await Promise.all([
-        getAdminUsers({ page: 1, pageSize: 200 }),
-        onboardingApi.getOnboardingList()
-      ]);
-      const active = (empRes?.users || empRes || []).map(u => ({ userId: u.userId || u.id, username: u.username || u.name }));
-      const onboarding = (onboardRes?.data || onboardRes || []).map(u => ({ userId: u.employeeOnboardingId, username: u.fullName }));
-      setEmployees([...active, ...onboarding]);
-
-      let res = isManager ? await getAllTrainings() : await getTrainingByUser(currentAuth.id);
-      setRecords(Array.isArray(res) ? res : (res?.data || []));
+      if (isManager) {
+        const [empRes, onboardRes] = await Promise.all([
+          getAdminUsers({ page: 1, pageSize: 200 }),
+          onboardingApi.getOnboardingList()
+        ]);
+        const active = (empRes?.users || empRes || []).map(u => ({ userId: u.userId || u.id, username: u.username || u.name, type: "employee" }));
+        const onboarding = (onboardRes?.data || onboardRes || []).map(u => ({ userId: u.employeeOnboardingId, username: u.fullName, type: "onboarding" }));
+        const seen = new Set();
+        const unique = [...active, ...onboarding].filter(u => {
+          const key = (u.username || "").toLowerCase().trim();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setEmployees(unique);
+        const res = await getAllTrainings();
+        setRecords(Array.isArray(res) ? res : (res?.data || []));
+      } else {
+        const res = await getTrainingByUser(currentAuth.id);
+        setRecords(Array.isArray(res) ? res : (res?.data || []));
+      }
     } catch { toast.error("Sync Error"); }
     finally { setLoading(false); }
   }, [isManager, currentAuth.id]);
@@ -791,6 +799,14 @@ export default function EmployeeTraining() {
   const totalPages = Math.ceil(filtered.length / rowsPerPage) || 1;
   const currentData = filtered.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
+  if (!canView()) {
+    return (
+      <div className="max-w-7xl mx-auto p-2 font-sans text-[var(--text-main)] h-[92vh] flex items-center justify-center">
+        <p className="text-[11px] font-black uppercase text-slate-400">Access Denied</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-3 p-2 font-sans text-[var(--text-main)] h-[92vh] flex flex-col overflow-hidden">
       <Toaster position="top-right" />
@@ -819,7 +835,7 @@ export default function EmployeeTraining() {
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
               <input type="text" placeholder="SEARCH..." onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-md pl-8 pr-2 py-1 text-[9px] font-black w-48 uppercase outline-none focus:border-emerald-500" />
             </div>
-            {isManager && (
+            {canAssign() && (
               <button onClick={() => setShowModal(true)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all">+ Assign</button>
             )}
         </div>
@@ -856,7 +872,7 @@ export default function EmployeeTraining() {
                   <td className="px-4 py-2 text-right">
                     <div className="flex justify-end gap-1">
                       <button onClick={() => setSelectedView({...r, username: emp?.username})} className="p-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded text-slate-400 hover:text-emerald-500"><Eye size={13}/></button>
-                      {isManager && (
+                      {canDelete() && (
                         <button onClick={() => setConfirm({ show: true, title: "Purge", message: "Delete this assignment?", onConfirm: () => deleteTraining(r.id).then(fetchData) })} className="p-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded text-slate-300 hover:text-rose-500"><Trash2 size={13}/></button>
                       )}
                     </div>
@@ -876,45 +892,100 @@ export default function EmployeeTraining() {
         </div>
       </div>
 
-      {/* THEME FIXED MODAL */}
+      {/* VIEW MODAL */}
       <AnimatePresence>
-        {showModal && (
+        {selectedView && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedView(null)}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-[var(--bg-card)] w-full max-w-sm rounded-2xl border border-[var(--border-color)] shadow-2xl p-5 text-[var(--text-main)]" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-2 mb-3">
+                <h3 className="text-[10px] font-black uppercase text-emerald-500">Training Details</h3>
+                <button onClick={() => setSelectedView(null)}><X size={16} className="text-slate-400 hover:text-rose-500" /></button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="p-2.5 bg-[var(--bg-body)] rounded-lg border border-[var(--border-color)]">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Personnel</p>
+                  <p className="text-[10px] font-black uppercase truncate">{selectedView.username || `UID: ${selectedView.userId}`}</p>
+                </div>
+                <div className="p-2.5 bg-[var(--bg-body)] rounded-lg border border-[var(--border-color)]">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Status</p>
+                  <p className="text-[10px] font-black uppercase truncate">{selectedView.status || "Assigned"}</p>
+                </div>
+                <div className="p-2.5 bg-[var(--bg-body)] rounded-lg border border-[var(--border-color)]">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Category</p>
+                  <p className="text-[10px] font-black uppercase truncate">{selectedView.category || "---"}</p>
+                </div>
+                <div className="p-2.5 bg-[var(--bg-body)] rounded-lg border border-[var(--border-color)]">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Provider</p>
+                  <p className="text-[10px] font-black uppercase truncate">{selectedView.trainingProvider || "---"}</p>
+                </div>
+                <div className="p-2.5 bg-[var(--bg-body)] rounded-lg border border-[var(--border-color)]">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Duration</p>
+                  <p className="text-[10px] font-black">{selectedView.durationHours ? `${selectedView.durationHours} hrs` : "---"}</p>
+                </div>
+                <div className="p-2.5 bg-[var(--bg-body)] rounded-lg border border-[var(--border-color)]">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Due Date</p>
+                  <p className="text-[10px] font-black">{selectedView.dueDate ? new Date(selectedView.dueDate).toLocaleDateString() : "---"}</p>
+                </div>
+                <div className="p-2.5 bg-[var(--bg-body)] rounded-lg border border-[var(--border-color)]">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Progress</p>
+                  <p className="text-[10px] font-black">{selectedView.progress ?? 0}%</p>
+                </div>
+                <div className="p-2.5 bg-[var(--bg-body)] rounded-lg border border-[var(--border-color)]">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5">Mandatory</p>
+                  <p className="text-[10px] font-black">{selectedView.isMandatory ? "Yes" : "No"}</p>
+                </div>
+              </div>
+              <div className="p-3 bg-[var(--bg-body)] rounded-xl border border-[var(--border-color)]">
+                <p className="text-[7px] font-bold text-slate-400 uppercase mb-1">Description</p>
+                <p className="text-[11px] font-medium leading-relaxed italic">"{selectedView.description || "---"}"</p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ASSIGN MODAL */}
+      <AnimatePresence>
+        {showModal && canAssign() && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{ y: 20 }} animate={{ y: 0 }} className="bg-[var(--bg-card)] w-full max-w-lg rounded-2xl border border-[var(--border-color)] shadow-2xl flex flex-col overflow-hidden">
-               <div className="px-5 py-4 bg-[var(--bg-body)] border-b border-[var(--border-color)] flex justify-between items-center">
-                  <h3 className="text-[11px] font-black uppercase text-emerald-600 flex items-center gap-2"><Plus size={16}/> New Module</h3>
-                  <X size={20} className="text-slate-400 cursor-pointer hover:text-rose-500" onClick={() => setShowModal(false)}/>
-               </div>
-               <form onSubmit={handleSubmit} className="p-6 space-y-3 overflow-y-auto bg-[var(--bg-card)]">
-                  <div className="relative">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Personnel</label>
-                    <input type="text" placeholder="SEARCH..." className="w-full px-4 py-2.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-black outline-none focus:border-emerald-500 text-[var(--text-main)]" value={empSearchQuery} onFocus={() => setShowDropdown(true)} onChange={(e) => { setEmpSearchQuery(e.target.value); setShowDropdown(true); }} />
-                    {showDropdown && (
-                      <div className="absolute z-[120] w-full mt-1 bg-[var(--bg-card)] border border-[var(--border-color)] shadow-2xl rounded-xl max-h-40 overflow-y-auto">
-                        {employees.filter(e => e.username.toLowerCase().includes(empSearchQuery.toLowerCase())).map(emp => (
-                          <button key={emp.userId} type="button" onClick={() => { setFormData({...formData, userId: emp.userId}); setEmpSearchQuery(emp.username); setShowDropdown(false); }} className="w-full px-4 py-2 text-left hover:bg-emerald-500/10 text-[10px] font-black uppercase border-b border-[var(--border-color)] last:border-0 text-[var(--text-main)]">{emp.username}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <InputField label="Title" required value={formData.trainingName} onChange={e => setFormData({...formData, trainingName: e.target.value})} />
-                  <div className="space-y-1">
-                     <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Description</label>
-                     <textarea required rows="2" className="w-full px-4 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-bold outline-none text-[var(--text-main)]" onChange={e => setFormData({...formData, description: e.target.value})} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                     <InputField label="Category" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} />
-                     <InputField label="Provider" value={formData.trainingProvider} onChange={e => setFormData({...formData, trainingProvider: e.target.value})} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                     <InputField label="Hours" type="number" value={formData.durationHours} onChange={e => setFormData({...formData, durationHours: e.target.value})} />
-                     <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Due Date</label>
-                        <input required type="date" className="w-full px-4 py-2.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-black outline-none text-[var(--text-main)]" onChange={e => setFormData({...formData, dueDate: e.target.value})} />
-                     </div>
-                  </div>
-                  <button type="submit" className="w-full py-3 bg-emerald-600 text-white text-[11px] font-black uppercase rounded-2xl shadow-xl active:scale-95 transition-all">Submit Assignment</button>
-               </form>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-[var(--bg-card)] w-full max-w-sm rounded-2xl border border-[var(--border-color)] shadow-2xl p-5 text-[var(--text-main)]">
+              <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-2 mb-3">
+                <h3 className="text-[10px] font-black uppercase text-emerald-500 flex items-center gap-1.5"><Plus size={13}/> Assign Training</h3>
+                <button onClick={() => setShowModal(false)}><X size={16} className="text-slate-400 hover:text-rose-500" /></button>
+              </div>
+              <form onSubmit={handleSubmit} className="space-y-2">
+                <div className="relative">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Personnel</p>
+                  <input type="text" placeholder="Search employee..." className="w-full px-3 py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-lg text-[10px] font-black outline-none focus:border-emerald-500 text-[var(--text-main)]" value={empSearchQuery} onFocus={() => setShowDropdown(true)} onChange={(e) => { setEmpSearchQuery(e.target.value); setShowDropdown(true); }} />
+                  {showDropdown && (
+                    <div className="absolute z-[120] w-full mt-0.5 bg-[var(--bg-card)] border border-[var(--border-color)] shadow-2xl rounded-lg max-h-32 overflow-y-auto">
+                      {employees.filter(e => e.username.toLowerCase().includes(empSearchQuery.toLowerCase())).map(emp => (
+                        <button key={emp.userId} type="button" onClick={() => { setFormData({...formData, userId: emp.userId}); setEmpSearchQuery(emp.username); setShowDropdown(false); }} className="w-full px-3 py-1.5 text-left hover:bg-emerald-500/10 border-b border-[var(--border-color)] last:border-0 flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-black uppercase text-[var(--text-main)]">{emp.username}</span>
+                          {emp.type === "onboarding" && <span className="text-[8px] font-black text-indigo-400 uppercase shrink-0">Onboarding</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <CompactField label="Title" required value={formData.trainingName} onChange={e => setFormData({...formData, trainingName: e.target.value})} />
+                  <CompactField label="Category" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <CompactField label="Provider" value={formData.trainingProvider} onChange={e => setFormData({...formData, trainingProvider: e.target.value})} />
+                  <CompactField label="Hours" type="number" value={formData.durationHours} onChange={e => setFormData({...formData, durationHours: e.target.value})} />
+                </div>
+                <div>
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Due Date</p>
+                  <input required type="date" className="w-full px-3 py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-lg text-[10px] font-black outline-none text-[var(--text-main)]" onChange={e => setFormData({...formData, dueDate: e.target.value})} />
+                </div>
+                <div>
+                  <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Description</p>
+                  <textarea required rows="2" className="w-full px-3 py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-lg text-[10px] font-bold outline-none text-[var(--text-main)] resize-none" onChange={e => setFormData({...formData, description: e.target.value})} />
+                </div>
+                <button type="submit" className="w-full py-2 bg-emerald-600 text-white text-[10px] font-black uppercase rounded-xl shadow-lg active:scale-95 transition-all mt-1">Submit Assignment</button>
+              </form>
             </motion.div>
           </div>
         )}
@@ -927,5 +998,12 @@ const InputField = ({ label, ...props }) => (
   <div className="space-y-1">
     <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">{label}</label>
     <input {...props} className="w-full px-4 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-bold outline-none focus:border-emerald-500 transition-colors text-[var(--text-main)]" />
+  </div>
+);
+
+const CompactField = ({ label, ...props }) => (
+  <div>
+    <p className="text-[7px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">{label}</p>
+    <input {...props} className="w-full px-3 py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-lg text-[10px] font-bold outline-none focus:border-emerald-500 transition-colors text-[var(--text-main)]" />
   </div>
 );
