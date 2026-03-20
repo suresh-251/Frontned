@@ -174,84 +174,56 @@ function MetricCard({ platform, label, value, sub }) {
 // ============================================================================
 // PREMIUM DONUT CARD
 // ============================================================================
-function DonutCard({ icon, label, value, subValue, subLabel, color, gradientEnd, percent }) {
-  const SIZE = 148, STROKE = 13;
-  const r    = (SIZE - STROKE) / 2;
-  const circ = r * 2 * Math.PI;
-  const offset = circ - Math.min(percent ?? 0, 1) * circ;
-  const uid  = label.replace(/\s+/g, "-").toLowerCase();
+function DonutCard({ icon, label, value, percent }) {
+  const SIZE = 120;
+  const STROKE = 10;
+  const r = (SIZE - STROKE) / 2;
+  const circ = 2 * Math.PI * r;
+
+const safePercent = Math.max(0.02, Math.min(percent || 0, 1));
+const offset = circ * (1 - safePercent);
 
   return (
-    <div
-      className="relative rounded-3xl p-5 flex flex-col items-center text-center overflow-hidden"
-      style={{
-        background: `linear-gradient(150deg, ${color}10 0%, #ffffff 60%, ${gradientEnd}06 100%)`,
-        border: `1px solid ${color}30`,
-        boxShadow: `0 2px 16px ${color}10`,
-        transition: "all 0.35s cubic-bezier(.4,0,.2,1)",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "translateY(-5px) scale(1.015)";
-        e.currentTarget.style.boxShadow = `0 0 48px ${color}22, 0 20px 48px rgba(0,0,0,0.1)`;
-        e.currentTarget.style.borderColor = `${color}55`;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "";
-        e.currentTarget.style.boxShadow = `0 2px 16px ${color}10`;
-        e.currentTarget.style.borderColor = `${color}30`;
-      }}
-    >
-      <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full blur-3xl pointer-events-none" style={{ background: color, opacity: 0.07 }} />
-      <div className="absolute -bottom-8 -left-8 w-24 h-24 rounded-full blur-3xl pointer-events-none" style={{ background: gradientEnd, opacity: 0.05 }} />
-
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col items-center hover:shadow-md transition">
+      
+      {/* Donut */}
       <div className="relative mb-3">
         <svg width={SIZE} height={SIZE} style={{ transform: "rotate(-90deg)" }}>
-          <defs>
-            <linearGradient id={`dg-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%"   stopColor={color}       stopOpacity="1" />
-              <stop offset="100%" stopColor={gradientEnd} stopOpacity="1" />
-            </linearGradient>
-            <filter id={`df-${uid}`} x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-          </defs>
-          <circle cx={SIZE/2} cy={SIZE/2} r={r + STROKE/2 + 6} fill="none" stroke={`${color}18`} strokeWidth={1} strokeDasharray="3 6" />
-          <circle cx={SIZE/2} cy={SIZE/2} r={r} fill="none" stroke={`${color}15`} strokeWidth={STROKE} />
+          
+          {/* Background ring */}
           <circle
-            cx={SIZE/2} cy={SIZE/2} r={r}
-            fill="none"
-            stroke={`url(#dg-${uid})`}
+            cx={SIZE / 2}
+            cy={SIZE / 2}
+            r={r}
+            stroke="#e5e7eb"
             strokeWidth={STROKE}
-            strokeDasharray={`${circ} ${circ}`}
+            fill="none"
+          />
+
+          {/* Progress ring */}
+          <circle
+            cx={SIZE / 2}
+            cy={SIZE / 2}
+            r={r}
+            stroke="#6366f1"
+            strokeWidth={STROKE}
+            fill="none"
+            strokeDasharray={circ}
             strokeDashoffset={offset}
             strokeLinecap="round"
-            filter={`url(#df-${uid})`}
-            style={{ transition: "stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1)" }}
+            style={{ transition: "all 0.6s ease" }}
           />
-          {(percent ?? 0) > 0.02 && (() => {
-            const a = (Math.min(percent, 1) * 2 * Math.PI) - Math.PI / 2;
-            return <circle cx={SIZE/2 + r * Math.cos(a)} cy={SIZE/2 + r * Math.sin(a)} r={STROKE/2 - 1} fill={gradientEnd} filter={`url(#df-${uid})`} />;
-          })()}
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${color}15`, border: `1px solid ${color}25` }}>
-            <span style={{ color }}>{icon}</span>
-          </div>
-          <span className="text-[22px] font-black leading-none tracking-tight"
-            style={{ background: `linear-gradient(135deg, ${color}, ${gradientEnd})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            {value}
-          </span>
+
+        {/* Center */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className="text-indigo-500 mb-1">{icon}</div>
+          <p className="text-lg font-bold text-slate-800">{value}</p>
         </div>
       </div>
 
-      <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2 text-slate-500">{label}</p>
-      {subValue != null && (
-        <span className="text-[11px] font-bold px-3 py-1 rounded-full"
-          style={{ background: `${color}12`, color, border: `1px solid ${color}28` }}>
-          {subValue}{subLabel ? ` ${subLabel}` : ""}
-        </span>
-      )}
+      {/* Label */}
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
     </div>
   );
 }
@@ -293,12 +265,47 @@ export default function Analytics() {
       totalLeads:      0,
       totalPosts:      0,
     };
-    acc[key].totalFollowers   += pick(ch, "totalFollowers",   "followers")   ;
-    acc[key].newFollowers     += pick(ch, "newFollowers",     "newFollower") ;
-    acc[key].totalEngagement  += pick(ch, "totalEngagement",  "engagement")  ;
-    acc[key].totalReach       += pick(ch, "totalReach",       "reach")       ;
-    acc[key].totalImpressions += pick(ch, "totalImpressions", "impressions") ;
-    acc[key].totalLeads       += pick(ch, "totalLeads",       "leads")       ;
+   acc[key].totalFollowers += pick(
+  ch,
+  "totalFollowers",
+  "followers",
+  "fan_count",          // ✅ Facebook
+  "followers_count"     // ✅ common API
+);
+
+acc[key].newFollowers += pick(
+  ch,
+  "newFollowers",
+  "newFollower",
+  "new_followers"
+);
+
+acc[key].totalEngagement += pick(
+  ch,
+  "totalEngagement",
+  "engagement",
+  "engagement_count"
+);
+
+acc[key].totalReach += pick(
+  ch,
+  "totalReach",
+  "reach",
+  "reach_count"
+);
+
+acc[key].totalImpressions += pick(
+  ch,
+  "totalImpressions",
+  "impressions",
+  "impression_count"
+);
+
+acc[key].totalLeads += pick(
+  ch,
+  "totalLeads",
+  "leads"
+);
     return acc;
   }, {});
 
@@ -364,8 +371,16 @@ export default function Analytics() {
   // Uses a soft-cap scale per metric so the arc NEVER fills completely
   // (max arc = 88%) — the same approach used by Sprout Social / Hootsuite.
   // Tune the caps to match your expected data range.
-  const pct = (value, softCap) =>
-    value > 0 ? Math.min(value / softCap, 0.88) : 0;
+const pct = (value, max) => {
+  if (!value || value <= 0) return 0.02; // small visible arc
+  return Math.min(value / max, 1);
+};
+const maxFollowers   = 10000;
+const maxEngagement  = 5000;
+const maxReach       = 20000;
+const maxImpressions = 40000;
+const maxPosts       = 20;
+const maxLeads       = 100;
 
   // Dynamic soft caps — 2× the current resolved value so arc sits ~50 %
   // but never goes above 88 %. Falls back to a sensible minimum per metric.
@@ -374,10 +389,13 @@ export default function Analytics() {
   const capReach        = Math.max(resolvedReach        * 2, 10_000);
   const capImpressions  = Math.max(resolvedImpressions  * 2, 20_000);
   const capNewFollowers = Math.max(resolvedNewFollowers  * 2,  1_000);
-  const capPosts        = Math.max(resolvedPosts         * 2,    100);
+const capPosts = Math.max(resolvedPosts * 2, 10);
+
   const capLeads        = Math.max(resolvedLeads         * 2,    100);
 
   // ── 6. Donut cards ────────────────────────────────────────────────────────
+  const PRIMARY = "#6366f1";     
+const SECONDARY = "#a5b4fc";   
   const donutCards = [
     {
       icon: <FiUsers size={17} />,
@@ -385,9 +403,9 @@ export default function Analytics() {
       value: fmt(resolvedFollowers),
       subValue: `+${fmt(resolvedNewFollowers)}`,
       subLabel: "new",
-      color: "#3b82f6",
-      gradientEnd: "#818cf8",
-      percent: pct(resolvedFollowers, capFollowers),
+      color: PRIMARY,
+      gradientEnd: SECONDARY,
+percent: pct(resolvedFollowers, maxFollowers),
     },
     {
       icon: <FiHeart size={17} />,
@@ -395,40 +413,42 @@ export default function Analytics() {
       value: fmt(resolvedEngagement),
       subValue: `${engagementRate}%`,
       subLabel: "rate",
-      color: "#ef4444",
-      gradientEnd: "#f97316",
-      percent: pct(resolvedEngagement, capEngagement),
+      color: PRIMARY,
+      gradientEnd: SECONDARY,
+percent: pct(resolvedEngagement, maxEngagement),
     },
+   {
+  icon: <FiEye size={17} />,
+  label: "Reach",
+  value: fmt(resolvedReach || 0),
+  subLabel: resolvedReach === 0 ? "no data" : "",
+  color: PRIMARY,
+  gradientEnd: SECONDARY,
+  percent: pct(resolvedReach || 1, maxReach),
+},
     {
-      icon: <FiEye size={17} />,
-      label: "Reach",
-      value: resolvedReach > 0 ? fmt(resolvedReach) : "—",
-      color: "#10b981",
-      gradientEnd: "#06b6d4",
-      percent: pct(resolvedReach, capReach),
-    },
-    {
-      icon: <FiBarChart2 size={17} />,
-      label: "Impressions",
-      value: resolvedImpressions > 0 ? fmt(resolvedImpressions) : "—",
-      color: "#8b5cf6",
-      gradientEnd: "#ec4899",
-      percent: pct(resolvedImpressions, capImpressions),
-    },
+  icon: <FiBarChart2 size={17} />,
+  label: "Impressions",
+  value: fmt(resolvedImpressions || 0),
+  subLabel: resolvedImpressions === 0 ? "no data" : "",
+  color: PRIMARY,
+  gradientEnd: SECONDARY,
+  percent: pct(resolvedImpressions || 1, maxImpressions),
+},
     {
       icon: <FiTrendingUp size={17} />,
       label: "New Followers",
       value: fmt(resolvedNewFollowers),
-      color: "#22c55e",
-      gradientEnd: "#a3e635",
+      color: PRIMARY,
+      gradientEnd: SECONDARY,
       percent: pct(resolvedNewFollowers, capNewFollowers),
     },
     {
       icon: <FiZap size={17} />,
       label: "Engagement Rate",
       value: `${engagementRate}%`,
-      color: "#6366f1",
-      gradientEnd: "#a78bfa",
+      color: PRIMARY,
+      gradientEnd: SECONDARY,
       // Rate arc: 15 % rate = 88 % fill — adjust cap to your industry
       percent: pct(parseFloat(engagementRate), 15),
     },
@@ -436,18 +456,18 @@ export default function Analytics() {
       icon: <FiShare2 size={17} />,
       label: "Total Posts",
       value: resolvedPosts > 0 ? fmt(resolvedPosts) : "—",
-      color: "#f59e0b",
-      gradientEnd: "#fb923c",
-      percent: pct(resolvedPosts, capPosts),
-    },
-    {
-      icon: <FiStar size={17} />,
-      label: "Leads",
-      value: resolvedLeads > 0 ? fmt(resolvedLeads) : "—",
-      color: "#ec4899",
-      gradientEnd: "#f43f5e",
-      percent: pct(resolvedLeads, capLeads),
-    },
+      color: PRIMARY,
+      gradientEnd: SECONDARY,
+percent: resolvedPosts > 0 ? 0.6 : 0,    },
+  {
+  icon: <FiStar size={17} />,
+  label: "Leads",
+  value: fmt(resolvedLeads || 0),
+  subLabel: resolvedLeads === 0 ? "no data" : "",
+  color: PRIMARY,
+  gradientEnd: SECONDARY,
+  percent: pct(resolvedLeads || 1, capLeads),
+},
   ];
 
   // ── 6. Grid column class ──────────────────────────────────────────────────
@@ -671,6 +691,7 @@ console.log("SUMMARY:", summary);
           <Empty message="No post metrics yet. Sync to pull fresh data." />
         ) : (
           <div className="overflow-x-auto">
+            
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
                 <tr>
@@ -719,3 +740,4 @@ console.log("SUMMARY:", summary);
     </div>
   );
 }
+
