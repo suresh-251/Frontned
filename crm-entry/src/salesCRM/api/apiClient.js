@@ -1,6 +1,7 @@
 // src/api/apiClient.js
 import axios from "axios";
 import { clearAccessToken, getAccessToken } from "../../utils/authStorage";
+import { appCache } from "../../socialCRM/utils/cache";
 //const BASE_URL = "http://89.116.20.215:9096/api"
 const BASE_URL = "https://crmsales.metagensoft.com/api";
 // Create Axios instance
@@ -33,6 +34,7 @@ apiClient.interceptors.response.use(
 
       if (status === 401) {
         clearAccessToken();
+        appCache.clearAllUserCaches();
         window.location.href = "/login"; // redirect to login
       } else if (status === 403) {
         console.error("Forbidden - You do not have permission");

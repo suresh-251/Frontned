@@ -12,6 +12,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import nafaLogo from "../../assets/nafa.png";
+import { useAuth } from "../../auth/AuthContext";
 
 const navItems = [
   { label: "Dashboard", path: "/crm/socialmedia/dashboard", Icon: Home },
@@ -33,6 +34,7 @@ export default function Sidebar({
   onClose,
 }) {
   const location = useLocation();
+  const { logout } = useAuth();
 
   const sidebarClassName = [
     "socialcrm-sidebar",
@@ -114,9 +116,8 @@ export default function Sidebar({
         <div className="socialcrm-sidebar__footer">
           <button
             onClick={() => {
-              localStorage.removeItem("accessToken");
-              localStorage.removeItem("brandSlug");
-              window.location.href = "/crm/socialmedia/login";
+              logout();
+              window.location.href = "/login";
             }}
             className="socialcrm-sidebar__logout"
             title="Logout"

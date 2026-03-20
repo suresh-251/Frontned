@@ -4,6 +4,7 @@ import { useBrand } from "../context/BrandContext";
 import { getBrandLogoSrc } from "../api/brand.api";
 import { getUnreadCount, createInboxHubConnection } from "../api/inbox.api";
 import { createLeadsHubConnection } from "../api/facebook.leads.api";
+import { getAccountHealth } from "../api/auth.api";
 import { useAuth } from "../../auth/AuthContext";
 import toast from "react-hot-toast";
 
@@ -342,6 +343,20 @@ export default function Topbar({ onToggleSidebar, showSidebarToggle = false }) {
       invalidateAllBrandCaches();
       refreshBrands();
     });
+    conn.on("TokenAlert", (alert) => {
+      const statusEmoji = alert.status === "expired" ? "\u26a0\ufe0f" : "\u23f3";
+      setNotifications((prev) => [
+        {
+          id: Date.now() + 4,
+          type: "token",
+          message: alert.message,
+          time: new Date(),
+          platform: alert.platform,
+        },
+        ...prev,
+      ].slice(0, 50));
+      toast(`${statusEmoji} ${alert.message}`, { duration: 6000, position: "top-right" });
+    });
     conn.start().then(async () => {
       await conn.invoke("JoinBrand", String(activeBrand.id)).catch(() => {});
     }).catch(() => {});
@@ -370,11 +385,45 @@ export default function Topbar({ onToggleSidebar, showSidebarToggle = false }) {
       ].slice(0, 50));
       toast(`🟢 New lead: ${leadName}${platformLabel}`, { duration: 4000, position: "top-right" });
     });
-    conn.start().catch(() => {});
+    conn.start().then(async () => {
+      await conn.invoke("JoinBrand", String(activeBrand.id)).catch(() => {});
+    }).catch(() => {});
     return () => { conn.stop(); };
   }, [activeBrand?.id]);
 
-  const totalNotifCount = unread + newLeads + notifications.filter(n => n.type === "feed").length;
+  // Periodic token health check (every 30 min)
+  useEffect(() => {
+    if (!activeBrand?.id) return;
+    const checkHealth = () => {
+      getAccountHealth().then((accounts) => {
+        if (!Array.isArray(accounts)) return;
+        accounts.forEach((acc) => {
+          if (acc.status === "Expired" || acc.daysUntilExpiry <= 3) {
+            const statusEmoji = acc.status === "Expired" ? "\u26a0\ufe0f" : "\u23f3";
+            const msg = acc.status === "Expired"
+              ? `Your ${acc.platform} token has expired. Please reconnect in Settings.`
+              : `Your ${acc.platform} token expires in ${acc.daysUntilExpiry} day(s).`;
+            setNotifications((prev) => {
+              if (prev.some(n => n.type === "token" && n.platform === acc.platform)) return prev;
+              return [{
+                id: Date.now(),
+                type: "token",
+                message: msg,
+                time: new Date(),
+                platform: acc.platform,
+              }, ...prev].slice(0, 50);
+            });
+            toast(`${statusEmoji} ${msg}`, { duration: 6000, position: "top-right" });
+          }
+        });
+      }).catch(() => {});
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [activeBrand?.id]);
+
+  const totalNotifCount = unread + newLeads + notifications.filter(n => n.type === "feed" || n.type === "token").length;
 
   const formatTimeAgo = (date) => {
     const seconds = Math.floor((new Date() - date) / 1000);
@@ -392,6 +441,7 @@ export default function Topbar({ onToggleSidebar, showSidebarToggle = false }) {
       case "message": return "📩";
       case "conversation": return "💬";
       case "assignment": return "👤";
+      case "token": return "⚠️";
       case "feed":
         switch (n.feedItem) {
           case "like": return "❤️";
@@ -411,6 +461,7 @@ export default function Topbar({ onToggleSidebar, showSidebarToggle = false }) {
       case "feed": return "rgba(239,68,68,0.12)";
       case "assignment": return "rgba(168,85,247,0.12)";
       case "conversation": return "rgba(245,158,11,0.12)";
+      case "token": return "rgba(234,179,8,0.15)";
       default: return "rgba(107,114,128,0.12)";
     }
   };
@@ -422,6 +473,7 @@ export default function Topbar({ onToggleSidebar, showSidebarToggle = false }) {
       case "conversation":
       case "assignment":
         return "/crm/socialmedia/inbox";
+      case "token": return "/crm/socialmedia/settings";
       default: return "/crm/socialmedia/dashboard";
     }
   };

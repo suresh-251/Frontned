@@ -599,8 +599,8 @@ export default function Inbox() {
                   ${s.borderL} ${isActive ? `${s.bg}/40` : "border-opacity-50"}`}
               >
                 <div className="flex items-start gap-2.5">
-                  {/* Avatar */}
-                  <div className={`w-9 h-9 rounded-full ${s.bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                  {/* Avatar with platform-colored ring */}
+                  <div className={`w-9 h-9 rounded-full ${s.bg} flex items-center justify-center shrink-0 mt-0.5 ring-2 ${s.ring}`}>
                     {c.userAvatar ? (
                       <img src={c.userAvatar} alt="" className="w-9 h-9 rounded-full object-cover" />
                     ) : (
