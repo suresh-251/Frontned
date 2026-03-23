@@ -10,11 +10,9 @@ import DetailTabsRail from "./detailMiddle/DetailTabsRail";
 import { FloatingDateTimePicker, FloatingInput, InfoRow } from "./leadDetails/fields";
 import {
   CALL_PURPOSE_OPTIONS,
-  CALL_STATUS_OPTIONS,
-  centeredComposerFieldStyle,
+  STATUS_OPTIONS,
   EMAIL_TEMPLATES,
   TASK_PRIORITY_OPTIONS,
-  TASK_STATUS_OPTIONS,
   WHATSAPP_TEMPLATES,
   card,
   fmtDate,
@@ -23,7 +21,6 @@ import {
   hasValue,
   input,
   mapActivity,
-  mapCallActivity,
   mapComm,
   sanitizePhoneNumber,
   selectFieldStyle,
@@ -107,6 +104,23 @@ const getDealShortcutButtonStyle = (enabled) => ({
   outline: "none",
   padding: 0,
 });
+
+const mapCallTimelineItem = (item, index) => {
+  const rawType = String(item?.type || item?.eventType || "Call").trim();
+  const rawDescription = String(item?.description || "").trim();
+  const cleanedDescription = rawDescription
+    .replace(/^Call\s+(completed|logged|scheduled)\s*:\s*/i, "")
+    .trim();
+
+  return {
+    id: item?.id || `deal-call-timeline-${index}-${item?.date || rawType}`,
+    kind: "calls",
+    title: cleanedDescription || rawType,
+    description: cleanedDescription && cleanedDescription !== rawType ? rawType : rawDescription,
+    date: item?.date || item?.createdAt || item?.eventDate || item?.updatedAt || null,
+    author: item?.createdByName || item?.userName || item?.author || item?.createdBy || "",
+  };
+};
 
 function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
   const initials = (getDealName(deal).match(/\b\w/g) || []).join("").slice(0, 2).toUpperCase();
@@ -618,7 +632,7 @@ function Composer({ tab, deal, onSaved }) {
             {TASK_PRIORITY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           </FloatingInput>
           <FloatingInput as="select" label="Status" value={v.taskStatus} onChange={(event) => setField("taskStatus", event.target.value)} style={selectFieldStyle}>
-            {TASK_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+            {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
           </FloatingInput>
           <FloatingDateTimePicker label="Reminder" selected={v.taskReminder} onChange={(date) => setField("taskReminder", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
           <FloatingInput label="Repeat" value={v.taskRepeat} onChange={(event) => setField("taskRepeat", event.target.value)} />
@@ -630,15 +644,15 @@ function Composer({ tab, deal, onSaved }) {
         <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 0.9fr) minmax(0, 1.1fr)", gap: 12, alignItems: "start" }}>
           <select style={input} value={templateId} onChange={(event) => applyTemplate(event.target.value)}><option value="">Select template</option>{EMAIL_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
           <input style={input} value={v.toEmail} onChange={(event) => setField("toEmail", event.target.value)} placeholder="recipient@email.com" />
-          <input style={{ ...input, ...centeredComposerFieldStyle, gridColumn: "1 / -1" }} value={v.emailSubject} onChange={(event) => setField("emailSubject", event.target.value)} placeholder="Email subject" />
-          <textarea style={{ ...input, ...centeredComposerFieldStyle, minHeight: 140, resize: "vertical", gridColumn: "1 / -1" }} value={v.emailBody} onChange={(event) => setField("emailBody", event.target.value)} placeholder="Compose your email" />
+          <input style={{ ...input, width: "80%", gridColumn: "1 / -1" }} value={v.emailSubject} onChange={(event) => setField("emailSubject", event.target.value)} placeholder="Email subject" />
+          <textarea style={{ ...input, width: "80%", minHeight: 140, resize: "vertical", gridColumn: "1 / -1" }} value={v.emailBody} onChange={(event) => setField("emailBody", event.target.value)} placeholder="Compose your email" />
         </div>
       ) : null}
 
       {tab === "whatsapp" ? (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12 }}>
-          <select style={{ ...input, ...centeredComposerFieldStyle }} value={templateId} onChange={(event) => applyTemplate(event.target.value)}><option value="">Select template</option>{WHATSAPP_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
-          <textarea style={{ ...input, ...centeredComposerFieldStyle, minHeight: 110, resize: "vertical" }} value={v.whatsappMessage} onChange={(event) => setField("whatsappMessage", event.target.value)} placeholder="Write the WhatsApp message" />
+          <select style={{ ...input, width: "80%" }} value={templateId} onChange={(event) => applyTemplate(event.target.value)}><option value="">Select template</option>{WHATSAPP_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
+          <textarea style={{ ...input, width: "80%", minHeight: 110, resize: "vertical" }} value={v.whatsappMessage} onChange={(event) => setField("whatsappMessage", event.target.value)} placeholder="Write the WhatsApp message" />
         </div>
       ) : null}
 
@@ -680,7 +694,7 @@ function Composer({ tab, deal, onSaved }) {
             <FloatingDateTimePicker label={v.callMode === "schedule" ? "Scheduled Time" : "Call Time"} selected={v.callStartTime} onChange={(date) => setField("callStartTime", date)} error={errors.callStartTime} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
             <FloatingInput as="select" label="Call Status" value={v.callStatus} onChange={(event) => setField("callStatus", event.target.value)} style={selectFieldStyle}>
               <option value="">Select status</option>
-              {CALL_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+              {STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
             </FloatingInput>
             <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(event) => setField("callType", event.target.value)} style={selectFieldStyle}>
               <option value="Outgoing">Outgoing</option>
@@ -718,7 +732,7 @@ function Composer({ tab, deal, onSaved }) {
   );
 }
 
-function DealMiddle({ deal, activeTab, onTabChange, onActivitySaved, compact = false, mobile = false }) {
+function DealMiddle({ deal, activeTab, onTabChange, onActivitySaved, timeline = [], compact = false, mobile = false }) {
   const [activityView, setActivityView] = useState("open");
   const [loading, setLoading] = useState(false);
   const [openActivities, setOpenActivities] = useState([]);
@@ -755,7 +769,11 @@ function DealMiddle({ deal, activeTab, onTabChange, onActivitySaved, compact = f
   }, [dealId]);
 
   const taskHistory = useMemo(() => [...openActivities, ...closedActivities].filter((item) => String(item?.type || "").toLowerCase().includes("task")), [openActivities, closedActivities]);
-  const callHistory = useMemo(() => [...openActivities, ...closedActivities].filter((item) => String(item?.type || "").toLowerCase().includes("call")).map(mapCallActivity), [openActivities, closedActivities]);
+  const callHistory = useMemo(() => (
+    (Array.isArray(timeline) ? timeline : [])
+      .filter((item) => String(item?.type || item?.eventType || "").toLowerCase().includes("call"))
+      .map((item, index) => mapCallTimelineItem(item, index))
+  ), [timeline]);
   const activityItems = activityView === "open" ? openActivities : closedActivities;
 
   return (
@@ -903,7 +921,7 @@ export default function DealDetailsModal({ deal, loading = false, onClose }) {
           isMobileLayout ? (
             <div className="salescrm-scroll-hidden" style={{ flex: 1, minHeight: 0, height: "100%", overflowY: "auto", overflowX: "hidden", padding: "8px 8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
               {mobilePanel === "overview" ? <div style={{ borderRadius: 20, overflow: "hidden", background: "#ffffff", border: "1px solid #d8e3ef", boxShadow: "0 10px 24px rgba(148, 163, 184, 0.14)" }}><DealInfoPanel deal={deal} onOpenTab={(tab) => { setActiveTab(tab); setMobilePanel("activities"); }} stacked mobile /></div> : null}
-              {mobilePanel === "activities" ? <div style={{ borderRadius: 20, overflow: "hidden", background: "#ffffff", border: "1px solid #d8e3ef", boxShadow: "0 10px 24px rgba(148, 163, 184, 0.14)" }}><DealMiddle deal={deal} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} compact mobile /></div> : null}
+              {mobilePanel === "activities" ? <div style={{ borderRadius: 20, overflow: "hidden", background: "#ffffff", border: "1px solid #d8e3ef", boxShadow: "0 10px 24px rgba(148, 163, 184, 0.14)" }}><DealMiddle deal={deal} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} timeline={timeline} compact mobile /></div> : null}
               {mobilePanel === "timeline" ? <div style={{ borderRadius: 20, overflow: "hidden", background: "#fbfdff", border: "1px solid #d8e3ef", boxShadow: "0 10px 24px rgba(148, 163, 184, 0.14)" }}><Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} stacked mobile eyebrow="Deal Story" description="A clean view of deal updates, tasks, calls, emails, and stage changes." /></div> : null}
             </div>
           ) : isTabletLayout ? (
@@ -913,7 +931,7 @@ export default function DealDetailsModal({ deal, loading = false, onClose }) {
                   <DealInfoPanel deal={deal} onOpenTab={setActiveTab} stacked={false} />
                 </div>
                 <div style={{ minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
-                  <DealMiddle deal={deal} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} compact />
+                  <DealMiddle deal={deal} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} timeline={timeline} compact />
                 </div>
               </div>
               <div style={{ minHeight: 0, borderTop: "1px solid #e5e7eb", background: "#fbfdff", overflow: "hidden" }}>
@@ -926,7 +944,7 @@ export default function DealDetailsModal({ deal, loading = false, onClose }) {
                 <DealInfoPanel deal={deal} onOpenTab={setActiveTab} stacked={false} />
               </div>
               <div style={{ minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
-                <DealMiddle deal={deal} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} compact={false} />
+                <DealMiddle deal={deal} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} timeline={timeline} compact={false} />
               </div>
               <div style={{ minHeight: 0, overflow: "hidden" }}>
                 <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} stacked={false} eyebrow="Deal Story" description="A clean view of deal updates, tasks, calls, emails, and stage changes." />

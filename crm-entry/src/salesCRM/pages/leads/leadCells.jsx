@@ -136,6 +136,7 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   const panelRef = useRef(null);
+  const requestIdRef = useRef(0);
   const [panelPos, setPanelPos] = useState(null);
   const [followUpItems, setFollowUpItems] = useState([]);
   const [followUpLoading, setFollowUpLoading] = useState(false);
@@ -152,12 +153,24 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
       : bucketLower === "upcoming"
         ? { label: "Upcoming", type: "normal" }
         : null;
+  const viewTitles = {
+    overdue: "Overdue follow-ups",
+    upcoming: "Upcoming pending follow-ups",
+    tomorrow: "Tomorrow's follow-ups",
+    today: "Today's follow-ups",
+  };
+  const emptyStateLabels = {
+    overdue: "No overdue follow-ups for this lead.",
+    upcoming: "No pending upcoming follow-ups for this lead.",
+    tomorrow: "No follow-ups for tomorrow.",
+    today: "No follow-ups for today.",
+  };
 
   const getPanelPos = () => {
     if (!ref.current) return null;
     const rect = ref.current.getBoundingClientRect();
     const panelHeight = followUpView ? 420 : 220;
-    const panelWidth = 260;
+    const panelWidth = 520;
     const viewportPadding = 12;
     const gap = 8;
     const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
@@ -227,86 +240,48 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
     };
   };
 
-  const handleTodayClick = async () => {
-    setFollowUpView("today");
+  const loadFollowUpView = async (view) => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setFollowUpView(view);
     setFollowUpLoading(true);
     setFollowUpError("");
     try {
-      const data = await activitiesAPI.getFollowUpsToday({ leadId });
+      let data = [];
+      if (view === "today") {
+        data = await activitiesAPI.getFollowUpsToday({ leadId });
+      } else if (view === "overdue") {
+        data = (await activitiesAPI.getFollowUpsOverdue({ leadId })).map?.(normalizeFollowUpItem) || [];
+      } else if (view === "upcoming") {
+        const now = new Date();
+        data = await activitiesAPI.getFollowUps({
+          leadId,
+          fromDate: now.toISOString(),
+          status: "Pending",
+        });
+      } else if (view === "tomorrow") {
+        const now = new Date();
+        const startOfTomorrow = new Date(now);
+        startOfTomorrow.setHours(24, 0, 0, 0);
+        const endOfTomorrow = new Date(startOfTomorrow);
+        endOfTomorrow.setHours(23, 59, 59, 999);
+        data = await activitiesAPI.getFollowUps({
+          leadId,
+          fromDate: startOfTomorrow.toISOString(),
+          toDate: endOfTomorrow.toISOString(),
+          status: "Pending",
+        });
+      }
+      if (requestIdRef.current !== requestId) return;
       setFollowUpItems(Array.isArray(data) ? data : []);
       setPanelPos(getPanelPos());
     } catch (error) {
+      if (requestIdRef.current !== requestId) return;
       setFollowUpItems([]);
-      setFollowUpError(error?.response?.data?.message || "Unable to load today's follow-ups.");
+      setFollowUpError(error?.response?.data?.message || "Unable to load follow-ups.");
       setPanelPos(getPanelPos());
     } finally {
-      setFollowUpLoading(false);
-    }
-  };
-
-  const handleOverdueClick = async () => {
-    setFollowUpView("overdue");
-    setFollowUpLoading(true);
-    setFollowUpError("");
-    try {
-      const data = await activitiesAPI.getFollowUpsOverdue({ leadId });
-      const normalized = (Array.isArray(data) ? data : []).map(normalizeFollowUpItem);
-      setFollowUpItems(normalized);
-      setPanelPos(getPanelPos());
-    } catch (error) {
-      setFollowUpItems([]);
-      setFollowUpError(error?.response?.data?.message || "Unable to load overdue follow-ups.");
-      setPanelPos(getPanelPos());
-    } finally {
-      setFollowUpLoading(false);
-    }
-  };
-
-  const handleUpcomingClick = async () => {
-    setFollowUpView("upcoming");
-    setFollowUpLoading(true);
-    setFollowUpError("");
-    try {
-      const now = new Date();
-      const data = await activitiesAPI.getFollowUps({
-        leadId,
-        fromDate: now.toISOString(),
-        status: "Pending",
-      });
-      setFollowUpItems(Array.isArray(data) ? data : []);
-      setPanelPos(getPanelPos());
-    } catch (error) {
-      setFollowUpItems([]);
-      setFollowUpError(error?.response?.data?.message || "Unable to load upcoming follow-ups.");
-      setPanelPos(getPanelPos());
-    } finally {
-      setFollowUpLoading(false);
-    }
-  };
-
-  const handleTomorrowClick = async () => {
-    setFollowUpView("tomorrow");
-    setFollowUpLoading(true);
-    setFollowUpError("");
-    try {
-      const now = new Date();
-      const startOfTomorrow = new Date(now);
-      startOfTomorrow.setHours(24, 0, 0, 0);
-      const endOfTomorrow = new Date(startOfTomorrow);
-      endOfTomorrow.setHours(23, 59, 59, 999);
-      const data = await activitiesAPI.getFollowUps({
-        leadId,
-        fromDate: startOfTomorrow.toISOString(),
-        toDate: endOfTomorrow.toISOString(),
-        status: "Pending",
-      });
-      setFollowUpItems(Array.isArray(data) ? data : []);
-      setPanelPos(getPanelPos());
-    } catch (error) {
-      setFollowUpItems([]);
-      setFollowUpError(error?.response?.data?.message || "Unable to load tomorrow's follow-ups.");
-      setPanelPos(getPanelPos());
-    } finally {
+      if (requestIdRef.current !== requestId) return;
       setFollowUpLoading(false);
     }
   };
@@ -316,13 +291,13 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
       closePicker();
       return;
     }
+    requestIdRef.current += 1;
+    setFollowUpItems([]);
+    setFollowUpLoading(false);
+    setFollowUpError("");
+    setFollowUpView("");
     setPanelPos(getPanelPos());
     setEditing(true);
-    if (bucketLower === "overdue") {
-      setTimeout(() => {
-        handleOverdueClick();
-      }, 0);
-    }
   };
 
   return (
@@ -332,7 +307,7 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
         {info ? <span>{info.label}</span> : <span>No follow up</span>}
       </button>
       {editing && panelPos && createPortal(
-          <div className="followup-picker followup-picker--plain" ref={panelRef} style={{ position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 5000, maxHeight: 420, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div className="followup-picker followup-picker--plain" ref={panelRef} style={{ position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 5000, width: "fit-content", maxWidth: "min(calc(100vw - 24px), 520px)", maxHeight: 420, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div className="followup-picker__topbar">
             <div className="followup-picker__eyebrow">Follow-Up</div>
           </div>
@@ -347,27 +322,14 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
                       className={`followup-picker__action ${activeFollowUpOption === option.toLowerCase() ? "followup-picker__action--active" : ""}`}
                       onClick={() => {
                         if (option === "All") {
+                          requestIdRef.current += 1;
                           setFollowUpView("");
                           setFollowUpItems([]);
+                          setFollowUpLoading(false);
                           setFollowUpError("");
                           return;
                         }
-                        if (option === "Today") {
-                          handleTodayClick();
-                          return;
-                        }
-                        if (option === "Overdue") {
-                          handleOverdueClick();
-                          return;
-                        }
-                        if (option === "Upcoming") {
-                          handleUpcomingClick();
-                          return;
-                        }
-                        if (option === "Tomorrow") {
-                          handleTomorrowClick();
-                          return;
-                        }
+                        loadFollowUpView(option.toLowerCase());
                       }}
                     >
                       {option}
@@ -379,20 +341,30 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
           )}
           {followUpView ? (
             <div className="followup-picker__results" style={{ minHeight: 0, maxHeight: 300, overflowY: "auto" }}>
-              <div className="followup-picker__results-title">{followUpView === "overdue" ? "Overdue follow-ups" : followUpView === "upcoming" ? "Upcoming pending follow-ups" : followUpView === "tomorrow" ? "Tomorrow's follow-ups" : "Today's follow-ups"}</div>
+              <div className="followup-picker__results-title">{viewTitles[followUpView] || "Follow-ups"}</div>
               {followUpLoading ? <div className="followup-picker__results-empty">Loading follow-ups...</div> : null}
               {!followUpLoading && followUpError ? <div className="followup-picker__results-empty">{followUpError}</div> : null}
-              {!followUpLoading && !followUpError && !followUpItems.length ? <div className="followup-picker__results-empty">{followUpView === "overdue" ? "No overdue follow-ups for this lead." : followUpView === "upcoming" ? "No pending upcoming follow-ups for this lead." : followUpView === "tomorrow" ? "No follow-ups for tomorrow." : "No follow-ups for today."}</div> : null}
+              {!followUpLoading && !followUpError && !followUpItems.length ? <div className="followup-picker__results-empty">{emptyStateLabels[followUpView] || "No follow-ups found."}</div> : null}
               {!followUpLoading && !followUpError && followUpItems.length ? (
                 <div className="followup-picker__results-list">
                   {followUpItems.map((item, index) => (
                     <div key={item?.id || `${item?.title || item?.type || "followup"}-${index}`} className="followup-picker__result-item">
-                      <div className="followup-picker__result-title">{item?.title || item?.name || item?.type || "Follow-up"}</div>
-                      {followUpView !== "overdue" ? (
-                        <div className="followup-picker__result-meta"><strong>Subject:</strong> {fmtPopupLabel(item?.subject || item?.title || item?.name || item?.type || "Follow-up")}</div>
-                      ) : null}
-                      <div className="followup-picker__result-meta"><strong>Type:</strong> {fmtPopupLabel(item?.type || item?.activityType || item?.activityTypeName || "Follow-up")}</div>
-                      <div className="followup-picker__result-meta">{fmtPopupDate(item?.dueDate || item?.activityDate || item?.date || item?.createdAt)}</div>
+                      <div className="followup-picker__result-head">
+                        <div className="followup-picker__result-title">{item?.title || item?.name || item?.type || "Follow-up"}</div>
+                        <div className="followup-picker__result-type">{fmtPopupLabel(item?.type || item?.activityType || item?.activityTypeName || "Follow-up")}</div>
+                      </div>
+                      <div className="followup-picker__result-body">
+                        {followUpView !== "overdue" ? (
+                          <div className="followup-picker__result-meta">
+                            <span className="followup-picker__result-label">Subject</span>
+                            <span className="followup-picker__result-value">{fmtPopupLabel(item?.subject || item?.title || item?.name || item?.type || "Follow-up")}</span>
+                          </div>
+                        ) : null}
+                        <div className="followup-picker__result-meta followup-picker__result-meta--time">
+                          <span className="followup-picker__result-label">When</span>
+                          <span className="followup-picker__result-value">{fmtPopupDate(item?.dueDate || item?.activityDate || item?.date || item?.createdAt)}</span>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>

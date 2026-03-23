@@ -8,6 +8,8 @@ const unwrapArrayPayload = (payload) => {
   if (Array.isArray(payload?.items)) return payload.items;
   if (Array.isArray(payload?.results)) return payload.results;
   if (Array.isArray(payload?.leads)) return payload.leads;
+  if (Array.isArray(payload?.attachments)) return payload.attachments;
+  if (Array.isArray(payload?.files)) return payload.files;
   return [];
 };
 
@@ -89,24 +91,7 @@ const leadsAPI = {
     return response.data;
   },
 
-  assignLead: async (leadId, userId, userName = "", remark = "") => {
-    try {
-      const response = await apiClient.put(`/leads/${leadId}/assign`, {
-        userId,
-        userName,
-        remark,
-      });
-      return response.data;
-    } catch (error) {
-      if (error?.response?.status !== 404) throw error;
-
-      const fallbackResponse = await apiClient.put(`/Leads/assign/${leadId}`, null, {
-        params: { userId },
-      });
-      return fallbackResponse.data;
-    }
-  },
-
+ 
   bulkUpdateStatus: async (ids, status) => {
     const response = await apiClient.put("/Leads/bulk/status", {
       ids,
@@ -188,7 +173,10 @@ const leadsAPI = {
   },
 
   deleteAttachment: async (attachmentId) => {
-    const response = await apiClient.delete(`/Leads/attachments/${attachmentId}`);
+    const response = await tryRequestVariants([
+      () => apiClient.delete(`/Leads/attachments/${attachmentId}`),
+      () => apiClient.delete(`/Attachments/${attachmentId}`),
+    ]);
     return response.data;
   },
 };

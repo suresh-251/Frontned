@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { flip } from "@floating-ui/react";
 import Toast from "../../../utils/toast";
 import activitiesAPI from "../../../api/activities.api";
@@ -7,7 +7,7 @@ import meetingsAPI from "../../../api/meetings.api";
 import { FloatingDateTimePicker, FloatingInput } from "../fields";
 import {
   CALL_PURPOSE_OPTIONS,
-  CALL_STATUS_OPTIONS,
+  STATUS_OPTIONS,
   EMAIL_TEMPLATES,
   WHATSAPP_TEMPLATES,
   card,
@@ -17,9 +17,7 @@ import {
   leadName,
   sanitizePhoneNumber,
   selectFieldStyle,
-  centeredComposerFieldStyle,
   TASK_PRIORITY_OPTIONS,
-  TASK_STATUS_OPTIONS,
   toIsoString,
 } from "../shared";
 
@@ -29,7 +27,7 @@ const softOuterCardStyle = {
   boxShadow: "0 1px 2px rgba(15, 23, 42, 0.02)",
 };
 
-export default function Composer({ tab, lead, onSaved }) {
+export default function Composer({ tab, lead, onSaved, taskDraft = null, taskSubmitLabel = "", onTaskSubmit = null, onTaskCancel = null }) {
   const [templateId, setTemplateId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
@@ -65,6 +63,18 @@ export default function Composer({ tab, lead, onSaved }) {
     taskRepeat: "",
     taskDescription: "",
   });
+  const resetTaskFields = () => {
+    setV((current) => ({
+      ...current,
+      taskSubject: "",
+      taskDueDate: new Date(),
+      taskPriority: "Medium",
+      taskStatus: "Pending",
+      taskReminder: null,
+      taskRepeat: "",
+      taskDescription: "",
+    }));
+  };
   const setField = (k, val) => {
     setV((p) => ({ ...p, [k]: val }));
     setErrors((prev) => {
@@ -85,6 +95,23 @@ export default function Composer({ tab, lead, onSaved }) {
       if (t) setV((p) => ({ ...p, whatsappMessage: t.message.replaceAll("{{name}}", leadName(lead)) }));
     }
   };
+  useEffect(() => {
+    if (tab !== "tasks") return;
+    if (!taskDraft) {
+      resetTaskFields();
+      return;
+    }
+    setV((current) => ({
+      ...current,
+      taskSubject: taskDraft.subject || taskDraft.title || "",
+      taskDueDate: taskDraft.dueDate ? new Date(taskDraft.dueDate) : new Date(),
+      taskPriority: taskDraft.priority || "Medium",
+      taskStatus: taskDraft.status || "Pending",
+      taskReminder: taskDraft.reminder ? new Date(taskDraft.reminder) : null,
+      taskRepeat: taskDraft.repeat || "",
+      taskDescription: taskDraft.description || "",
+    }));
+  }, [tab, taskDraft]);
   const submit = async () => {
     if (!lead?.id) return;
     if (tab === "calls") {
@@ -171,17 +198,25 @@ export default function Composer({ tab, lead, onSaved }) {
           Toast.error("Task title is required.");
           return;
         }
-        await activitiesAPI.createTask({
-          leadId: lead.id,
+        const taskPayload = {
           subject,
           dueDate,
           priority: v.taskPriority || "Medium",
           status: v.taskStatus || "Pending",
-          reminder: toIsoString(v.taskReminder),
-          repeat: v.taskRepeat || "",
           description: v.taskDescription || "",
-          ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
-        });
+        };
+        if (onTaskSubmit) {
+          await onTaskSubmit(taskPayload);
+        } else {
+          await activitiesAPI.createTask({
+            leadId: lead.id,
+            ...taskPayload,
+            reminder: toIsoString(v.taskReminder),
+            repeat: v.taskRepeat || "",
+            ...(lead.assignedToUserId ? { assignedToUserId: Number(lead.assignedToUserId) } : {}),
+          });
+          resetTaskFields();
+        }
       }
       if (tab === "meetings") await meetingsAPI.create({
         leadId: lead.id,
@@ -221,23 +256,22 @@ export default function Composer({ tab, lead, onSaved }) {
             {TASK_PRIORITY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           </FloatingInput>
           <FloatingInput as="select" label="Status" value={v.taskStatus} onChange={(e) => setField("taskStatus", e.target.value)} style={selectFieldStyle}>
-            {TASK_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+            {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
           </FloatingInput>
           <FloatingDateTimePicker label="Reminder" selected={v.taskReminder} onChange={(date) => setField("taskReminder", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
-          <FloatingInput label="Repeat" value={v.taskRepeat} onChange={(e) => setField("taskRepeat", e.target.value)} />
-          <FloatingInput as="textarea" autoGrow label="Task Notes" style={{ gridColumn: "1 / -1", width: "100%", minHeight: 84, padding: "10px 12px 6px" }} value={v.taskDescription} onChange={(e) => setField("taskDescription", e.target.value)} />
+          <FloatingInput as="textarea" autoGrow label="Task Notes" style={{ width: "100%", height: 44, minHeight: 44, padding: "14px 12px 8px" }} value={v.taskDescription} onChange={(e) => setField("taskDescription", e.target.value)} />
         </div>
       ) : null}
       {tab === "notes" ? <textarea style={{ ...input, minHeight: 110, resize: "vertical" }} value={v.note} onChange={(e) => setField("note", e.target.value)} placeholder="Add a note for the sales team" /> : null}
       {tab === "emails" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 0.9fr) minmax(0, 1.1fr)", gap: 12, alignItems: "start" }}>
         <select style={input} value={templateId} onChange={(e) => applyTemplate(e.target.value)}><option value="">Select template</option>{EMAIL_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
         <input style={input} value={v.toEmail} onChange={(e) => setField("toEmail", e.target.value)} placeholder="recipient@email.com" />
-        <input style={{ ...input, ...centeredComposerFieldStyle, gridColumn: "1 / -1" }} value={v.emailSubject} onChange={(e) => setField("emailSubject", e.target.value)} placeholder="Email subject" />
-        <textarea style={{ ...input, ...centeredComposerFieldStyle, minHeight: 140, resize: "vertical", gridColumn: "1 / -1" }} value={v.emailBody} onChange={(e) => setField("emailBody", e.target.value)} placeholder="Compose your email" />
+        <input style={{ ...input, width: "80%", gridColumn: "1 / -1" }} value={v.emailSubject} onChange={(e) => setField("emailSubject", e.target.value)} placeholder="Email subject" />
+        <textarea style={{ ...input, width: "80%", minHeight: 140, resize: "vertical", gridColumn: "1 / -1" }} value={v.emailBody} onChange={(e) => setField("emailBody", e.target.value)} placeholder="Compose your email" />
       </div> : null}
       {tab === "whatsapp" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12 }}>
-        <select style={{ ...input, ...centeredComposerFieldStyle }} value={templateId} onChange={(e) => applyTemplate(e.target.value)}><option value="">Select template</option>{WHATSAPP_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-        <textarea style={{ ...input, ...centeredComposerFieldStyle, minHeight: 110, resize: "vertical" }} value={v.whatsappMessage} onChange={(e) => setField("whatsappMessage", e.target.value)} placeholder="Write the WhatsApp message" />
+        <select style={{ ...input, width: "80%" }} value={templateId} onChange={(e) => applyTemplate(e.target.value)}><option value="">Select template</option>{WHATSAPP_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+        <textarea style={{ ...input, width: "80%", minHeight: 110, resize: "vertical" }} value={v.whatsappMessage} onChange={(e) => setField("whatsappMessage", e.target.value)} placeholder="Write the WhatsApp message" />
       </div> : null}
       {tab === "calls" ? <>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
@@ -260,13 +294,13 @@ export default function Composer({ tab, lead, onSaved }) {
           <FloatingDateTimePicker label={v.callMode === "schedule" ? "Scheduled Time" : "Call Time"} selected={v.callStartTime} error={errors.callStartTime} onChange={(date) => setField("callStartTime", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
           <FloatingInput as="select" label="Call Status" value={v.callStatus} onChange={(e) => setField("callStatus", e.target.value)} style={selectFieldStyle}>
             <option value="">Select status</option>
-            {CALL_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+            {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
           </FloatingInput>
           <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(e) => setField("callType", e.target.value)} style={selectFieldStyle}>
             <option value="Outgoing">Outgoing</option>
             <option value="Incoming">Incoming</option>
           </FloatingInput>
-          <FloatingInput as="textarea" autoGrow label={v.callMode === "schedule" ? "Call Agenda / Notes" : "Call Notes"} style={{ gridColumn: "1 / -1", width: "100%", minHeight: 74, padding: "10px 12px 6px" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} />
+          <FloatingInput as="textarea" autoGrow label={v.callMode === "schedule" ? "Call Agenda / Notes" : "Call Notes"} style={{ gridColumn: "1 / -1", width: "100%", height: 44, minHeight: 44, padding: "14px 12px 8px" }} value={v.callDescription} onChange={(e) => setField("callDescription", e.target.value)} />
           {v.callMode === "log" ? <div style={{ gridColumn: "1 / -1", marginTop: 2 }}>
             <button type="button" onClick={() => setShowCallDetails((prev) => !prev)} style={{ border: "1px solid #dbe4f0", borderRadius: 12, padding: "9px 12px", background: "#f8fbff", color: "#475569", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
               {showCallExtraFields ? "Hide extra details" : "Add more details"}
@@ -280,30 +314,30 @@ export default function Composer({ tab, lead, onSaved }) {
       {tab === "meetings" ? <div style={{ padding: 0, borderRadius: 0, background: "transparent", border: "none", boxShadow: "none" }}>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16 }}>
           {(() => {
-            const roomyFieldStyle = { height: 50, minHeight: 50, padding: "14px 14px 8px" };
+            const consistentFieldStyle = { height: 44, minHeight: 44, padding: "12px 11px 7px" };
             return <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
-                <FloatingInput label="Meeting Title" style={roomyFieldStyle} value={v.meetingTitle} onChange={(e) => setField("meetingTitle", e.target.value)} />
-                <FloatingInput as="select" style={roomyFieldStyle} label="Provider" value={v.meetingProvider} onChange={(e) => setField("meetingProvider", e.target.value)}>
+                <FloatingInput label="Meeting Title" style={consistentFieldStyle} value={v.meetingTitle} onChange={(e) => setField("meetingTitle", e.target.value)} />
+                <FloatingInput as="select" style={consistentFieldStyle} label="Provider" value={v.meetingProvider} onChange={(e) => setField("meetingProvider", e.target.value)}>
                   <option value="Zoom">Zoom</option>
                   <option value="Teams">Teams</option>
                 </FloatingInput>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
-                <FloatingDateTimePicker label="Start Time" style={roomyFieldStyle} selected={v.meetingStartTime} onChange={(date) => setField("meetingStartTime", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
-                <FloatingDateTimePicker label="End Time" style={roomyFieldStyle} selected={v.meetingEndTime} minDate={v.meetingStartTime || undefined} onChange={(date) => setField("meetingEndTime", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
+                <FloatingDateTimePicker label="Start Time" style={consistentFieldStyle} selected={v.meetingStartTime} onChange={(date) => setField("meetingStartTime", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
+                <FloatingDateTimePicker label="End Time" style={consistentFieldStyle} selected={v.meetingEndTime} minDate={v.meetingStartTime || undefined} onChange={(date) => setField("meetingEndTime", date)} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
-                <FloatingInput as="select" style={roomyFieldStyle} label="Status" value={v.meetingStatus} onChange={(e) => setField("meetingStatus", e.target.value)}>
+                <FloatingInput as="select" style={consistentFieldStyle} label="Status" value={v.meetingStatus} onChange={(e) => setField("meetingStatus", e.target.value)}>
                   <option value="Pending">Pending</option>
                   <option value="Incomplete">Incomplete</option>
                   <option value="Completed">Completed</option>
                   <option value="Cancelled">Cancelled</option>
                 </FloatingInput>
+                <FloatingInput as="textarea" autoGrow label="Meeting Notes" style={consistentFieldStyle} value={v.meetingDescription} onChange={(e) => setField("meetingDescription", e.target.value)} />
               </div>
             </>;
           })()}
-          <FloatingInput as="textarea" autoGrow label="Meeting Notes" style={{ minHeight: 72, padding: "10px 12px 6px" }} value={v.meetingDescription} onChange={(e) => setField("meetingDescription", e.target.value)} />
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <div style={{ minWidth: 190 }}>
               <button className="btn-primary" onClick={submit} disabled={submitting} style={{ minWidth: 170, minHeight: 44, border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>
@@ -313,7 +347,10 @@ export default function Composer({ tab, lead, onSaved }) {
           </div>
         </div>
       </div> : null}
-      {tab !== "meetings" ? <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}><button className="btn-primary" onClick={submit} disabled={submitting} style={{ border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>{submitting ? "Saving..." : tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Open WhatsApp" : tab === "calls" ? "Save Call" : tab === "tasks" ? "Save Task" : "Save Note"}</button></div> : null}
+      {tab !== "meetings" ? <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+        {tab === "tasks" && onTaskCancel ? <button type="button" className="btn-ghost" onClick={onTaskCancel} disabled={submitting}>Cancel</button> : null}
+        <button className="btn-primary" onClick={submit} disabled={submitting} style={{ border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>{submitting ? "Saving..." : taskSubmitLabel || (tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Open WhatsApp" : tab === "calls" ? "Save Call" : tab === "tasks" ? "Save Task" : "Save Note")}</button>
+      </div> : null}
     </div>
   );
 }

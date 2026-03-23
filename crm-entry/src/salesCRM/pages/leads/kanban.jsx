@@ -1,31 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Calendar, User } from "lucide-react";
+import { User } from "lucide-react";
 import { STATUS_LIST, STATUS_META } from "./constants";
-import DatePicker from "react-datepicker";
-import { formatLeadSource, formatStatus, getFollowUpLabel, getInitials, getScoreTier, offsetDay, todayStr } from "./utils";
-import { parseDateTimeValue, toDateTimeValue } from "./shared";
-import { IX } from "./shared";
+import { formatLeadSource, formatStatus, getInitials, getScoreTier } from "./utils";
 
 export function KanbanBoard({ leads, groupBy, setGroupBy, onUpdateLead, onOpenDetails }) {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
-  const [pendingFollowUpDrop, setPendingFollowUpDrop] = useState(null);
   const boardRef = useRef(null);
   const dragScrollRef = useRef({ direction: 0, rafId: null });
-const followUpColumns = ["Past Follow-Ups", "Today", "Tomorrow", "Upcoming", "No Follow Up"];
-const followUpMeta = {
-    "Past Follow-Ups": { color: "#dc2626", bg: "#fee2e2" },
-    Today: { color: "#ea580c", bg: "#ffedd5" },
-    Tomorrow: { color: "#16a34a", bg: "#dcfce7" },
-    Upcoming: { color: "#2563eb", bg: "#dbeafe" },
-    "No Follow Up": { color: "#64748b", bg: "#e2e8f0" },
-};
-
-const withDefaultTime = (dateStr) => {
-  if (!dateStr) return "";
-  const date = new Date(`${dateStr}T09:00:00`);
-  return toDateTimeValue(date);
-};
 
   const grouped = useMemo(() => {
     if (groupBy === "status") {
@@ -33,24 +15,6 @@ const withDefaultTime = (dateStr) => {
         acc[status] = leads.filter((lead) => (lead.status || STATUS_LIST[0]) === status);
         return acc;
       }, {});
-    }
-
-    if (groupBy === "followUpDate") {
-      const map = followUpColumns.reduce((acc, label) => {
-        acc[label] = [];
-        return acc;
-      }, {});
-      const today = todayStr();
-      const tomorrow = offsetDay(1);
-      leads.forEach((lead) => {
-        const followUpDate = lead.followUpDate ? String(lead.followUpDate).split("T")[0] : "";
-        if (!followUpDate) map["No Follow Up"].push(lead);
-        else if (followUpDate < today) map["Past Follow-Ups"].push(lead);
-        else if (followUpDate === today) map.Today.push(lead);
-        else if (followUpDate === tomorrow) map.Tomorrow.push(lead);
-        else map.Upcoming.push(lead);
-      });
-      return map;
     }
 
     const map = {};
@@ -65,7 +29,6 @@ const withDefaultTime = (dateStr) => {
 
   const columnKeys = useMemo(() => {
     if (groupBy === "status") return STATUS_LIST;
-    if (groupBy === "followUpDate") return followUpColumns;
     return Object.keys(grouped);
   }, [groupBy, grouped]);
 
@@ -109,14 +72,6 @@ const withDefaultTime = (dateStr) => {
     else stopAutoScroll();
   };
 
-  const commitFollowUpDrop = (leadId, date) => {
-    if (!date) return;
-    onUpdateLead(leadId, "followUpDate", date);
-    setPendingFollowUpDrop(null);
-    setDraggedId(null);
-    setDragOverCol(null);
-  };
-
   const isSourceReadOnly = groupBy === "source";
 
   return (
@@ -132,7 +87,6 @@ const withDefaultTime = (dateStr) => {
         <div className="kanban-toolbar__control">
           <select value={groupBy} onChange={(event) => setGroupBy(event.target.value)}>
             <option value="status">Status</option>
-            <option value="followUpDate">Follow-Up</option>
             <option value="assignee">Assignee</option>
             <option value="source">Source</option>
           </select>
@@ -140,7 +94,7 @@ const withDefaultTime = (dateStr) => {
       </div>
       <div className="kanban-board" ref={boardRef} onDragOver={handleBoardDragOver} onDragEnd={stopAutoScroll} onDrop={stopAutoScroll}>
         {columnKeys.map((columnKey) => {
-          const meta = groupBy === "status" ? STATUS_META[columnKey] || { color: "#374151", bg: "#f3f4f6" } : groupBy === "followUpDate" ? followUpMeta[columnKey] || { color: "#374151", bg: "#f3f4f6" } : { color: "#374151", bg: "#f3f4f6" };
+          const meta = groupBy === "status" ? STATUS_META[columnKey] || { color: "#374151", bg: "#f3f4f6" } : { color: "#374151", bg: "#f3f4f6" };
           const colLeads = grouped[columnKey] || [];
           const isOver = dragOverCol === columnKey;
 
@@ -159,23 +113,7 @@ const withDefaultTime = (dateStr) => {
                 if (isSourceReadOnly) return;
                 event.preventDefault();
                 if (draggedId) {
-                  let nextValue = columnKey;
-                  if (groupBy === "followUpDate") {
-                    if (columnKey === "Past Follow-Ups") {
-                      setPendingFollowUpDrop({ leadId: draggedId, lane: columnKey, suggestedDate: withDefaultTime(offsetDay(-1)), min: "", max: todayStr() });
-                      stopAutoScroll();
-                      return;
-                    }
-                    if (columnKey === "Upcoming") {
-                      setPendingFollowUpDrop({ leadId: draggedId, lane: columnKey, suggestedDate: withDefaultTime(offsetDay(3)), min: offsetDay(2), max: "" });
-                      stopAutoScroll();
-                      return;
-                    }
-                    if (columnKey === "Today") nextValue = todayStr();
-                    else if (columnKey === "Tomorrow") nextValue = offsetDay(1);
-                    else if (columnKey === "No Follow Up") nextValue = "";
-                  }
-                  onUpdateLead(draggedId, groupBy, nextValue);
+                  onUpdateLead(draggedId, groupBy, columnKey);
                 }
                 setDraggedId(null);
                 setDragOverCol(null);
@@ -213,11 +151,6 @@ const withDefaultTime = (dateStr) => {
                       </div>
 
                       <div className="kanban-card__meta"><User size={10} /><span>{lead.assignee}</span></div>
-                      {lead.followUpDate && (() => {
-                        const info = getFollowUpLabel(lead.followUpDate);
-                        const color = info.type === "overdue" ? "#dc2626" : info.type === "today" ? "#d97706" : info.type === "tomorrow" ? "#0284c7" : "#6b7280";
-                        return <div className="kanban-card__followup" style={{ color }}><Calendar size={10} />{info.label}</div>;
-                      })()}
                     </div>
                   );
                 })}
@@ -226,32 +159,6 @@ const withDefaultTime = (dateStr) => {
           );
         })}
       </div>
-      {pendingFollowUpDrop && (
-        <div className="overlay" onClick={() => setPendingFollowUpDrop(null)}>
-          <div className="modal" style={{ width: 304, borderRadius: 14 }} onClick={(event) => event.stopPropagation()}>
-            <div className="modal-hdr">
-              <div><div className="modal-title">Set Follow-Up Date</div></div>
-              <button className="icon-btn modal-close" onClick={() => setPendingFollowUpDrop(null)}><IX s={15} /></button>
-            </div>
-            <div className="modal-body" style={{ padding: "14px", display: "grid" }}>
-              <DatePicker
-                selected={parseDateTimeValue(pendingFollowUpDrop.suggestedDate)}
-                onChange={(date) => setPendingFollowUpDrop((current) => ({ ...current, suggestedDate: toDateTimeValue(date) }))}
-                showTimeSelect
-                timeIntervals={15}
-                dateFormat="MMM d, yyyy h:mm aa"
-                minDate={pendingFollowUpDrop.min ? new Date(`${pendingFollowUpDrop.min}T00:00:00`) : undefined}
-                maxDate={pendingFollowUpDrop.max ? new Date(`${pendingFollowUpDrop.max}T23:59:59`) : undefined}
-                className="kanban-followup-date-input"
-              />
-            </div>
-            <div className="modal-footer">
-              <button className="btn-ghost" onClick={() => setPendingFollowUpDrop(null)}>Cancel</button>
-              <button className="btn-primary" onClick={() => commitFollowUpDrop(pendingFollowUpDrop.leadId, pendingFollowUpDrop.suggestedDate)} disabled={!pendingFollowUpDrop.suggestedDate}>Save Date</button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

@@ -1,20 +1,9 @@
 import { useEffect, useState } from "react";
-import { Activity, Calendar, FileText, Mail, Paperclip, Phone, UserCheck } from "lucide-react";
+import { Activity, Calendar, FileText, Mail, Paperclip, Phone} from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import { BASE_URL } from "../../api/apiClient";
-import { formatLeadSource, formatStatus } from "../../pages/leads/utils";
+import {formatStatus } from "../../pages/leads/utils";
 import Toast from "../../utils/toast";
-
-export const TABS = [
-  ["activity", "Activity", Activity],
-  ["tasks", "Tasks", UserCheck],
-  ["notes", "Notes", FileText],
-  ["emails", "Emails", Mail],
-  ["calls", "Calls", Phone],
-  ["whatsapp", "WhatsApp", FaWhatsapp],
-  ["meetings", "Meetings", Calendar],
-  ["attachments", "Attachments", Paperclip],
-];
 
 export const EMAIL_TEMPLATES = [
   { id: "intro", name: "Warm Introduction", subject: "A quick introduction for {{name}}", body: "Hi {{name}},\n\nI hope you're doing well. I wanted to personally reach out and introduce myself. Based on your interest, I believe we can help you move faster and with more clarity.\n\nIf you're open to it, I would be happy to understand your current requirement and suggest the most suitable next step.\n\nPlease let me know a convenient time to connect.\n\nBest regards," },
@@ -41,15 +30,8 @@ export const CALL_PURPOSE_OPTIONS = [
   "Support",
   "Closing",
 ];
-export const CALL_STATUS_OPTIONS = [
+export const STATUS_OPTIONS = [
   "Pending",
-  "Incomplete",
-  "Completed",
-  "Cancelled",
-];
-export const TASK_STATUS_OPTIONS = [
-  "Pending",
-  "Incomplete",
   "Completed",
   "Cancelled",
 ];
@@ -249,7 +231,7 @@ export const getApiErrorMessage = (error, fallback = "Unable to save") => {
   return fallback;
 };
 export const attachmentUrl = (a) => {
-  const raw = a?.fileUrl || a?.url || a?.filePath || a?.path || "";
+  const raw = a?.fileUrl || a?.url || a?.downloadUrl || a?.attachmentUrl || a?.filePath || a?.path || "";
   if (!raw) return "";
   if (/^https?:\/\//i.test(raw)) return raw;
   return `${BASE_URL.replace(/\/api$/, "")}/${String(raw).replace(/^\/+/, "")}`;

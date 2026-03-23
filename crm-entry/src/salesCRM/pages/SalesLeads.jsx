@@ -91,7 +91,7 @@ const useSalesRole = () => {
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function SalesLeads() {
   const { isManager, id: authId } = useSalesRole();
-  const { leads, loading, reload, assignLead, changeStatus, saveRemark } = useAssignedLeads();
+  const { leads, loading, reload, changeStatus, saveRemark } = useAssignedLeads();
 
   const [employees, setEmployees]       = useState([]);
   const [salesDeptId, setSalesDeptId]   = useState(null);
@@ -190,22 +190,6 @@ export default function SalesLeads() {
     try { await saveRemark(lead.id, remark); }
     catch { toast.error("Failed to save remark"); }
     finally { setSavingLeads(prev => { const n = new Set(prev); n.delete(lead.id); return n; }); }
-  };
-
-  const handleAssignmentAction = async () => {
-    if (!targetUserId) return toast.error("Select an employee");
-    const target = employees.find(e => e.userId === targetUserId);
-    const tid = toast.loading("Assigning lead...");
-    try {
-      await assignLead(selectedLead.id, target.userId, target.username, "Routed by Sales Manager");
-      toast.success(`Assigned to ${target.username}`, { id: tid });
-      setSelectedLead(null);
-      setTargetUserId("");
-      setEmpSearchQuery("");
-      reload({ departmentId: salesDeptId });
-    } catch {
-      toast.error("Assignment failed", { id: tid });
-    }
   };
 
   const exportToExcel = () => {

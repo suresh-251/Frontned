@@ -2135,7 +2135,7 @@ cursor:pointer;
 
 .followup-picker__actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
 }
 
@@ -2153,6 +2153,7 @@ cursor:pointer;
   font-size: 10.5px;
   font-weight: 800;
   line-height: 1.2;
+  white-space: nowrap;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
@@ -2192,18 +2193,45 @@ cursor:pointer;
 }
 
 .followup-picker__result-item {
-  padding: 10px 11px;
-  border: 1px solid #e1eaf4;
-  border-radius: 12px;
+  padding: 11px 12px;
+  border: 1px solid #dbe6f2;
+  border-radius: 14px;
   background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.followup-picker__result-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.followup-picker__result-body {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .followup-picker__result-title {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 800;
   color: #0f172a;
   line-height: 1.35;
   word-break: break-word;
+}
+
+.followup-picker__result-type {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef4ff;
+  border: 1px solid #d6e4ff;
+  color: #315c85;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .followup-picker__result-meta,
@@ -2213,9 +2241,29 @@ cursor:pointer;
   line-height: 1.45;
 }
 
-.followup-picker__result-meta strong {
+.followup-picker__result-meta {
+  display: grid;
+  gap: 2px;
+}
+
+.followup-picker__result-meta--time {
+  padding-top: 2px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.followup-picker__result-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.followup-picker__result-value {
+  font-size: 11.5px;
+  font-weight: 600;
   color: #334155;
-  font-weight: 700;
+  word-break: break-word;
 }
 
 .followup-picker--plain .react-datepicker {

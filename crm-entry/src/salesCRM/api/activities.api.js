@@ -111,6 +111,11 @@ const activitiesAPI = {
     return response.data;
   },
 
+  updateTask: async (id, taskData) => {
+    const response = await apiClient.patch(`/Activities/Task/${id}`, taskData);
+    return response.data;
+  },
+
   createMeeting: async (meetingData) => {
     const response = await apiClient.post('/Activities/meeting', meetingData);
     return response.data;

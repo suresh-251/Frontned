@@ -1,34 +1,14 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { fmtDate, fmtTime } from "../shared";
 
-function HistoryTooltip({ item }) {
-  const lines = [item?.meta, item?.preview].filter(Boolean).join("\n\n").trim();
-  const isCall = item?.kind === "calls";
-  const duration = Number(item?.durationMinutes || 0);
-  const hasDuration = isCall && Number.isFinite(duration) && duration > 0;
-  const normalized = hasDuration ? Math.min(1, duration / 60) : 0;
-  const graphBars = [0.25, 0.4, 0.55, 0.7, 0.85].map((factor) => Math.max(0.15, factor * normalized));
-  if (!lines && !hasDuration) return null;
-  return (
-    <div style={{ position: "absolute", left: "calc(100% + 14px)", top: 0, width: 280, padding: "12px 14px", borderRadius: 16, border: "1px solid #dbe4f0", background: "rgba(255,255,255,0.98)", boxShadow: "0 24px 50px rgba(15, 23, 42, 0.14)", color: "#334155", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", zIndex: 8, pointerEvents: "none" }}>
-      {lines ? <div>{lines}</div> : null}
-      {hasDuration ? (
-        <div style={{ marginTop: lines ? 12 : 0 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>Call duration</div>
-          <div style={{ marginTop: 6, display: "flex", alignItems: "flex-end", gap: 4, height: 32 }}>
-            {graphBars.map((height, idx) => (
-              <div key={idx} style={{ width: 10, height: Math.max(6, Math.round(height * 32)), borderRadius: 6, background: "#bfdbfe" }} />
-            ))}
-          </div>
-          <div style={{ marginTop: 6, fontSize: 11, color: "#94a3b8" }}>{duration} min</div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
+const looksLikeUrl = (value = "") => /^https?:\/\//i.test(String(value).trim());
+const truncatePreview = (value = "", limit = 110) => {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, limit).trimEnd()}...`;
+};
 
-export default function TabHistoryTimeline({ items, emptyLabel, icon: Icon }) {
-  const [hoveredId, setHoveredId] = useState(null);
+export default function TabHistoryTimeline({ items, emptyLabel, icon: Icon, renderItemActions = null }) {
   const groups = useMemo(() => {
     const sortedItems = [...items].sort((a, b) => {
       const aTime = a?.date ? new Date(a.date).getTime() : 0;
@@ -68,25 +48,37 @@ export default function TabHistoryTimeline({ items, emptyLabel, icon: Icon }) {
           <div style={{ position: "relative" }}>
             <div style={{ position: "absolute", left: 117, top: 0, bottom: 0, width: 1, background: "#dbe4f0" }} />
             {group.map((item, idx) => {
-              const active = hoveredId === item.id;
+              const metaText = String(item?.meta || "").trim();
+              const inlineLink = looksLikeUrl(metaText) ? metaText : "";
+              const descriptionText = String(item?.description || "").trim();
+              const shouldTruncateDescription = item?.kind === "emails" || item?.kind === "whatsapp";
+              const previewDescription = shouldTruncateDescription ? truncatePreview(descriptionText) : descriptionText;
               return (
                 <div
                   key={`${item.id}-${idx}`}
                   style={{ display: "grid", gridTemplateColumns: "82px 44px minmax(0, 1fr)", gap: 12, alignItems: "start", paddingBottom: 20 }}
-                  onMouseEnter={() => setHoveredId(item.id)}
-                  onMouseLeave={() => setHoveredId(null)}
                 >
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", paddingTop: 10 }}>{fmtTime(item?.date)}</div>
                   <div style={{ width: 44, display: "flex", justifyContent: "center" }}>
-                    <div style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #dbe4f0", background: active ? "#eef4ff" : "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", position: "relative", zIndex: 1 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #dbe4f0", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", position: "relative", zIndex: 1 }}>
                       <Icon size={15} />
                     </div>
                   </div>
                   <div style={{ position: "relative", paddingTop: 7, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b", lineHeight: 1.4, wordBreak: "break-word" }}>{item.title}</div>
-                    {item.description ? <div style={{ marginTop: 2, fontSize: 13, lineHeight: 1.5, color: "#334155", wordBreak: "break-word" }}>{item.description}</div> : null}
+                    {descriptionText ? <div title={shouldTruncateDescription ? descriptionText : undefined} style={{ marginTop: 2, fontSize: 13, lineHeight: 1.5, color: "#334155", wordBreak: "break-word", cursor: shouldTruncateDescription ? "help" : "default" }}>{previewDescription}</div> : null}
+                    {inlineLink ? (
+                      <a
+                        href={inlineLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ display: "inline-flex", marginTop: 6, fontSize: 12.5, fontWeight: 700, color: "#2563eb", textDecoration: "none", wordBreak: "break-all" }}
+                      >
+                        Join Meeting
+                      </a>
+                    ) : null}
                     {item.author ? <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.4, color: "#64748b", wordBreak: "break-word" }}>{`by ${item.author}`}</div> : null}
-                    {active ? <HistoryTooltip item={item} /> : null}
+                    {renderItemActions ? <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>{renderItemActions(item)}</div> : null}
                   </div>
                 </div>
               );

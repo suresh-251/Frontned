@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Activity,
   Calendar,
+  Edit3,
   FileText,
   Mail,
   MapPin,
@@ -17,7 +18,6 @@ import {
 import leadsAPI from "../../api/leads.api";
 import activitiesAPI from "../../api/activities.api";
 import meetingsAPI from "../../api/meetings.api";
-import notesAPI from "../../api/notes.api";
 import Toast from "../../utils/toast";
 import { formatLeadSource, formatStatus } from "../../pages/leads/utils";
 import { InfoRow } from "./fields";
@@ -30,9 +30,9 @@ import {
   CONTACT_ROLE_OPTIONS,
   CONTACT_SHORTCUTS,
   DEAL_STAGE_OPTIONS,
-  TABS,
   assignee,
   attachmentUrl,
+  card,
   compactMeetingDate,
   contactShortcutButtonStyle,
   contactShortcutIconColor,
@@ -48,7 +48,6 @@ import {
   hasValue,
   leadName,
   mapActivity,
-  mapCallActivity,
   mapComm,
   mapMeetingRecord,
   meetingMetaValue,
@@ -59,6 +58,58 @@ import {
   timelineDescription,
   timelineIcon,
 } from "./shared";
+
+const LEAD_TABS = [
+  ["activity", "Activity", Activity],
+  ["tasks", "Tasks", UserCheck],
+  ["notes", "Notes", FileText],
+  ["emails", "Emails", Mail],
+  ["calls", "Calls", Phone],
+  ["whatsapp", "WhatsApp", FaWhatsapp],
+  ["meetings", "Meetings", Calendar],
+  ["attachments", "Attachments", Paperclip],
+];
+
+const mapTaskTimelineItem = (item, index) => {
+  const rawType = String(item?.type || item?.eventType || "Task").trim();
+  const rawDescription = String(item?.description || "").trim();
+  const cleanedDescription = rawDescription
+    .replace(/^Task\s+(created|updated|deleted)\s*:\s*/i, "")
+    .trim();
+
+  return {
+    id: item?.id || `task-timeline-${index}-${item?.date || rawType}`,
+    kind: "tasks",
+    title: cleanedDescription || rawType,
+    description: cleanedDescription && cleanedDescription !== rawType ? rawType : "",
+    date: item?.date || item?.createdAt || item?.eventDate || item?.updatedAt || null,
+    author: item?.createdByName || item?.userName || item?.author || item?.createdBy || "",
+    rawDescription,
+  };
+};
+
+const mapCallTimelineItem = (item, index) => {
+  const rawType = String(item?.type || item?.eventType || "Call").trim();
+  const rawDescription = String(item?.description || "").trim();
+  const cleanedDescription = rawDescription
+    .replace(/^Call\s+(completed|logged|scheduled)\s*:\s*/i, "")
+    .trim();
+
+  return {
+    id: item?.id || `call-timeline-${index}-${item?.date || rawType}`,
+    kind: "calls",
+    title: cleanedDescription || rawType,
+    description: cleanedDescription && cleanedDescription !== rawType ? rawType : rawDescription,
+    date: item?.date || item?.createdAt || item?.eventDate || item?.updatedAt || null,
+    author: item?.createdByName || item?.userName || item?.author || item?.createdBy || "",
+  };
+};
+
+const truncatePreview = (value = "", limit = 110) => {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, limit).trimEnd()}...`;
+};
 
 export function LeftPanel({ lead, onConvert, onOpenTab, stacked = false, mobile = false, hideAvatar = false }) {
   const location = [lead?.address, lead?.city, lead?.state, lead?.country, lead?.zipCode || lead?.zip].filter(Boolean).join(", ");
@@ -302,6 +353,9 @@ export function Timeline({ items, loading, onRefresh, stacked = false, mobile = 
                 const author = timelineAuthor(item);
                 const eventTitle = item.type || item.eventType || "Update";
                 const eventDescription = timelineDescription(item);
+                const lowerType = String(item?.type || item?.eventType || "").toLowerCase();
+                const shouldTruncateDescription = lowerType.includes("email") || lowerType.includes("whatsapp");
+                const previewDescription = shouldTruncateDescription ? truncatePreview(eventDescription) : eventDescription;
                 return (
                   <div key={`${timelineDateValue(item)}-${item.type || item.eventType || idx}`} style={{ display: "grid", gridTemplateColumns: "78px 42px minmax(0, 1fr)", gap: 10, alignItems: "start", paddingBottom: 22 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", paddingTop: 10 }}>{fmtTime(timelineDateValue(item))}</div>
@@ -312,7 +366,7 @@ export function Timeline({ items, loading, onRefresh, stacked = false, mobile = 
                     </div>
                     <div style={{ paddingTop: 7, minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1e293b", lineHeight: 1.35, wordBreak: "break-word" }}>{eventTitle}</div>
-                      {eventDescription ? <div style={{ marginTop: 1, fontSize: 12.5, lineHeight: 1.45, color: "#334155", wordBreak: "break-word" }}>{eventDescription}</div> : null}
+                      {eventDescription ? <div title={shouldTruncateDescription ? eventDescription : undefined} style={{ marginTop: 1, fontSize: 12.5, lineHeight: 1.45, color: "#334155", wordBreak: "break-word", cursor: shouldTruncateDescription ? "help" : "default" }}>{previewDescription}</div> : null}
                       <div style={{ marginTop: 2, fontSize: 11.5, lineHeight: 1.35, color: "#64748b", wordBreak: "break-word" }}>
                         {author ? `by ${author} ` : ""}
                         {fmtDate(timelineDateValue(item), false)}
@@ -330,18 +384,91 @@ export function Timeline({ items, loading, onRefresh, stacked = false, mobile = 
 }
 
 function Attachments({ leadId }) {
-  const [items, setItems] = useState([]); const [loading, setLoading] = useState(false); const [uploading, setUploading] = useState(false);
-  const load = async () => { if (!leadId) return; setLoading(true); try { const data = await leadsAPI.getAttachments(leadId); setItems(Array.isArray(data) ? data : []); } catch (e) { Toast.error(e?.response?.data?.message || "Unable to load attachments"); } finally { setLoading(false); } };
-  useEffect(() => { load(); }, [leadId]);
-  const upload = async (e) => { const file = e.target.files?.[0]; if (!file || !leadId) return; setUploading(true); try { await leadsAPI.uploadAttachment(leadId, file); Toast.success("Attachment uploaded"); await load(); } catch (err) { Toast.error(err?.response?.data?.message || "Unable to upload attachment"); } finally { setUploading(false); e.target.value = ""; } };
-  const remove = async (id) => { try { await leadsAPI.deleteAttachment(id); Toast.success("Attachment deleted"); await load(); } catch (err) { Toast.error(err?.response?.data?.message || "Unable to delete attachment"); } };
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const normalizeAttachment = (item, index) => ({
+    id: item?.id ?? `attachment-${index}`,
+    fileName: String(item?.fileName || item?.name || "Attachment"),
+    url: attachmentUrl(item),
+    uploadedAt: item?.uploadedAt || item?.createdAt || item?.date || "",
+  });
+
+  const loadAttachments = async () => {
+    if (!leadId) {
+      setItems([]);
+      setErrorMessage("Missing lead ID for attachments.");
+      return;
+    }
+    setLoading(true);
+    setErrorMessage("");
+    try {
+      const data = await leadsAPI.getAttachments(leadId);
+      const normalized = (Array.isArray(data) ? data : []).map(normalizeAttachment);
+      setItems(normalized);
+    } catch (error) {
+      setItems([]);
+      setErrorMessage(error?.response?.data?.message || "Unable to load attachments");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAttachments();
+  }, [leadId]);
+
+  const handleUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !leadId) return;
+    setUploading(true);
+    setErrorMessage("");
+    try {
+      await leadsAPI.uploadAttachment(leadId, file);
+      Toast.success("Attachment uploaded");
+      await loadAttachments();
+    } catch (error) {
+      setErrorMessage(error?.response?.data?.message || "Unable to upload attachment");
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ ...card, padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><div><div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Lead Attachments</div><div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b" }}>Upload and review files saved against this lead.</div></div><label className="btn-primary" style={{ cursor: uploading ? "progress" : "pointer", border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}><UploadCloud size={15} />{uploading ? "Uploading..." : "Add File"}<input type="file" hidden onChange={upload} /></label></div>
-      <div style={{ ...card, padding: 16, minHeight: 260 }}>
+      <div style={{ ...card, padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Lead Attachments</div>
+          <div style={{ marginTop: 4, fontSize: 12.5, color: "#64748b" }}>Upload and open files saved against this lead.</div>
+        </div>
+        <label className="btn-primary" style={{ cursor: uploading ? "progress" : "pointer", border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>
+          <UploadCloud size={15} />
+          {uploading ? "Uploading..." : "Add File"}
+          <input type="file" hidden onChange={handleUpload} />
+        </label>
+      </div>
+      <div style={{ ...card, padding: 16, minHeight: 260, display: "grid", gap: 12 }}>
         {loading ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading attachments...</div> : null}
-        {!loading && !items.length ? <div style={{ color: "#94a3b8", fontSize: 13 }}>No attachments found.</div> : null}
-        {!loading && items.map((a) => <div key={a.id || a.fileName} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 0", borderBottom: "1px solid #eef2f7" }}><div><div style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b", wordBreak: "break-word" }}>{a.fileName || a.name || "Attachment"}</div><div style={{ marginTop: 4, fontSize: 12, color: "#94a3b8" }}>{fmtDate(a.uploadedAt || a.createdAt)}</div></div><div style={{ display: "flex", alignItems: "center", gap: 8 }}>{attachmentUrl(a) ? <a href={attachmentUrl(a)} target="_blank" rel="noreferrer" className="btn-ghost" style={{ textDecoration: "none" }}>Open</a> : null}<button className="icon-btn" onClick={() => remove(a.id)} title="Delete attachment"><Trash2 size={16} /></button></div></div>)}
+        {!loading && errorMessage ? <div style={{ border: "1px dashed #fecaca", borderRadius: 16, background: "#fff7f7", color: "#b91c1c", fontSize: 13, padding: "14px 16px" }}>{errorMessage}</div> : null}
+        {!loading && !errorMessage && !items.length ? <div style={{ border: "1px dashed #dbe4f0", borderRadius: 16, background: "#fbfdff", color: "#94a3b8", fontSize: 13, textAlign: "center", padding: "28px 18px" }}>No attachments found for this lead.</div> : null}
+        {!loading && !errorMessage && items.map((item) => (
+          <div key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "14px 16px", border: "1px solid #e5edf5", borderRadius: 16, background: "#ffffff" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b", wordBreak: "break-word" }}>{item.fileName}</div>
+              <div style={{ marginTop: 5, fontSize: 12, color: "#94a3b8" }}>{item.uploadedAt ? fmtDate(item.uploadedAt) : "Upload date unavailable"}</div>
+            </div>
+            {item.url ? (
+              <a href={item.url} target="_blank" rel="noreferrer" className="btn-ghost" style={{ textDecoration: "none", flexShrink: 0 }}>
+                Open
+              </a>
+            ) : (
+              <span style={{ fontSize: 12, color: "#94a3b8", flexShrink: 0 }}>No file URL</span>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -351,6 +478,8 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
   const [activityView, setActivityView] = useState("open");
   const [meetingView, setMeetingView] = useState("create");
   const [loading, setLoading] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [deletingTaskId, setDeletingTaskId] = useState(null);
   const [open, setOpen] = useState([]);
   const [closed, setClosed] = useState([]);
   const [meetings, setMeetings] = useState([]);
@@ -409,8 +538,71 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
     }
   };
   useEffect(() => { load(); }, [lead?.id]);
-  const callHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("call")).map(mapCallActivity), [open, closed]);
-  const taskHistory = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("task")), [open, closed]);
+  const callHistory = useMemo(() => (
+    (Array.isArray(timeline) ? timeline : [])
+      .filter((item) => String(item?.type || item?.eventType || "").toLowerCase().includes("call"))
+      .map((item, index) => mapCallTimelineItem(item, index))
+  ), [timeline]);
+  const taskActivities = useMemo(() => [...open, ...closed].filter((x) => String(x.type).toLowerCase().includes("task")), [open, closed]);
+  const taskHistory = useMemo(() => (
+    (Array.isArray(timeline) ? timeline : [])
+      .filter((item) => String(item?.type || item?.eventType || "").toLowerCase().includes("task"))
+      .map((item, index) => {
+        const mapped = mapTaskTimelineItem(item, index);
+        const normalizedTitle = String(mapped.title || "").trim().toLowerCase();
+        const matchedActivity = taskActivities.find((activity) => {
+          const subject = String(activity?.subject || activity?.title || "").trim().toLowerCase();
+          return subject && subject === normalizedTitle;
+        });
+        return {
+          ...mapped,
+          activityId: matchedActivity?.id || null,
+          subject: matchedActivity?.subject || matchedActivity?.title || mapped.title,
+          dueDate: matchedActivity?.dueDate || mapped.date,
+          priority: matchedActivity?.priority || "Medium",
+          status: matchedActivity?.status || "Pending",
+          description: matchedActivity?.description || "",
+          reminder: matchedActivity?.reminder || null,
+          repeat: matchedActivity?.repeat || "",
+        };
+      })
+  ), [timeline, taskActivities]);
+
+  const handleUpdateTask = async (taskPayload) => {
+    const activityId = Number(editingTask?.activityId || 0);
+    if (!activityId) {
+      Toast.error("No task activity ID available for this entry.");
+      return;
+    }
+    try {
+      await activitiesAPI.updateTask(activityId, taskPayload);
+      Toast.success("Task updated");
+      setEditingTask(null);
+      await load();
+      await onActivitySaved?.();
+    } catch (error) {
+      Toast.error(getApiErrorMessage(error, "Unable to update task"));
+    }
+  };
+
+  const handleDeleteTask = async (item) => {
+    const activityId = Number(item?.activityId || 0);
+    if (!activityId) {
+      Toast.error("No task activity ID available for this entry.");
+      return;
+    }
+    setDeletingTaskId(activityId);
+    try {
+      await activitiesAPI.delete(activityId);
+      Toast.success("Task deleted");
+      await load();
+      await onActivitySaved?.();
+    } catch (error) {
+      Toast.error(getApiErrorMessage(error, "Unable to delete task"));
+    } finally {
+      setDeletingTaskId(null);
+    }
+  };
   const filtered = useMemo(() => {
     if (activeTab === "tasks") return taskHistory;
     if (activeTab === "calls") return callHistory;
@@ -422,7 +614,7 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
   const activityItems = activityView === "open" ? open : closed;
   return (
     <section style={{ height: mobile ? "auto" : "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
-      <DetailTabsRail tabs={TABS} activeTab={activeTab} onTabChange={onTabChange} mobile={mobile} compact={compact} eyebrow="Activity Center" />
+      <DetailTabsRail tabs={LEAD_TABS} activeTab={activeTab} onTabChange={onTabChange} mobile={mobile} compact={compact} eyebrow="Activity Center" />
       <div style={{ flex: mobile ? "0 0 auto" : 1, minHeight: 0, overflowY: mobile ? "visible" : "auto", overflowX: "hidden", padding: mobile ? 10 : compact ? 14 : 18, display: "flex", flexDirection: "column", gap: mobile ? 10 : 16 }}>
         {loading && <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading details...</div>}
         {activeTab === "activity" && <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -497,14 +689,52 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
               await onActivitySaved?.();
             }} />
           </> : <>
-            <Composer tab={activeTab} lead={lead} onSaved={async () => {
+            <Composer
+              tab={activeTab}
+              lead={lead}
+              taskDraft={activeTab === "tasks" ? editingTask : null}
+              taskSubmitLabel={activeTab === "tasks" && editingTask ? "Update Task" : ""}
+              onTaskSubmit={activeTab === "tasks" && editingTask ? handleUpdateTask : null}
+              onTaskCancel={activeTab === "tasks" && editingTask ? () => setEditingTask(null) : null}
+              onSaved={async () => {
               await load();
               await onActivitySaved?.();
-            }} />
-            <TabHistoryTimeline items={filtered} emptyLabel={activeTab} icon={activeTab === "emails" ? Mail : activeTab === "calls" ? Phone : activeTab === "whatsapp" ? FaWhatsapp : activeTab === "tasks" ? UserCheck : FileText} />
+            }}
+            />
+            <TabHistoryTimeline
+              items={filtered}
+              emptyLabel={activeTab}
+              icon={activeTab === "emails" ? Mail : activeTab === "calls" ? Phone : activeTab === "whatsapp" ? FaWhatsapp : activeTab === "tasks" ? UserCheck : FileText}
+              renderItemActions={activeTab === "tasks" ? (item) => (
+                item?.activityId ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => setEditingTask(item)}
+                      disabled={deletingTaskId === item.activityId}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                    >
+                      <Edit3 size={14} />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => handleDeleteTask(item)}
+                      disabled={deletingTaskId === item.activityId}
+                      style={{ color: "#b91c1c", borderColor: "#fecaca", display: "inline-flex", alignItems: "center", gap: 6 }}
+                    >
+                      <Trash2 size={14} />
+                      {deletingTaskId === item.activityId ? "Deleting..." : "Delete"}
+                    </button>
+                  </>
+                ) : null
+              ) : null}
+            />
           </>}
         </>}
-        {activeTab === "attachments" && <Attachments leadId={lead?.id} />}
+        {activeTab === "attachments" && <Attachments leadId={lead?.id || lead?.leadId} />}
       </div>
     </section>
   );

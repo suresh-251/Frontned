@@ -232,7 +232,7 @@ export function normalizeLeads(apiLeads = []) {
           : [];
   return items.map((lead, index) => createLeadRecord(lead, index));
 }
-const normalizeFollowUpDateTime = (value) => {
+export const normalizeFollowUpDateTime = (value) => {
   if (!value) return null;
   const raw = String(value).trim();
   if (!raw) return null;
