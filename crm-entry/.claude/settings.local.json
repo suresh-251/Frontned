@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Users/user/Desktop/CRM/CRM-Frontend-Repo/crm-entry/src -type f -name hrApi* -o -type f -name hr.api*)",
+      "Bash(find C:UsersuserDesktopCRMCRM-Frontend-Repocrm-entrysrc -name *Layout* -o -name *Settings* -o -name *settings*)",
+      "Bash(grep -r \"filter\\\\|export\" /c/Users/user/Desktop/CRM/CRM-Frontend-Repo/crm-entry/src/hr_CRM/pages/*.jsx)",
+      "Bash(find /c/Users/user/Desktop/CRM/CRM-Frontend-Repo/crm-entry/src -name *useAssignedLeads* -o -name *assigned* -type f)"
+    ]
+  }
+}

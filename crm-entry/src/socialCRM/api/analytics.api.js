@@ -79,3 +79,14 @@ export const getBestPostingTimes = async (days = 30) => {
   const res = await api.get("/analytics/brand/best-times", { params: { days } });
   return res.data;
 };
+
+/**
+ * Month-over-month growth metrics for the active brand.
+ * Compares current month vs previous month for followers, leads,
+ * engagement, reach, impressions, and posts.
+ * GET /api/analytics/brand/growth
+ */
+export const getGrowthMetrics = async () => {
+  const res = await api.get("/analytics/brand/growth");
+  return res.data;
+};

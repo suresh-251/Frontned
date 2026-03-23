@@ -1,8 +1,9 @@
 import axios from "axios";
-import { getAccessToken } from "../../utils/authStorage";
+import { getAccessToken, clearAccessToken } from "../../utils/authStorage";
+import { appCache } from "../utils/cache";
 export const BASE_URL = "https://crmsocial.metagensoft.com/api";
 // Local dev override (requires `dotnet run` in Backend folder):
-//export const BASE_URL = "https://localhost:7015/api";
+// export const BASE_URL = "https://localhost:7015/api";
 // export const BASE_URL = "http://89.116.20.215:9090/api";
 
 
@@ -35,8 +36,10 @@ api.interceptors.response.use(
     const { status, data } = error.response;
 
     if (status === 401) {
-      // Redirect to Social CRM login page instead of admin
-     return Promise.reject(new Error("Not connected denied"));
+      clearAccessToken();
+      appCache.clearAllUserCaches();
+      window.location.href = "/login";
+      return Promise.reject(new Error("Session expired. Redirecting to login..."));
     }
 
     if (status === 403) {

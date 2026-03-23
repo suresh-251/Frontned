@@ -27,6 +27,11 @@ export const onboardingApi = {
   deleteOnboarding: (id) => {
     return hrApi.delete(`api/EmployeeOnboarding/${id}`);
   },
+
+  // GET: Download all documents as ZIP
+  downloadDocuments: (id) => {
+    return hrApi.get(`api/EmployeeOnboarding/${id}/documents`, { responseType: "blob" });
+  },
 };
 
 export default onboardingApi;

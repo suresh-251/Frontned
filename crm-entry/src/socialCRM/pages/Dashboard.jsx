@@ -1,28 +1,65 @@
-import React, { useState, useEffect, useRef, useCallback, cloneElement } from "react";
+import React, { useState, useEffect, useCallback, cloneElement } from "react";
 import api from "../api/apiClient";
 import { connectPlatform } from "../api/auth.api";
 import { selectPage } from "../api/facebook.pages.api";
 import { activateInstagramAccount } from "../api/instagram.accounts.api";
-import { getChannelMetrics, syncAnalytics } from "../api/analytics.api";
+import { getChannelMetrics, syncAnalytics, getGrowthMetrics } from "../api/analytics.api";
+import { getSelectedQuickActions, getQuickActions, saveQuickActions } from "../api/quickActions.api";
 import { appCache } from "../utils/cache";
 import { useBrand } from "../context/BrandContext";
 import { useNavigate } from "react-router-dom";
 import {
-  FiEdit, FiUsers, FiFileText, FiSettings, FiActivity,
-  FiZap, FiChevronDown, FiRefreshCw,
+  FiEdit, FiUsers, FiSettings, FiActivity,
+  FiZap, FiChevronDown, FiRefreshCw, FiSliders,
+  FiBarChart2, FiMessageCircle, FiCalendar, FiBriefcase, FiBookOpen,
+  FiTrendingUp, FiTrendingDown, FiMinus,
 } from "react-icons/fi";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
-
+ 
+// Icon map for quick action modules
+const ICON_MAP = {
+  analytics:  <FiBarChart2 />,
+  leads:      <FiUsers />,
+  inbox:      <FiMessageCircle />,
+  posts:      <FiEdit />,
+  scheduler:  <FiCalendar />,
+  contacts:   <FiBookOpen />,
+  brands:     <FiBriefcase />,
+  settings:   <FiSettings />,
+};
+ 
+const COLOR_MAP = {
+  analytics:  "bg-blue-600",
+  leads:      "bg-indigo-600",
+  inbox:      "bg-emerald-600",
+  posts:      "bg-violet-600",
+  scheduler:  "bg-amber-600",
+  contacts:   "bg-teal-600",
+  brands:     "bg-slate-700",
+  settings:   "bg-gray-600",
+};
+ 
+const ROUTE_MAP = {
+  analytics:  "/crm/socialmedia/analytics",
+  leads:      "/crm/socialmedia/leads",
+  inbox:      "/crm/socialmedia/inbox",
+  posts:      "/crm/socialmedia/post/history",
+  scheduler:  "/crm/socialmedia/post/history",
+  contacts:   "/crm/socialmedia/leads",
+  brands:     "/crm/socialmedia/brands",
+  settings:   "/crm/socialmedia/facebook/pages/subscriptions",
+};
+ 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const PLATFORMS = ["Facebook", "Instagram", "LinkedIn"];
 const normPlat  = (p) =>
   ({ facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn" }[(p ?? "").toLowerCase()] ?? p);
-
+ 
 const dashKey = (slug) => `sc_dash_${slug}`;
-
+ 
 // ── Platform SVG icon ─────────────────────────────────────────────────────────
 function PlatformIcon({ platform, size = 18 }) {
   if (platform === "Facebook") return (
@@ -41,7 +78,7 @@ function PlatformIcon({ platform, size = 18 }) {
     </svg>
   );
 }
-
+ 
 // ── Skeleton row for table ────────────────────────────────────────────────────
 function SkeletonRow() {
   return (
@@ -63,14 +100,14 @@ function SkeletonRow() {
     </tr>
   );
 }
-
+ 
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 function StatCell({ value }) {
   if (value == null || value === "—") return <span className="text-slate-300 font-semibold">—</span>;
   const n = typeof value === "number" ? value.toLocaleString() : value;
   return <span className="font-bold text-slate-800">{n}</span>;
 }
-
+ 
 // ── Quick action button ───────────────────────────────────────────────────────
 function CompactAction({ icon, label, color, onClick }) {
   return (
@@ -83,7 +120,7 @@ function CompactAction({ icon, label, color, onClick }) {
     </button>
   );
 }
-
+ 
 function ActivityItem({ text, time }) {
   return (
     <div className="flex items-center justify-between border-l-2 border-slate-100 pl-4 py-1">
@@ -92,14 +129,47 @@ function ActivityItem({ text, time }) {
     </div>
   );
 }
-
+ 
+// ── Growth metric card ────────────────────────────────────────────────────────
+function GrowthCard({ label, current, previous, change, percent }) {
+  const isUp   = change > 0;
+  const isDown = change < 0;
+  const color  = isUp ? "text-emerald-600" : isDown ? "text-red-500" : "text-slate-400";
+  const bgColor = isUp ? "bg-emerald-50" : isDown ? "bg-red-50" : "bg-slate-50";
+  const TrendIcon = isUp ? FiTrendingUp : isDown ? FiTrendingDown : FiMinus;
+  const sign   = isUp ? "+" : "";
+ 
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+        <span className={`${bgColor} ${color} text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1`}>
+          <TrendIcon size={10} />
+          {sign}{percent?.toFixed(1) ?? 0}%
+        </span>
+      </div>
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-xl font-black text-slate-800">{(current ?? 0).toLocaleString()}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            vs <span className="font-semibold">{(previous ?? 0).toLocaleString()}</span> last month
+          </p>
+        </div>
+        <div className={`text-xs font-bold ${color}`}>
+          {sign}{(change ?? 0).toLocaleString()}
+        </div>
+      </div>
+    </div>
+  );
+}
+ 
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 export default function Dashboard() {
   const navigate    = useNavigate();
   const { activeBrand } = useBrand();
-
+ 
   const [accountsByPlatform, setAccountsByPlatform] = useState({});
   const [selectedAccount,    setSelectedAccount]    = useState({});
   const [channelMetrics,     setChannelMetrics]     = useState([]);
@@ -108,17 +178,23 @@ export default function Dashboard() {
   const [activating,   setActivating]   = useState(null);
   const [syncing,      setSyncing]      = useState(false);
   const [syncMsg,      setSyncMsg]      = useState(null);
-
+  const [quickActions, setQuickActions] = useState([]);
+  const [allModules,   setAllModules]   = useState([]);
+  const [showCustomize, setShowCustomize] = useState(false);
+  const [savingQA,     setSavingQA]     = useState(false);
+  const [growth,       setGrowth]       = useState(null);
+  const [growthLoading, setGrowthLoading] = useState(true);
+ 
   // ── Fetch from server and update cache ──────────────────────────────────────
   const fetchFromServer = useCallback(async (slug) => {
     const [accsRes, channelsRes] = await Promise.allSettled([
       api.get(`/brands/${slug}/accounts`),
       getChannelMetrics(30),
     ]);
-
+ 
     const rawAccs   = accsRes.status     === "fulfilled" ? (accsRes.value.data.accounts ?? [])  : [];
     const chMetrics = channelsRes.status === "fulfilled" ? (channelsRes.value ?? []) : [];
-
+ 
     // Group accounts by platform (displayName already set by backend)
     const grouped = {};
     for (const a of rawAccs) {
@@ -126,37 +202,37 @@ export default function Dashboard() {
       if (!grouped[plat]) grouped[plat] = [];
       grouped[plat].push({ ...a, platform: plat });
     }
-
+ 
     // Default selected = active account, or first
     const sel = {};
     for (const [plat, accs] of Object.entries(grouped)) {
       sel[plat] = (accs.find(a => a.isActive) ?? accs[0])?.pageIdentifier ?? null;
     }
-
+ 
     const payload = { accountsByPlatform: grouped, selectedAccount: sel, channelMetrics: chMetrics };
     appCache.set(dashKey(slug), payload);
     return payload;
   }, []);
-
+ 
   // ── Apply fetched/cached data to state ──────────────────────────────────────
   const applyData = useCallback((data) => {
     setAccountsByPlatform(data.accountsByPlatform);
     setSelectedAccount(data.selectedAccount);
     setChannelMetrics(data.channelMetrics);
   }, []);
-
+ 
   // ── Main load logic (SWR) ───────────────────────────────────────────────────
   const loadData = useCallback(async (slug, opts = {}) => {
     if (!slug) { setLoading(false); return; }
-
+ 
     const key    = dashKey(slug);
     const cached = appCache.get(key); // null if expired (> 20 min)
-
+ 
     if (cached && !opts.force) {
       // Serve from cache immediately — no loading spinner
       applyData(cached.data);
       setLoading(false);
-
+ 
       // Background refresh only if stale (3–20 min)
       if (appCache.isStale(key)) {
         setRefreshing(true);
@@ -168,7 +244,7 @@ export default function Dashboard() {
       }
       return;
     }
-
+ 
     // No usable cache — show skeleton + fetch
     if (!opts.silent) setLoading(true);
     try {
@@ -177,9 +253,26 @@ export default function Dashboard() {
     } catch { /* leave empty */ }
     finally { setLoading(false); }
   }, [fetchFromServer, applyData]);
-
+ 
   useEffect(() => { loadData(activeBrand?.slug); }, [activeBrand?.slug]);
-
+ 
+  // ── Load quick actions ───────────────────────────────────────────────────
+  useEffect(() => {
+    getSelectedQuickActions()
+      .then(setQuickActions)
+      .catch(() => setQuickActions([]));
+  }, []);
+ 
+  // ── Load growth metrics ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!activeBrand?.slug) return;
+    setGrowthLoading(true);
+    getGrowthMetrics()
+      .then(setGrowth)
+      .catch(() => setGrowth(null))
+      .finally(() => setGrowthLoading(false));
+  }, [activeBrand?.slug]);
+ 
   // ── Sync ────────────────────────────────────────────────────────────────────
   const handleSync = async () => {
     setSyncing(true); setSyncMsg(null);
@@ -195,6 +288,7 @@ export default function Dashboard() {
       });
       appCache.invalidate(dashKey(activeBrand?.slug));
       await loadData(activeBrand?.slug, { force: true, silent: true });
+      getGrowthMetrics().then(setGrowth).catch(() => {});
     } catch (e) {
       setSyncMsg({ ok: false, text: e?.message || "Sync failed" });
     } finally {
@@ -202,7 +296,7 @@ export default function Dashboard() {
       setTimeout(() => setSyncMsg(null), 8000);
     }
   };
-
+ 
   // ── Activate account ─────────────────────────────────────────────────────────
   const activateAccount = async (platform, pageIdentifier) => {
     setActivating(pageIdentifier);
@@ -226,30 +320,30 @@ export default function Dashboard() {
       setActivating(null);
     }
   };
-
+ 
   const handleAccountSelect = async (platform, pageIdentifier) => {
     setSelectedAccount(prev => ({ ...prev, [platform]: pageIdentifier }));
     await activateAccount(platform, pageIdentifier);
   };
-
+ 
   // ── No brand selected guard ───────────────────────────────────────────────
   if (!activeBrand) return (
     <div className="w-full min-h-screen bg-[#F8FAFC] p-6 flex items-center justify-center">
       <p className="text-slate-400 font-medium text-sm">No active brand — please select or create a brand first.</p>
     </div>
   );
-
+ 
   // ── Derived data ──────────────────────────────────────────────────────────
   const getMetrics = (platform) => {
     const accs  = accountsByPlatform[platform] ?? [];
     const selId = selectedAccount[platform];
     const acc   = accs.find(a => a.pageIdentifier === selId) ?? accs[0];
     if (!acc) return null;
-
+ 
     const ch =
       channelMetrics.find(c => c.accountId === acc.pageIdentifier) ??
       channelMetrics.find(c => c.platform?.toLowerCase() === platform.toLowerCase());
-
+ 
     return {
       acc,
       profilePictureUrl: acc?.profilePictureUrl || ch?.profilePictureUrl
@@ -263,7 +357,7 @@ export default function Dashboard() {
       leads:          ch?.totalLeads       ?? null,
     };
   };
-
+ 
   const graphData = PLATFORMS.map(plat => {
     const m = getMetrics(plat) || {};
     return {
@@ -274,13 +368,40 @@ export default function Dashboard() {
       leads:      m?.leads          || 0,
     };
   });
-
+ 
   const hasAnyAccounts = Object.keys(accountsByPlatform).length > 0;
-
+ 
+  // ── Quick actions customization ──────────────────────────────────────────
+  const openCustomize = async () => {
+    try {
+      const all = await getQuickActions();
+      setAllModules(all);
+      setShowCustomize(true);
+    } catch { setShowCustomize(true); }
+  };
+ 
+  const toggleModule = (key) => {
+    setAllModules(prev => prev.map(m =>
+      m.key === key ? { ...m, isSelected: !m.isSelected } : m
+    ));
+  };
+ 
+  const handleSaveQA = async () => {
+    const selected = allModules.filter(m => m.isSelected).map(m => m.key);
+    if (selected.length === 0) return;
+    setSavingQA(true);
+    try {
+      const updated = await saveQuickActions(selected);
+      setQuickActions(updated.filter(m => m.isSelected));
+      setShowCustomize(false);
+    } catch { /* keep modal open */ }
+    finally { setSavingQA(false); }
+  };
+ 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] p-6">
-
+ 
       {/* Page header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -300,13 +421,13 @@ export default function Dashboard() {
           <FiEdit size={14} /> New Post
         </button> */}
       </div>
-
+ 
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 lg:col-span-8 space-y-6">
-
+ 
           {/* Performance Metrics Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-
+ 
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
                 <FiActivity className="text-blue-500" size={14} /> Performance Metrics
@@ -323,7 +444,7 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
-
+ 
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
@@ -336,7 +457,7 @@ export default function Dashboard() {
                     <th className="px-6 py-4 text-right text-[13px]">Leads</th>
                   </tr>
                 </thead>
-
+ 
                 <tbody className="divide-y divide-slate-100">
                   {/* Loading skeleton — shown only on first load with no cache */}
                   {loading && !hasAnyAccounts ? (
@@ -345,7 +466,7 @@ export default function Dashboard() {
                     PLATFORMS.map(plat => {
                       const accs    = accountsByPlatform[plat] ?? [];
                       const metrics = getMetrics(plat);
-
+ 
                       if (accs.length === 0) {
                         return (
                           <tr key={plat} className="hover:bg-slate-50 transition">
@@ -367,11 +488,11 @@ export default function Dashboard() {
                           </tr>
                         );
                       }
-
+ 
                       const selId       = selectedAccount[plat];
                       const selAcc      = accs.find(a => a.pageIdentifier === selId) ?? accs[0];
                       const isActivating = activating === selId;
-
+ 
                       return (
                         <tr key={plat} className="hover:bg-slate-50 transition">
                           <td className="px-6 py-5">
@@ -383,7 +504,7 @@ export default function Dashboard() {
                               ) : (
                                 <PlatformIcon platform={plat} size={22} />
                               )}
-
+ 
                               <div className="min-w-0">
                                 {accs.length > 1 ? (
                                   <div className="relative inline-block">
@@ -404,7 +525,7 @@ export default function Dashboard() {
                                     {selAcc?.displayName || selAcc?.pageIdentifier}
                                   </p>
                                 )}
-
+ 
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className="text-[11px] font-semibold text-slate-400 uppercase">{plat}</span>
                                   {selAcc?.isActive ? (
@@ -424,7 +545,7 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </td>
-
+ 
                           <td className="px-6 py-5 text-right text-[15px] font-semibold text-slate-800">
                             <StatCell value={metrics?.totalFollowers} />
                           </td>
@@ -448,7 +569,45 @@ export default function Dashboard() {
               </table>
             </div>
           </div>
-
+ 
+          {/* Month-over-Month Growth */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                <FiTrendingUp className="text-emerald-500" size={14} /> Monthly Growth
+              </h3>
+              {growth && (
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {new Date(growth.currentPeriodStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  {" – "}
+                  {new Date(growth.currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  {" vs "}
+                  {new Date(growth.previousPeriodStart).toLocaleDateString("en-US", { month: "short" })}
+                </p>
+              )}
+            </div>
+            <div className="p-4">
+              {growthLoading ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />
+                  ))}
+                </div>
+              ) : growth ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <GrowthCard label="Followers"   current={growth.currentFollowers}        previous={growth.previousFollowers}        change={growth.followersChange}     percent={growth.followersGrowthPercent} />
+                  <GrowthCard label="Leads"        current={growth.currentMonthLeads}       previous={growth.previousMonthLeads}       change={growth.leadsChange}         percent={growth.leadsGrowthPercent} />
+                  <GrowthCard label="Engagement"   current={growth.currentMonthEngagement}  previous={growth.previousMonthEngagement}  change={growth.engagementChange}    percent={growth.engagementGrowthPercent} />
+                  <GrowthCard label="Reach"        current={growth.currentMonthReach}        previous={growth.previousMonthReach}        change={growth.reachChange}         percent={growth.reachGrowthPercent} />
+                  <GrowthCard label="Impressions"  current={growth.currentMonthImpressions}  previous={growth.previousMonthImpressions}  change={growth.impressionsChange}   percent={growth.impressionsGrowthPercent} />
+                  <GrowthCard label="Posts"        current={growth.currentMonthPosts}        previous={growth.previousMonthPosts}        change={growth.postsChange}         percent={growth.postsGrowthPercent} />
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 text-center py-8">No growth data available. Sync analytics first.</p>
+              )}
+            </div>
+          </div>
+ 
           {/* Brand Growth Graph */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4">
@@ -467,42 +626,87 @@ export default function Dashboard() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="followers"  name="Followers"  />
-                    <Bar dataKey="reach"      name="Reach"      />
-                    <Bar dataKey="engagement" name="Engagement" />
-                    <Bar dataKey="leads"      name="Leads"      />
+                    <Bar dataKey="followers"  name="Followers"  fill="#58C5B3" />
+                    <Bar dataKey="reach"      name="Reach"      fill="#4cbb17" />
+                    <Bar dataKey="engagement" name="Engagement" fill="#fd6c9e" />
+                    <Bar dataKey="leads"      name="Leads"      fill="#ffb90f" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             )}
           </div>
         </div>
-
+ 
         {/* RIGHT: Quick Actions + Activity */}
         <div className="col-span-12 lg:col-span-4 space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-slate-800 font-bold text-[10px] uppercase tracking-widest mb-5">Quick Actions</h3>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-slate-800 font-bold text-[10px] uppercase tracking-widest">Quick Actions</h3>
+              <button onClick={openCustomize}
+                className="text-slate-400 hover:text-blue-600 transition-colors" title="Customize quick actions">
+                <FiSliders size={14} />
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-4">
-              <CompactAction icon={<FiEdit />}     label="Post"   color="bg-blue-600"   onClick={() => navigate("/crm/socialmedia/post/create")} />
-              <CompactAction icon={<FiUsers />}    label="Leads"  color="bg-indigo-600" onClick={() => navigate("/crm/socialmedia/leads")} />
-              <CompactAction icon={<FiFileText />} label="Forms"  color="bg-emerald-600" onClick={() => navigate("/crm/socialmedia/leads")} />
-              <CompactAction icon={<FiSettings />} label="Config" color="bg-slate-700"  onClick={() => navigate("/crm/socialmedia/facebook/pages/subscriptions")} />
+              {quickActions.length > 0 ? quickActions.map(qa => (
+                <CompactAction
+                  key={qa.key}
+                  icon={ICON_MAP[qa.key] || <FiSettings />}
+                  label={qa.label}
+                  color={COLOR_MAP[qa.key] || "bg-slate-600"}
+                  onClick={() => navigate(ROUTE_MAP[qa.key] || "/crm/socialmedia/dashboard")}
+                />
+              )) : (
+                <>
+                  <CompactAction icon={<FiBarChart2 />} label="Analytics" color="bg-blue-600"   onClick={() => navigate("/crm/socialmedia/analytics")} />
+                  <CompactAction icon={<FiUsers />}     label="Leads"     color="bg-indigo-600"  onClick={() => navigate("/crm/socialmedia/leads")} />
+                  <CompactAction icon={<FiMessageCircle />} label="Inbox" color="bg-emerald-600" onClick={() => navigate("/crm/socialmedia/inbox")} />
+                  <CompactAction icon={<FiEdit />}      label="Posts"     color="bg-violet-600"  onClick={() => navigate("/crm/socialmedia/post/history")} />
+                </>
+              )}
             </div>
           </div>
-
-          {/* <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-slate-800 font-bold text-[10px] uppercase tracking-widest">Recent Activity</h3>
-              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
-            </div>
-            <div className="space-y-4">
-              <ActivityItem text="Facebook Sync"      time="2m ago"  />
-              <ActivityItem text="New Lead Received"  time="15m ago" />
-              <ActivityItem text="Instagram Updated"  time="1h ago"  />
-            </div>
-          </div> */}
         </div>
+ 
+        {/* ── Quick Actions Customize Modal ────────────────────────────────── */}
+        {showCustomize && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-800">Customize Quick Actions</h3>
+                <button onClick={() => setShowCustomize(false)} className="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+              </div>
+              <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+                <p className="text-xs text-slate-500 mb-2">Select the modules you want as quick actions on your dashboard.</p>
+                {allModules.map(m => (
+                  <label key={m.key}
+                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      m.isSelected ? "border-blue-300 bg-blue-50" : "border-slate-100 hover:bg-slate-50"
+                    }`}>
+                    <input type="checkbox" checked={m.isSelected} onChange={() => toggleModule(m.key)}
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                    <div className={`w-8 h-8 rounded-lg ${COLOR_MAP[m.key] || "bg-slate-600"} text-white flex items-center justify-center`}>
+                      {cloneElement(ICON_MAP[m.key] || <FiSettings />, { size: 14 })}
+                    </div>
+                    <span className="text-sm font-semibold text-slate-700">{m.label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setShowCustomize(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleSaveQA} disabled={savingQA || allModules.filter(m => m.isSelected).length === 0}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50">
+                  {savingQA ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+ 
