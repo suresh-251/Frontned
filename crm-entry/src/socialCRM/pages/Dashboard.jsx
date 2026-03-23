@@ -18,7 +18,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
-
+ 
 // Icon map for quick action modules
 const ICON_MAP = {
   analytics:  <FiBarChart2 />,
@@ -30,7 +30,7 @@ const ICON_MAP = {
   brands:     <FiBriefcase />,
   settings:   <FiSettings />,
 };
-
+ 
 const COLOR_MAP = {
   analytics:  "bg-blue-600",
   leads:      "bg-indigo-600",
@@ -41,7 +41,7 @@ const COLOR_MAP = {
   brands:     "bg-slate-700",
   settings:   "bg-gray-600",
 };
-
+ 
 const ROUTE_MAP = {
   analytics:  "/crm/socialmedia/analytics",
   leads:      "/crm/socialmedia/leads",
@@ -52,14 +52,14 @@ const ROUTE_MAP = {
   brands:     "/crm/socialmedia/brands",
   settings:   "/crm/socialmedia/facebook/pages/subscriptions",
 };
-
+ 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const PLATFORMS = ["Facebook", "Instagram", "LinkedIn"];
 const normPlat  = (p) =>
   ({ facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn" }[(p ?? "").toLowerCase()] ?? p);
-
+ 
 const dashKey = (slug) => `sc_dash_${slug}`;
-
+ 
 // ── Platform SVG icon ─────────────────────────────────────────────────────────
 function PlatformIcon({ platform, size = 18 }) {
   if (platform === "Facebook") return (
@@ -78,7 +78,7 @@ function PlatformIcon({ platform, size = 18 }) {
     </svg>
   );
 }
-
+ 
 // ── Skeleton row for table ────────────────────────────────────────────────────
 function SkeletonRow() {
   return (
@@ -100,14 +100,14 @@ function SkeletonRow() {
     </tr>
   );
 }
-
+ 
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 function StatCell({ value }) {
   if (value == null || value === "—") return <span className="text-slate-300 font-semibold">—</span>;
   const n = typeof value === "number" ? value.toLocaleString() : value;
   return <span className="font-bold text-slate-800">{n}</span>;
 }
-
+ 
 // ── Quick action button ───────────────────────────────────────────────────────
 function CompactAction({ icon, label, color, onClick }) {
   return (
@@ -120,7 +120,7 @@ function CompactAction({ icon, label, color, onClick }) {
     </button>
   );
 }
-
+ 
 function ActivityItem({ text, time }) {
   return (
     <div className="flex items-center justify-between border-l-2 border-slate-100 pl-4 py-1">
@@ -129,7 +129,7 @@ function ActivityItem({ text, time }) {
     </div>
   );
 }
-
+ 
 // ── Growth metric card ────────────────────────────────────────────────────────
 function GrowthCard({ label, current, previous, change, percent }) {
   const isUp   = change > 0;
@@ -138,7 +138,7 @@ function GrowthCard({ label, current, previous, change, percent }) {
   const bgColor = isUp ? "bg-emerald-50" : isDown ? "bg-red-50" : "bg-slate-50";
   const TrendIcon = isUp ? FiTrendingUp : isDown ? FiTrendingDown : FiMinus;
   const sign   = isUp ? "+" : "";
-
+ 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-2">
@@ -162,14 +162,14 @@ function GrowthCard({ label, current, previous, change, percent }) {
     </div>
   );
 }
-
+ 
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 export default function Dashboard() {
   const navigate    = useNavigate();
   const { activeBrand } = useBrand();
-
+ 
   const [accountsByPlatform, setAccountsByPlatform] = useState({});
   const [selectedAccount,    setSelectedAccount]    = useState({});
   const [channelMetrics,     setChannelMetrics]     = useState([]);
@@ -184,17 +184,17 @@ export default function Dashboard() {
   const [savingQA,     setSavingQA]     = useState(false);
   const [growth,       setGrowth]       = useState(null);
   const [growthLoading, setGrowthLoading] = useState(true);
-
+ 
   // ── Fetch from server and update cache ──────────────────────────────────────
   const fetchFromServer = useCallback(async (slug) => {
     const [accsRes, channelsRes] = await Promise.allSettled([
       api.get(`/brands/${slug}/accounts`),
       getChannelMetrics(30),
     ]);
-
+ 
     const rawAccs   = accsRes.status     === "fulfilled" ? (accsRes.value.data.accounts ?? [])  : [];
     const chMetrics = channelsRes.status === "fulfilled" ? (channelsRes.value ?? []) : [];
-
+ 
     // Group accounts by platform (displayName already set by backend)
     const grouped = {};
     for (const a of rawAccs) {
@@ -202,37 +202,37 @@ export default function Dashboard() {
       if (!grouped[plat]) grouped[plat] = [];
       grouped[plat].push({ ...a, platform: plat });
     }
-
+ 
     // Default selected = active account, or first
     const sel = {};
     for (const [plat, accs] of Object.entries(grouped)) {
       sel[plat] = (accs.find(a => a.isActive) ?? accs[0])?.pageIdentifier ?? null;
     }
-
+ 
     const payload = { accountsByPlatform: grouped, selectedAccount: sel, channelMetrics: chMetrics };
     appCache.set(dashKey(slug), payload);
     return payload;
   }, []);
-
+ 
   // ── Apply fetched/cached data to state ──────────────────────────────────────
   const applyData = useCallback((data) => {
     setAccountsByPlatform(data.accountsByPlatform);
     setSelectedAccount(data.selectedAccount);
     setChannelMetrics(data.channelMetrics);
   }, []);
-
+ 
   // ── Main load logic (SWR) ───────────────────────────────────────────────────
   const loadData = useCallback(async (slug, opts = {}) => {
     if (!slug) { setLoading(false); return; }
-
+ 
     const key    = dashKey(slug);
     const cached = appCache.get(key); // null if expired (> 20 min)
-
+ 
     if (cached && !opts.force) {
       // Serve from cache immediately — no loading spinner
       applyData(cached.data);
       setLoading(false);
-
+ 
       // Background refresh only if stale (3–20 min)
       if (appCache.isStale(key)) {
         setRefreshing(true);
@@ -244,7 +244,7 @@ export default function Dashboard() {
       }
       return;
     }
-
+ 
     // No usable cache — show skeleton + fetch
     if (!opts.silent) setLoading(true);
     try {
@@ -253,16 +253,16 @@ export default function Dashboard() {
     } catch { /* leave empty */ }
     finally { setLoading(false); }
   }, [fetchFromServer, applyData]);
-
+ 
   useEffect(() => { loadData(activeBrand?.slug); }, [activeBrand?.slug]);
-
+ 
   // ── Load quick actions ───────────────────────────────────────────────────
   useEffect(() => {
     getSelectedQuickActions()
       .then(setQuickActions)
       .catch(() => setQuickActions([]));
   }, []);
-
+ 
   // ── Load growth metrics ─────────────────────────────────────────────────
   useEffect(() => {
     if (!activeBrand?.slug) return;
@@ -272,7 +272,7 @@ export default function Dashboard() {
       .catch(() => setGrowth(null))
       .finally(() => setGrowthLoading(false));
   }, [activeBrand?.slug]);
-
+ 
   // ── Sync ────────────────────────────────────────────────────────────────────
   const handleSync = async () => {
     setSyncing(true); setSyncMsg(null);
@@ -296,7 +296,7 @@ export default function Dashboard() {
       setTimeout(() => setSyncMsg(null), 8000);
     }
   };
-
+ 
   // ── Activate account ─────────────────────────────────────────────────────────
   const activateAccount = async (platform, pageIdentifier) => {
     setActivating(pageIdentifier);
@@ -320,30 +320,30 @@ export default function Dashboard() {
       setActivating(null);
     }
   };
-
+ 
   const handleAccountSelect = async (platform, pageIdentifier) => {
     setSelectedAccount(prev => ({ ...prev, [platform]: pageIdentifier }));
     await activateAccount(platform, pageIdentifier);
   };
-
+ 
   // ── No brand selected guard ───────────────────────────────────────────────
   if (!activeBrand) return (
     <div className="w-full min-h-screen bg-[#F8FAFC] p-6 flex items-center justify-center">
       <p className="text-slate-400 font-medium text-sm">No active brand — please select or create a brand first.</p>
     </div>
   );
-
+ 
   // ── Derived data ──────────────────────────────────────────────────────────
   const getMetrics = (platform) => {
     const accs  = accountsByPlatform[platform] ?? [];
     const selId = selectedAccount[platform];
     const acc   = accs.find(a => a.pageIdentifier === selId) ?? accs[0];
     if (!acc) return null;
-
+ 
     const ch =
       channelMetrics.find(c => c.accountId === acc.pageIdentifier) ??
       channelMetrics.find(c => c.platform?.toLowerCase() === platform.toLowerCase());
-
+ 
     return {
       acc,
       profilePictureUrl: acc?.profilePictureUrl || ch?.profilePictureUrl
@@ -357,7 +357,7 @@ export default function Dashboard() {
       leads:          ch?.totalLeads       ?? null,
     };
   };
-
+ 
   const graphData = PLATFORMS.map(plat => {
     const m = getMetrics(plat) || {};
     return {
@@ -368,9 +368,9 @@ export default function Dashboard() {
       leads:      m?.leads          || 0,
     };
   });
-
+ 
   const hasAnyAccounts = Object.keys(accountsByPlatform).length > 0;
-
+ 
   // ── Quick actions customization ──────────────────────────────────────────
   const openCustomize = async () => {
     try {
@@ -379,13 +379,13 @@ export default function Dashboard() {
       setShowCustomize(true);
     } catch { setShowCustomize(true); }
   };
-
+ 
   const toggleModule = (key) => {
     setAllModules(prev => prev.map(m =>
       m.key === key ? { ...m, isSelected: !m.isSelected } : m
     ));
   };
-
+ 
   const handleSaveQA = async () => {
     const selected = allModules.filter(m => m.isSelected).map(m => m.key);
     if (selected.length === 0) return;
@@ -397,11 +397,11 @@ export default function Dashboard() {
     } catch { /* keep modal open */ }
     finally { setSavingQA(false); }
   };
-
+ 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] p-6">
-
+ 
       {/* Page header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -421,13 +421,13 @@ export default function Dashboard() {
           <FiEdit size={14} /> New Post
         </button> */}
       </div>
-
+ 
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 lg:col-span-8 space-y-6">
-
+ 
           {/* Performance Metrics Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-
+ 
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
                 <FiActivity className="text-blue-500" size={14} /> Performance Metrics
@@ -444,7 +444,7 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
-
+ 
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
@@ -457,7 +457,7 @@ export default function Dashboard() {
                     <th className="px-6 py-4 text-right text-[13px]">Leads</th>
                   </tr>
                 </thead>
-
+ 
                 <tbody className="divide-y divide-slate-100">
                   {/* Loading skeleton — shown only on first load with no cache */}
                   {loading && !hasAnyAccounts ? (
@@ -466,7 +466,7 @@ export default function Dashboard() {
                     PLATFORMS.map(plat => {
                       const accs    = accountsByPlatform[plat] ?? [];
                       const metrics = getMetrics(plat);
-
+ 
                       if (accs.length === 0) {
                         return (
                           <tr key={plat} className="hover:bg-slate-50 transition">
@@ -488,11 +488,11 @@ export default function Dashboard() {
                           </tr>
                         );
                       }
-
+ 
                       const selId       = selectedAccount[plat];
                       const selAcc      = accs.find(a => a.pageIdentifier === selId) ?? accs[0];
                       const isActivating = activating === selId;
-
+ 
                       return (
                         <tr key={plat} className="hover:bg-slate-50 transition">
                           <td className="px-6 py-5">
@@ -504,7 +504,7 @@ export default function Dashboard() {
                               ) : (
                                 <PlatformIcon platform={plat} size={22} />
                               )}
-
+ 
                               <div className="min-w-0">
                                 {accs.length > 1 ? (
                                   <div className="relative inline-block">
@@ -525,7 +525,7 @@ export default function Dashboard() {
                                     {selAcc?.displayName || selAcc?.pageIdentifier}
                                   </p>
                                 )}
-
+ 
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className="text-[11px] font-semibold text-slate-400 uppercase">{plat}</span>
                                   {selAcc?.isActive ? (
@@ -545,7 +545,7 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </td>
-
+ 
                           <td className="px-6 py-5 text-right text-[15px] font-semibold text-slate-800">
                             <StatCell value={metrics?.totalFollowers} />
                           </td>
@@ -569,7 +569,7 @@ export default function Dashboard() {
               </table>
             </div>
           </div>
-
+ 
           {/* Month-over-Month Growth */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100">
@@ -607,7 +607,7 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-
+ 
           {/* Brand Growth Graph */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4">
@@ -636,7 +636,7 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-
+ 
         {/* RIGHT: Quick Actions + Activity */}
         <div className="col-span-12 lg:col-span-4 space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
@@ -667,7 +667,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-
+ 
         {/* ── Quick Actions Customize Modal ────────────────────────────────── */}
         {showCustomize && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -709,3 +709,4 @@ export default function Dashboard() {
     </div>
   );
 }
+ 
