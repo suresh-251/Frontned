@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, cloneElement } from "react";
+import React, { useState, useEffect, useCallback, cloneElement } from "react";
 import api from "../api/apiClient";
 import { connectPlatform } from "../api/auth.api";
 import { selectPage } from "../api/facebook.pages.api";
@@ -131,7 +131,7 @@ function ActivityItem({ text, time }) {
 }
 
 // ── Growth metric card ────────────────────────────────────────────────────────
-function GrowthCard({ label, current, previous, change, percent, icon }) {
+function GrowthCard({ label, current, previous, change, percent }) {
   const isUp   = change > 0;
   const isDown = change < 0;
   const color  = isUp ? "text-emerald-600" : isDown ? "text-red-500" : "text-slate-400";
@@ -626,10 +626,10 @@ export default function Dashboard() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="followers"  name="Followers"  />
-                    <Bar dataKey="reach"      name="Reach"      />
-                    <Bar dataKey="engagement" name="Engagement" />
-                    <Bar dataKey="leads"      name="Leads"      />
+                    <Bar dataKey="followers"  name="Followers"  fill="#58C5B3" />
+                    <Bar dataKey="reach"      name="Reach"      fill="#4cbb17" />
+                    <Bar dataKey="engagement" name="Engagement" fill="#fd6c9e" />
+                    <Bar dataKey="leads"      name="Leads"      fill="#ffb90f" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
