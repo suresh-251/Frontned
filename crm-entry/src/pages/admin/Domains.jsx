@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import {
   getDomains,
   createDomain,
@@ -41,7 +42,7 @@ export default function Domains() {
      ======================= */
   const handleCreateDomain = async () => {
     if (!domainName.trim() || !domainCode.trim()) {
-      alert("Domain name and code are required");
+      toast.error("Domain name and code are required");
       return;
     }
 
@@ -58,7 +59,7 @@ export default function Domains() {
       loadDomains();
     } catch (err) {
       console.error("Create domain failed", err);
-      alert("Failed to create domain");
+      toast.error("Failed to create domain");
     } finally {
       setCreating(false);
     }
@@ -78,7 +79,7 @@ export default function Domains() {
       loadDomains();
     } catch (err) {
       console.error("Toggle domain failed", err);
-      alert("Failed to update domain status");
+      toast.error("Failed to update domain status");
     }
   };
 

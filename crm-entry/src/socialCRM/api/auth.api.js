@@ -1,4 +1,6 @@
 import api, { BASE_URL } from "./apiClient";
+import { getAccessToken } from "../../utils/authStorage";
+import { secureStorage } from "../../utils/secureStorage";
 
 // Revoke FB permissions first so the next OAuth shows fresh page/consent selection
 const revokeFacebook = async () => {
@@ -11,7 +13,7 @@ const revokeFacebook = async () => {
 
 // Generic connect function (recommended)
 const connect = (platform) => {
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   const returnUrl = window.location.pathname;
 
   window.location.href =
@@ -54,12 +56,12 @@ export const connectPlatform = (platform) => {
  * 2. Redirects to the platform-specific OAuth connect flow.
  */
 export const connectBrandChannel = async (brandSlug, platform) => {
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   const returnUrl = "/crm/socialmedia/brands";
 
   // Activate the brand first via existing endpoint
   await api.post(`/brands/${brandSlug}/activate`);
-  localStorage.setItem("brandSlug", brandSlug);
+  secureStorage.set("brandSlug", brandSlug);
 
   if (platform === "facebook") {
     // Facebook uses revoke + reconnect for fresh page selection

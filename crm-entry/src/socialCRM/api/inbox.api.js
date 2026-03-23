@@ -1,5 +1,6 @@
 import api from "./apiClient";
 import { BASE_URL } from "./apiClient";
+import { getAccessToken } from "../../utils/authStorage";
 import * as signalR from "@microsoft/signalr";
 
 const HUB_URL = BASE_URL.replace("/api", "") + "/hubs/inbox";
@@ -33,9 +34,8 @@ export const getUnreadCount = () =>
 
 // ── SignalR connection factory ────────────────────────────────────────────
 export function createInboxHubConnection() {
-  const token = localStorage.getItem("accessToken");
   return new signalR.HubConnectionBuilder()
-    .withUrl(HUB_URL, token ? { accessTokenFactory: () => token } : {})
+    .withUrl(HUB_URL, { accessTokenFactory: () => getAccessToken() || "" })
     .withAutomaticReconnect()
     .configureLogging(signalR.LogLevel.Warning)
     .build();

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getBrandSummary, syncAnalytics } from "../api/analytics.api";
 import { useBrand } from "../context/BrandContext";
 
@@ -58,6 +58,30 @@ export default function useAnalytics(days = 7, platform = null, sortBy = "engage
   useEffect(() => {
     load();
   }, [load]);
+
+  // ── Auto-sync: if summary loads with no meaningful data, trigger once ────
+  const autoSynced = useRef(false);
+  useEffect(() => {
+    if (!activeBrand?.slug || loading || syncing || autoSynced.current) return;
+    if (summary === null) return; // still loading
+    const hasData = (summary?.totalReach > 0) || (summary?.totalEngagement > 0) || (summary?.totalPosts > 0);
+    if (!hasData) {
+      autoSynced.current = true;
+      sync();
+    }
+  }, [activeBrand?.slug, loading, syncing, summary, sync]);
+
+  // Reset auto-sync flag when brand changes
+  useEffect(() => {
+    autoSynced.current = false;
+  }, [activeBrand?.slug]);
+
+  // ── Periodic background refresh every 15 minutes ──────────────────────────
+  useEffect(() => {
+    if (!activeBrand?.slug) return;
+    const interval = setInterval(() => { load(); }, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [activeBrand?.slug, load]);
 
   return { summary, loading, error, refresh: load, sync, syncing, syncResult };
 }

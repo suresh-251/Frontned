@@ -1,34 +1,13 @@
-// import api from "./apiClient";
-
-// /**
-//  * Facebook Analytics API
-//  * GET /api/analytics/facebook/page
-//  */
-// export const getFacebookPageAnalytics = async () => {
-//   const response = await api.get("/analytics/facebook/page");
-//   return response.data;
-// };
-
-
-
-
-
-
 import api from "./apiClient";
 
-// X-Brand-Id is automatically attached by the apiClient interceptor
+/**
+ * Facebook Analytics API
+ * GET /api/analytics/facebook/page
+ *
+ * Brand scoping is handled automatically by apiClient's X-Brand-Id header.
+ * No need to manually read brandId from localStorage.
+ */
 export const getFacebookPageAnalytics = async () => {
-  const brandId = localStorage.getItem("brandId");
-
-  if (!brandId) {
-    throw new Error("Brand ID not found. Please select a brand.");
-  }
-
-  const response = await api.get("/analytics/facebook/page", {
-    headers: {
-      "X-Brand-Id": brandId, // explicit header (safe)
-    },
-  });
-
+  const response = await api.get("/analytics/facebook/page");
   return response.data;
 };

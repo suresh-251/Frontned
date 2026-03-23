@@ -8,6 +8,7 @@ import {
   updateBrand as apiUpdateBrand,
 } from "../api/brand.api";
 import { appCache } from "../utils/cache";
+import { secureStorage } from "../../utils/secureStorage";
 
 const BRANDS_CACHE_KEY = "sc_brands";
 
@@ -48,9 +49,9 @@ export function BrandProvider({ children }) {
       // Persist to cache + localStorage slug
       appCache.set(BRANDS_CACHE_KEY, data);
       if (active) {
-        localStorage.setItem("brandSlug", active.slug);
+        secureStorage.set("brandSlug", active.slug);
       } else {
-        localStorage.removeItem("brandSlug");
+        secureStorage.remove("brandSlug");
       }
     } catch (err) {
       setError(err.message);
@@ -69,7 +70,7 @@ export function BrandProvider({ children }) {
   const invalidateAllBrandCaches = useCallback(() => {
     const prefixes = [
       "sc_dash_", "ph_inbox_", "ph_leads_", "ph_pages_",
-      "ph_scheduled_", "ph_history_", "ph_drafts_",
+      "ph_forms_", "ph_scheduled_", "ph_history_", "ph_drafts_",
       "ph_subs_", "ph_fbpages_",
     ];
     prefixes.forEach((p) => appCache.invalidatePrefix(p));
@@ -79,7 +80,7 @@ export function BrandProvider({ children }) {
   const switchBrand = useCallback(
     async (slug) => {
       invalidateAllBrandCaches();
-      localStorage.setItem("brandSlug", slug);
+      secureStorage.set("brandSlug", slug);
       await activateBrand(slug);
 
       const target = brands.find(b => b.slug === slug);
@@ -130,7 +131,7 @@ export function BrandProvider({ children }) {
       appCache.invalidate(BRANDS_CACHE_KEY);
       appCache.invalidate(`sc_dash_${slug}`);
       if (activeBrand?.slug === slug) {
-        localStorage.removeItem("brandSlug");
+        secureStorage.remove("brandSlug");
       }
       await refresh();
     },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, cloneElement } from "react";
+import React, { useState, useEffect, useCallback, useRef, cloneElement } from "react";
 import api from "../api/apiClient";
 import { connectPlatform } from "../api/auth.api";
 import { selectPage } from "../api/facebook.pages.api";
@@ -255,14 +255,14 @@ export default function Dashboard() {
   }, [fetchFromServer, applyData]);
  
   useEffect(() => { loadData(activeBrand?.slug); }, [activeBrand?.slug]);
- 
+
   // ── Load quick actions ───────────────────────────────────────────────────
   useEffect(() => {
     getSelectedQuickActions()
       .then(setQuickActions)
       .catch(() => setQuickActions([]));
   }, []);
- 
+
   // ── Load growth metrics ─────────────────────────────────────────────────
   useEffect(() => {
     if (!activeBrand?.slug) return;
@@ -272,10 +272,12 @@ export default function Dashboard() {
       .catch(() => setGrowth(null))
       .finally(() => setGrowthLoading(false));
   }, [activeBrand?.slug]);
- 
-  // ── Sync ────────────────────────────────────────────────────────────────────
-  const handleSync = async () => {
-    setSyncing(true); setSyncMsg(null);
+
+  // ── Sync helper (reusable by manual + auto) ────────────────────────────────
+  const runSync = useCallback(async (silent = false) => {
+    if (syncing) return;
+    setSyncing(true);
+    if (!silent) setSyncMsg(null);
     try {
       const result = await syncAnalytics();
       const posts  = result?.postsSynced ?? 0;
@@ -290,12 +292,40 @@ export default function Dashboard() {
       await loadData(activeBrand?.slug, { force: true, silent: true });
       getGrowthMetrics().then(setGrowth).catch(() => {});
     } catch (e) {
-      setSyncMsg({ ok: false, text: e?.message || "Sync failed" });
+      if (!silent) setSyncMsg({ ok: false, text: e?.message || "Sync failed" });
     } finally {
       setSyncing(false);
       setTimeout(() => setSyncMsg(null), 8000);
     }
-  };
+  }, [syncing, activeBrand?.slug, loadData]);
+
+  // ── Manual sync ────────────────────────────────────────────────────────────
+  const handleSync = () => runSync(false);
+
+  // ── Auto-sync: trigger once on mount if metrics are empty ─────────────────
+  const autoSynced = useRef(false);
+  useEffect(() => {
+    if (!activeBrand?.slug || loading || autoSynced.current || syncing) return;
+    // Check if all channel metrics are empty (no reach/engagement data)
+    const hasData = channelMetrics.some(
+      ch => (ch.totalReach > 0) || (ch.totalEngagement > 0) || (ch.totalFollowers > 0)
+    );
+    if (!hasData && channelMetrics.length === 0 && Object.keys(accountsByPlatform).length > 0) {
+      autoSynced.current = true;
+      runSync(true);
+    }
+  }, [activeBrand?.slug, loading, channelMetrics, accountsByPlatform, syncing, runSync]);
+
+  // ── Periodic background refresh every 15 minutes ──────────────────────────
+  useEffect(() => {
+    if (!activeBrand?.slug) return;
+    const interval = setInterval(() => {
+      appCache.invalidate(dashKey(activeBrand.slug));
+      loadData(activeBrand.slug, { force: true, silent: true });
+      getGrowthMetrics().then(setGrowth).catch(() => {});
+    }, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [activeBrand?.slug, loadData]);
  
   // ── Activate account ─────────────────────────────────────────────────────────
   const activateAccount = async (platform, pageIdentifier) => {
