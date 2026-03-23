@@ -297,16 +297,16 @@ export function ConvertToDealModal({ lead, onClose, onConverted }) {
   );
 }
 
-export function Timeline({ items, loading, onRefresh, stacked = false, mobile = false, onClose = null }) {
+export function Timeline({ items, loading, onRefresh, stacked = false, mobile = false, onClose = null, eyebrow = "Lead Story", description = "A clean view of status changes, communications, and lead updates." }) {
   const groups = useMemo(() => items.reduce((acc, item) => { const key = fmtDate(timelineDateValue(item), false); (acc[key] ||= []).push(item); return acc; }, {}), [items]);
   return (
     <aside style={{ height: mobile ? "auto" : "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderLeft: stacked ? "none" : "1px solid #e2e8f0", borderTop: stacked ? "1px solid #e2e8f0" : "none", background: "linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%)" }}>
       <div style={{ borderBottom: "1px solid #e2e8f0", background: "linear-gradient(180deg, #ffffff 0%, #f7fbff 100%)", padding: "16px 18px 14px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em" }}>Lead Story</div>
+            <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em" }}>{eyebrow}</div>
             <div style={{ marginTop: 6, fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Timeline</div>
-            <div style={{ marginTop: 4, fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>A clean view of status changes, communications, and lead updates.</div>
+            <div style={{ marginTop: 4, fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>{description}</div>
           </div>
           {onClose ? <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button className="icon-btn" onClick={onClose} title="Close" style={{ width: 34, height: 34, border: "1.5px solid #9fb3ca", borderRadius: 12, background: "#ffffff", boxShadow: "0 8px 20px rgba(148, 163, 184, 0.12)" }}><X size={14} /></button>

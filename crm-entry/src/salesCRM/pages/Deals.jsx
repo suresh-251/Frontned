@@ -2,9 +2,10 @@ import "../styles/Leads.css";
 import "react-datepicker/dist/react-datepicker.css";
 import { useEffect, useMemo, useState } from "react";
 import DatePicker from "react-datepicker";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import dealsAPI from "../api/deals.api";
+import DealDetailsModal from "../components/DealDetailsModal.jsx";
 import Toast from "../utils/toast";
 import { IFilter, IKanban, IRows, ISearch, IX } from "./leads/shared";
 import { getInitials } from "./leads/utils";
@@ -52,12 +53,35 @@ const fmtDateTime = (value) => {
   return date.toLocaleString("en-GB");
 };
 
-const normalizeStage = (deal) => deal?.stage || deal?.dealStage || deal?.status || "New";
+const normalizeStage = (deal) => {
+  const raw = deal?.stage || deal?.dealStage || deal?.status || "New";
+  return STAGE_ORDER.includes(raw) ? raw : "New";
+};
 const normalizeAmount = (deal) => Number(deal?.amount ?? deal?.dealValue ?? deal?.value ?? 0) || 0;
 const normalizeClosingDate = (deal) => deal?.closingDate || deal?.expectedCloseDate || deal?.closeDate || null;
 const getDealTitle = (deal) => deal?.dealName || deal?.title || deal?.subject || deal?.name || `Deal #${deal?.dealId ?? deal?.id ?? ""}`;
 const getDealId = (deal) => Number(deal?.dealId ?? deal?.id ?? 0);
+const getDealType = (deal) => deal?.type || deal?.dealType || "-";
 const formatStageLabel = (value = "") => String(value).replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+const getAccountName = (deal) => deal?.accountName || deal?.account?.accountName || "-";
+const getContactName = (deal) => deal?.contactName || deal?.contact?.contactName || "-";
+const getCreatedTime = (deal) => deal?.createdTime || deal?.createdAt || null;
+const getStageSelectStyle = (stage) => {
+  const meta = STAGE_META[stage] || { color: "#475569", bg: "#e2e8f0" };
+  return {
+    minWidth: 140,
+    padding: "8px 36px 8px 12px",
+    border: `1.5px solid ${meta.color}`,
+    borderRadius: 999,
+    background: `${meta.bg} url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='${encodeURIComponent(meta.color)}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 12px center / 14px 14px`,
+    color: meta.color,
+    fontWeight: 700,
+    outline: "none",
+    appearance: "none",
+    cursor: "pointer",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.24)",
+  };
+};
 
 const SEARCH_FIELD_OPTIONS = [
   { value: "all", label: "All Details" },
@@ -347,6 +371,108 @@ function DealsKanban({ deals, onOpenDeal, onDeleteDeal }) {
   );
 }
 
+function DealsKanbanBoard({ deals, onOpenDeal, onDeleteDeal, onStageDrop }) {
+  const grouped = useMemo(() => STAGE_ORDER.reduce((acc, stage) => {
+    acc[stage] = deals.filter((deal) => normalizeStage(deal) === stage);
+    return acc;
+  }, {}), [deals]);
+
+  return (
+    <div className="kanban-board">
+      {STAGE_ORDER.map((stage) => {
+        const items = grouped[stage] || [];
+        const totalExpected = items.reduce((sum, deal) => sum + Number(deal.expectedRevenue || 0), 0);
+        const meta = STAGE_META[stage] || { color: "#334155", bg: "#e2e8f0" };
+
+        return (
+          <div
+            key={stage}
+            className="kanban-column"
+            style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const dealId = Number(event.dataTransfer.getData("text/plain") || 0);
+              if (dealId) onStageDrop?.(dealId, stage);
+            }}
+          >
+            <div className="kanban-column__header" style={{ alignItems: "flex-start" }}>
+              <div>
+                <div className="kanban-column__label">{formatStageLabel(stage)}</div>
+                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "color-mix(in srgb, var(--text-main) 84%, #94a3b8)" }}>{fmtCurrency(totalExpected)}</div>
+              </div>
+              <span className="kanban-column__count">{items.length}</span>
+            </div>
+            <div className="kanban-column__list">
+              {!items.length ? (
+                <div className="kanban-card" style={{ borderStyle: "dashed", color: "color-mix(in srgb, var(--text-main) 60%, #94a3b8)" }}>
+                  No deals in this stage
+                </div>
+              ) : items.map((deal) => (
+                <div
+                  key={getDealId(deal) || `${getDealTitle(deal)}-${getCreatedTime(deal) || "none"}`}
+                  className="kanban-card"
+                  style={{ position: "relative", paddingRight: 36 }}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("text/plain", String(getDealId(deal)));
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                >
+                  <button
+                    type="button"
+                    aria-label="Delete deal"
+                    onClick={(event) => { event.stopPropagation(); onDeleteDeal(deal); }}
+                    style={{ position: "absolute", top: 8, right: 8, border: "none", background: "color-mix(in srgb, var(--bg-card) 92%, #ffffff)", color: "#ef4444", cursor: "pointer", padding: 2, borderRadius: 6, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.08)" }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenDeal(deal)}
+                      style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}
+                    >
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--text-main)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {getDealTitle(deal)}
+                      </div>
+                    </button>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "rgba(79,70,229,0.12)", color: "#4f46e5" }}>
+                        {formatStageLabel(stage)}
+                      </span>
+                      {getDealType(deal) !== "-" ? <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "color-mix(in srgb, var(--bg-card) 78%, #ffffff)", color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>{getDealType(deal)}</span> : null}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Account · {getAccountName(deal)}</div>
+                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Contact · {getContactName(deal)}</div>
+                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Owner · {deal.dealOwner || "-"}</div>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Next Step · {deal.nextStep || "-"}</div>
+                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Source · {deal.leadSource || "-"}</div>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ fontSize: 12, color: "color-mix(in srgb, var(--text-main) 68%, #94a3b8)", whiteSpace: "nowrap" }}>
+                        Expected: <strong style={{ color: "var(--text-main)" }}>{fmtCurrency(deal.expectedRevenue || 0)}</strong>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>Created: {fmtDate(getCreatedTime(deal))}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Deals() {
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -358,32 +484,35 @@ export default function Deals() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailDeal, setDetailDeal] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [bulkStage, setBulkStage] = useState("New");
-  const [bulkOwner, setBulkOwner] = useState("");
   const [createForm, setCreateForm] = useState({
     dealName: "",
     amount: "",
-    currency: "USD",
     closingDate: null,
     stage: "New",
+    type: "",
     probability: 10,
-    dealType: "New Business",
-    priority: "Medium",
     nextStep: "",
-    nextActivityDate: null,
     leadSource: "",
     campaignSource: "",
-    tags: "",
     description: "",
   });
 
   const loadDeals = async () => {
     setLoading(true);
     try {
-      const data = await dealsAPI.getAll();
+      const data = await dealsAPI.getAll({
+        source: filters.leadSource || undefined,
+        owner: filters.owner || undefined,
+        dateRangeFrom: filters.closingDateFrom || undefined,
+        dateRangeTo: filters.closingDateTo || undefined,
+      });
       setDeals(Array.isArray(data) ? data : []);
     } catch (error) {
       Toast.error(error?.response?.data?.message || "Unable to load deals");
@@ -395,7 +524,7 @@ export default function Deals() {
 
   useEffect(() => {
     loadDeals();
-  }, []);
+  }, [filters.leadSource, filters.owner, filters.closingDateFrom, filters.closingDateTo]);
 
   useEffect(() => {
     setSelected((current) => {
@@ -433,26 +562,27 @@ export default function Deals() {
         all: normalizeFilterText([
           deal.dealId,
           deal.dealName,
-          deal.accountName,
-          deal.contactName,
+          getAccountName(deal),
+          getContactName(deal),
           deal.dealOwner,
           deal.stage,
+          getDealType(deal),
           deal.nextStep,
-          deal.nextActivity,
           deal.leadSource,
           deal.campaignSource,
-          deal.tags,
+          deal.description,
+          deal.connectedTo,
         ].join(" ")),
         dealName: normalizeFilterText(deal.dealName),
-        accountName: normalizeFilterText(deal.accountName),
-        contactName: normalizeFilterText(deal.contactName),
+        accountName: normalizeFilterText(getAccountName(deal)),
+        contactName: normalizeFilterText(getContactName(deal)),
         dealOwner: normalizeFilterText(deal.dealOwner),
         stage: normalizeFilterText(deal.stage),
         nextStep: normalizeFilterText(deal.nextStep),
-        nextActivity: normalizeFilterText(deal.nextActivity),
+        nextActivity: normalizeFilterText(deal.activityId),
         leadSource: normalizeFilterText(deal.leadSource),
         campaignSource: normalizeFilterText(deal.campaignSource),
-        tags: normalizeFilterText(deal.tags),
+        tags: normalizeFilterText(deal.connectedTo),
       };
       if (!targets[searchField]?.includes(query)) return false;
     }
@@ -525,6 +655,89 @@ export default function Deals() {
     }
   };
 
+  const handleStageUpdate = async (dealId, nextStage) => {
+    if (!dealId || !STAGE_ORDER.includes(nextStage)) return;
+    const currentDeal = deals.find((item) => getDealId(item) === dealId);
+    if (currentDeal && normalizeStage(currentDeal) === nextStage) return;
+    try {
+      await dealsAPI.updateStage(dealId, nextStage);
+      setDeals((current) => current.map((deal) => (
+        getDealId(deal) === dealId ? { ...deal, stage: nextStage, dealStage: nextStage, status: nextStage } : deal
+      )));
+      if (detailDeal && getDealId(detailDeal) === dealId) {
+        setDetailDeal((current) => current ? { ...current, stage: nextStage, dealStage: nextStage, status: nextStage } : current);
+      }
+      Toast.success(`Stage updated to ${formatStageLabel(nextStage)}`);
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || "Unable to update deal stage");
+      await loadDeals();
+    }
+  };
+
+  const handleOpenEdit = async (deal) => {
+    const dealId = getDealId(deal);
+    if (!dealId) return;
+    try {
+      const fullDeal = await dealsAPI.getById(dealId);
+      setEditForm({
+        id: dealId,
+        dealName: fullDeal?.dealName || deal?.dealName || "",
+        amount: String(fullDeal?.amount ?? deal?.amount ?? ""),
+        closingDate: normalizeClosingDate(fullDeal || deal) ? new Date(normalizeClosingDate(fullDeal || deal)) : null,
+        stage: normalizeStage(fullDeal || deal),
+        type: fullDeal?.type || fullDeal?.dealType || deal?.type || "",
+        probability: String(fullDeal?.probability ?? deal?.probability ?? 0),
+        nextStep: fullDeal?.nextStep || deal?.nextStep || "",
+        leadSource: fullDeal?.leadSource || deal?.leadSource || "",
+        campaignSource: fullDeal?.campaignSource || deal?.campaignSource || "",
+        description: fullDeal?.description || deal?.description || "",
+        reasonForLoss: fullDeal?.reasonForLoss || "",
+        connectedTo: fullDeal?.connectedTo || "",
+      });
+      setEditOpen(true);
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || "Unable to load deal for editing");
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editForm?.id) return;
+    if (!String(editForm.dealName || "").trim()) {
+      Toast.error("Deal name is required");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const payload = {
+        dealName: editForm.dealName,
+        amount: Number(editForm.amount || 0),
+        closingDate: editForm.closingDate ? editForm.closingDate.toISOString() : null,
+        stage: editForm.stage || "New",
+        type: editForm.type || "",
+        probability: Number(editForm.probability || 0),
+        nextStep: editForm.nextStep || "",
+        leadSource: editForm.leadSource || "",
+        campaignSource: editForm.campaignSource || "",
+        description: editForm.description || "",
+        reasonForLoss: editForm.reasonForLoss || "",
+        connectedTo: editForm.connectedTo || "",
+      };
+      await dealsAPI.update(editForm.id, payload);
+      Toast.success("Deal updated");
+      setEditOpen(false);
+      setEditForm(null);
+      await loadDeals();
+      if (detailOpen && detailDeal && getDealId(detailDeal) === editForm.id) {
+        const refreshed = await dealsAPI.getById(editForm.id);
+        setDetailDeal(refreshed);
+      }
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || "Unable to update deal");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const handleDeleteDeal = async (deal) => {
     const dealId = getDealId(deal);
     if (!dealId) return;
@@ -545,19 +758,17 @@ export default function Deals() {
       "Deal ID": getDealId(deal),
       "Deal Name": getDealTitle(deal),
       Stage: formatStageLabel(normalizeStage(deal)),
-      Amount: normalizeAmount(deal),
+      Type: getDealType(deal),
       Probability: deal.probability ?? "",
       "Expected Revenue": Number(deal.expectedRevenue || 0) || 0,
-      Account: deal.accountName || "",
-      Contact: deal.contactName || "",
+      Account: getAccountName(deal),
+      Contact: getContactName(deal),
       Owner: deal.dealOwner || "",
       "Next Step": deal.nextStep || "",
-      "Next Activity": deal.nextActivity || "",
       "Lead Source": deal.leadSource || "",
       "Campaign Source": deal.campaignSource || "",
-      Priority: deal.priority || "",
-      Tags: deal.tags || "",
-      "Closing Date": normalizeClosingDate(deal) || "",
+      "Created Time": getCreatedTime(deal) || "",
+      Description: deal.description || "",
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -579,24 +790,6 @@ export default function Deals() {
       await loadDeals();
     } catch (error) {
       Toast.error(error?.response?.data?.message || "Unable to update deal stages");
-    }
-  };
-
-  const handleBulkOwnerUpdate = async () => {
-    const ids = selectedDeals.map((deal) => getDealId(deal)).filter(Boolean);
-    const ownerName = String(bulkOwner || "").trim();
-    if (!ids.length || !ownerName) return;
-    try {
-      await Promise.all(ids.map((id) => dealsAPI.update(id, { dealOwner: ownerName })));
-      setDeals((current) => current.map((deal) => (
-        ids.includes(getDealId(deal)) ? { ...deal, dealOwner: ownerName } : deal
-      )));
-      Toast.success(`Updated owner for ${ids.length} deal${ids.length > 1 ? "s" : ""}`);
-      setBulkOwner("");
-      clearSelection();
-      await loadDeals();
-    } catch (error) {
-      Toast.error(error?.response?.data?.message || "Unable to update deal owners");
     }
   };
 
@@ -626,20 +819,13 @@ export default function Deals() {
       await dealsAPI.create({
         dealName: createForm.dealName,
         amount: Number(createForm.amount || 0),
-        currency: createForm.currency || "USD",
         closingDate: createForm.closingDate ? createForm.closingDate.toISOString() : null,
         stage: createForm.stage || "New",
+        type: createForm.type || "",
         probability: Number(createForm.probability || 0),
-        dealType: createForm.dealType || "New Business",
-        priority: createForm.priority || "Medium",
         nextStep: createForm.nextStep || "",
-        nextActivityDate: createForm.nextActivityDate ? createForm.nextActivityDate.toISOString() : null,
         leadSource: createForm.leadSource || "",
         campaignSource: createForm.campaignSource || "",
-        tags: String(createForm.tags || "")
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
         description: createForm.description || "",
       });
       Toast.success("Deal created");
@@ -647,17 +833,13 @@ export default function Deals() {
       setCreateForm({
         dealName: "",
         amount: "",
-        currency: "USD",
         closingDate: null,
         stage: "New",
+        type: "",
         probability: 10,
-        dealType: "New Business",
-        priority: "Medium",
         nextStep: "",
-        nextActivityDate: null,
         leadSource: "",
         campaignSource: "",
-        tags: "",
         description: "",
       });
       loadDeals();
@@ -705,26 +887,18 @@ export default function Deals() {
         <div className="table-card-shell" style={{ marginBottom: 16 }}>
           <div className="table-card" style={{ padding: "12px 14px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-main)" }}>{selectedDeals.length} deal{selectedDeals.length > 1 ? "s" : ""} selected</div>
-            <button className="btn-ghost" onClick={handleExportSelected}>Export selected</button>
+            <button className="btn-ghost" onClick={handleExportSelected}>Export</button>
             <select value={bulkStage} onChange={(event) => setBulkStage(event.target.value)} style={{ minWidth: 150, padding: "8px 10px", border: "1.5px solid var(--cborder)", borderRadius: 10, background: "var(--cs)", color: "var(--text-main)" }}>
               {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
             </select>
             <button className="btn-ghost" onClick={handleBulkStageUpdate}>Change stage</button>
-            <input
-              type="text"
-              value={bulkOwner}
-              onChange={(event) => setBulkOwner(event.target.value)}
-              placeholder="Assign owner"
-              style={{ minWidth: 160, padding: "8px 10px", border: "1.5px solid var(--cborder)", borderRadius: 10, background: "var(--cs)", color: "var(--text-main)", outline: "none" }}
-            />
-            <button className="btn-ghost" onClick={handleBulkOwnerUpdate} disabled={!bulkOwner.trim()}>Assign owner</button>
             <button className="btn-ghost" onClick={handleBulkDelete} style={{ color: "#dc2626", borderColor: "color-mix(in srgb, #dc2626 18%, var(--cborder))" }}>Delete</button>
             <button className="btn-ghost" onClick={clearSelection}>Clear</button>
           </div>
         </div>
       ) : null}
 
-      {viewMode === "kanban" ? <DealsKanban deals={filteredDeals} onOpenDeal={handleOpenDeal} onDeleteDeal={handleDeleteDeal} /> : (
+      {viewMode === "kanban" ? <DealsKanbanBoard deals={filteredDeals} onOpenDeal={handleOpenDeal} onDeleteDeal={handleDeleteDeal} onStageDrop={handleStageUpdate} /> : (
         <div className="table-card-shell sales-deals-table-shell">
           <div className="table-card sales-deals-table-card">
             <div className="table-scroll sales-deals-table-scroll">
@@ -734,19 +908,17 @@ export default function Deals() {
                     <th className="th th-check"><input type="checkbox" className="cb" checked={allFilteredSelected} onChange={toggleAllFiltered} /></th>
                     <th className="th sales-deals-table-head-cell">Deal Name</th>
                     <th className="th sales-deals-table-head-cell">Stage</th>
-                    <th className="th sales-deals-table-head-cell">Amount</th>
+                    <th className="th sales-deals-table-head-cell">Type</th>
                     <th className="th sales-deals-table-head-cell">Probability</th>
                     <th className="th sales-deals-table-head-cell">Expected Revenue</th>
                     <th className="th sales-deals-table-head-cell">Account</th>
                     <th className="th sales-deals-table-head-cell">Contact</th>
                     <th className="th sales-deals-table-head-cell">Owner</th>
                     <th className="th sales-deals-table-head-cell th-wrap-limit">Next Step</th>
-                    <th className="th sales-deals-table-head-cell th-wrap-limit">Next Activity</th>
                     <th className="th sales-deals-table-head-cell">Lead Source</th>
                     <th className="th sales-deals-table-head-cell">Campaign Source</th>
-                    <th className="th sales-deals-table-head-cell">Priority</th>
-                    <th className="th sales-deals-table-head-cell">Tags</th>
-                    <th className="th sales-deals-table-head-cell">Closing Date</th>
+                    <th className="th sales-deals-table-head-cell">Created Time</th>
+                    <th className="th sales-deals-table-head-cell th-wrap-limit">Description</th>
                     <th className="th th-actions sales-deals-table-head-cell">Actions</th>
                   </tr>
                 </thead>
@@ -773,28 +945,49 @@ export default function Deals() {
                             >
                               {getDealTitle(deal)}
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDeal(deal)}
+                              className="name-link sales-deals-name-link"
+                              style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", marginTop: 4 }}
+                              title={`Open ${getDealTitle(deal)} details`}
+                              aria-label={`Open ${getDealTitle(deal)} details`}
+                            >
+                              <span className="sales-leads-name-link__meta">View</span>
+                            </button>
                           </div>
                         </div>
                       </td>
                       <td className="td td-status">
-                        <span className="status-pill" style={{ color: dealStageMeta.color }}>
-                          <span className="status-pill-label">{formatStageLabel(dealStage)}</span>
-                        </span>
+                        <select
+                          value={dealStage}
+                          onChange={(event) => handleStageUpdate(dealId, event.target.value)}
+                          style={getStageSelectStyle(dealStage)}
+                        >
+                          {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
+                        </select>
                       </td>
-                      <td className="td"><span className="cell-txt">{fmtCurrency(normalizeAmount(deal))}</span></td>
+                      <td className="td"><span className="cell-txt">{getDealType(deal)}</span></td>
                       <td className="td"><span className="cell-txt">{deal.probability ?? "-"}</span></td>
                       <td className="td"><span className="cell-txt">{fmtCurrency(deal.expectedRevenue || 0)}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.accountName || "-"}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.contactName || "-"}</span></td>
+                      <td className="td"><span className="cell-txt">{getAccountName(deal)}</span></td>
+                      <td className="td"><span className="cell-txt">{getContactName(deal)}</span></td>
                       <td className="td"><span className="cell-txt">{deal.dealOwner || "-"}</span></td>
                       <td className="td td-wrap-limit"><span className="cell-txt">{deal.nextStep || "-"}</span></td>
-                      <td className="td td-wrap-limit"><span className="cell-txt">{deal.nextActivity || "-"}</span></td>
                       <td className="td"><span className="cell-txt">{deal.leadSource || "-"}</span></td>
                       <td className="td"><span className="cell-txt">{deal.campaignSource || "-"}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.priority || "-"}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.tags || "-"}</span></td>
-                      <td className="td"><span className="date-txt">{fmtDate(normalizeClosingDate(deal))}</span></td>
+                      <td className="td"><span className="date-txt">{fmtDateTime(getCreatedTime(deal))}</span></td>
+                      <td className="td td-wrap-limit"><span className="cell-txt">{deal.description || "-"}</span></td>
                       <td className="td td-actions">
+                        <button
+                          type="button"
+                          aria-label="Edit deal"
+                          onClick={() => handleOpenEdit(deal)}
+                          className="act-btn act-btn--edit"
+                          style={{ border: "none", background: "transparent", color: "#2563eb", cursor: "pointer", marginRight: 8 }}
+                        >
+                          <Pencil size={16} />
+                        </button>
                         <button
                           type="button"
                           aria-label="Delete deal"
@@ -814,87 +1007,71 @@ export default function Deals() {
         </div>
       )}
 
-      {detailOpen ? (
-        <div className="overlay" onClick={() => setDetailOpen(false)}>
-          <div className="modal" style={{ width: 760, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(event) => event.stopPropagation()}>
+      {detailOpen ? <DealDetailsModal deal={detailDeal} loading={detailLoading} onClose={() => setDetailOpen(false)} /> : null}
+
+      {editOpen && editForm ? (
+        <div className="overlay" onClick={() => setEditOpen(false)}>
+          <div className="modal" style={{ width: 680, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(event) => event.stopPropagation()}>
             <div className="modal-hdr">
               <div>
-                <div className="modal-title">Deal Details</div>
-                <div className="modal-sub">{detailDeal?.dealName || "Loading deal..."}</div>
+                <div className="modal-title">Edit Deal</div>
               </div>
-              <button className="icon-btn modal-close" onClick={() => setDetailOpen(false)}><IX s={15} /></button>
+              <button className="icon-btn modal-close" onClick={() => setEditOpen(false)}><IX s={15} /></button>
             </div>
-            <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gap: "16px", overflowY: "auto" }}>
-              {detailLoading ? (
-                <div style={{ fontSize: 13, color: "#64748b" }}>Loading deal details...</div>
-              ) : detailDeal ? (
-                <>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, padding: 14, border: "1px solid #e5e7eb", borderRadius: 12, background: "#f8fafc" }}>
-                    {[
-                      { label: "Deal Name", value: detailDeal.dealName },
-                      { label: "Stage", value: detailDeal.stage },
-                      { label: "Owner", value: detailDeal.dealOwner },
-                      { label: "Priority", value: detailDeal.priority },
-                      { label: "Deal Type", value: detailDeal.dealType },
-                      { label: "Probability", value: detailDeal.probability },
-                      { label: "Amount", value: fmtCurrency(detailDeal.amount) },
-                      { label: "Expected Revenue", value: fmtCurrency(detailDeal.expectedRevenue) },
-                    ].map((item) => (
-                      <div key={item.label} style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>{item.label}</div>
-                        <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{item.value ?? "-"}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, padding: 14, border: "1px solid #e5e7eb", borderRadius: 12, background: "#ffffff" }}>
-                    {[
-                      { label: "Account", value: detailDeal.account?.accountName },
-                      { label: "Contact", value: detailDeal.contact?.contactName },
-                      { label: "Contact Email", value: detailDeal.contact?.email },
-                      { label: "Contact Phone", value: detailDeal.contact?.phone },
-                    ].map((item) => (
-                      <div key={item.label} style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>{item.label}</div>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a" }}>{item.value ?? "-"}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, padding: 14, border: "1px solid #e5e7eb", borderRadius: 12, background: "#ffffff" }}>
-                    {[
-                      { label: "Closing Date", value: fmtDate(detailDeal.closingDate) },
-                      { label: "Next Activity", value: detailDeal?.activitySummary?.nextActivity },
-                      { label: "Next Step", value: detailDeal.nextStep },
-                      { label: "Currency", value: detailDeal.currency },
-                    ].map((item) => (
-                      <div key={item.label} style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>{item.label}</div>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a" }}>{item.value ?? "-"}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, padding: 14, border: "1px solid #e5e7eb", borderRadius: 12, background: "#ffffff" }}>
-                    {[
-                      { label: "Lead Source", value: detailDeal.leadSource },
-                      { label: "Campaign Source", value: detailDeal.campaignSource },
-                      { label: "Tags", value: detailDeal.tags },
-                      { label: "Description", value: detailDeal.description },
-                    ].map((item) => (
-                      <div key={item.label} style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>{item.label}</div>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a" }}>{item.value ?? "-"}</div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div style={{ fontSize: 13, color: "#ef4444" }}>Unable to load deal details.</div>
-              )}
+            <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "14px", overflowY: "auto" }}>
+              {[
+                { key: "dealName", label: "Deal Name *" },
+                { key: "amount", label: "Amount", type: "number" },
+                { key: "type", label: "Type" },
+                { key: "probability", label: "Probability", type: "number" },
+                { key: "nextStep", label: "Next Step", span: 2 },
+                { key: "leadSource", label: "Lead Source" },
+                { key: "campaignSource", label: "Campaign Source" },
+                { key: "connectedTo", label: "Connected To" },
+                { key: "reasonForLoss", label: "Reason For Loss" },
+              ].map((field) => (
+                <div key={field.key} style={{ gridColumn: field.span === 2 ? "1 / -1" : "auto" }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>{field.label}</label>
+                  <input
+                    type={field.type || "text"}
+                    value={editForm[field.key]}
+                    onChange={(event) => setEditForm((current) => ({ ...current, [field.key]: event.target.value }))}
+                    style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }}
+                  />
+                </div>
+              ))}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Stage</label>
+                <select value={editForm.stage} onChange={(event) => setEditForm((current) => ({ ...current, stage: event.target.value }))} style={{ ...getStageSelectStyle(editForm.stage), width: "100%" }}>
+                  {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
+                </select>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Closing Date</label>
+                <DatePicker
+                  selected={editForm.closingDate}
+                  onChange={(date) => setEditForm((current) => ({ ...current, closingDate: date }))}
+                  showTimeSelect
+                  timeIntervals={15}
+                  dateFormat="MMM d, yyyy h:mm aa"
+                  className="deal-datepicker"
+                  wrapperClassName="deal-datepicker-wrapper"
+                  customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
+                />
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Description</label>
+                <textarea
+                  rows={4}
+                  value={editForm.description}
+                  onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))}
+                  style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none", resize: "vertical" }}
+                />
+              </div>
             </div>
             <div className="modal-footer">
-              <button className="btn-ghost" onClick={() => setDetailOpen(false)}>Close</button>
+              <button className="btn-ghost" onClick={() => setEditOpen(false)} disabled={editSaving}>Cancel</button>
+              <button className="btn-primary" onClick={handleSaveEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</button>
             </div>
           </div>
         </div>
@@ -914,15 +1091,11 @@ export default function Deals() {
               {[
                 { key: "dealName", label: "Deal Name *", span: 2 },
                 { key: "amount", label: "Amount", type: "number" },
-                { key: "currency", label: "Currency" },
-                { key: "stage", label: "Stage" },
+                { key: "type", label: "Type" },
                 { key: "probability", label: "Probability", type: "number" },
-                { key: "dealType", label: "Deal Type" },
-                { key: "priority", label: "Priority" },
                 { key: "nextStep", label: "Next Step", span: 2 },
                 { key: "leadSource", label: "Lead Source" },
                 { key: "campaignSource", label: "Campaign Source" },
-                { key: "tags", label: "Tags (comma separated)", span: 2 },
               ].map((field) => (
                 <div key={field.key} style={{ gridColumn: field.span === 2 ? "1 / -1" : "auto" }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>{field.label}</label>
@@ -934,25 +1107,22 @@ export default function Deals() {
                   />
                 </div>
               ))}
-              <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, alignItems: "start" }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Stage</label>
+                <select
+                  value={createForm.stage}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, stage: event.target.value }))}
+                  style={{ ...getStageSelectStyle(createForm.stage), width: "100%" }}
+                >
+                  {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
+                </select>
+              </div>
+              <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", gap: 14, alignItems: "start" }}>
                 <div style={{ minWidth: 0 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Closing Date</label>
                   <DatePicker
                     selected={createForm.closingDate}
                     onChange={(date) => setCreateForm((current) => ({ ...current, closingDate: date }))}
-                    showTimeSelect
-                    timeIntervals={15}
-                    dateFormat="MMM d, yyyy h:mm aa"
-                    className="deal-datepicker"
-                    wrapperClassName="deal-datepicker-wrapper"
-                    customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
-                  />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Next Activity Date</label>
-                  <DatePicker
-                    selected={createForm.nextActivityDate}
-                    onChange={(date) => setCreateForm((current) => ({ ...current, nextActivityDate: date }))}
                     showTimeSelect
                     timeIntervals={15}
                     dateFormat="MMM d, yyyy h:mm aa"

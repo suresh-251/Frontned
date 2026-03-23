@@ -214,6 +214,17 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
     return raw.replace(/([a-z])([A-Z])/g, "$1 $2");
   };
 
+  const normalizeFollowUpItem = (item) => {
+    const normalizedType = item?.type || item?.activityType || item?.activityTypeName || "Follow-up";
+    const normalizedSubject = item?.subject || item?.title || item?.name || normalizedType;
+    return {
+      ...item,
+      type: normalizedType,
+      subject: normalizedSubject,
+      title: item?.title || normalizedSubject,
+    };
+  };
+
   const handleTodayClick = async () => {
     setFollowUpView("today");
     setFollowUpLoading(true);
@@ -236,9 +247,9 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
     setFollowUpLoading(true);
     setFollowUpError("");
     try {
-      const data = await activitiesAPI.getFollowUpsOverdue();
-      const filtered = (Array.isArray(data) ? data : []).filter((item) => Number(item?.leadId || item?.leadID || item?.lead?.id || 0) === Number(leadId));
-      setFollowUpItems(filtered);
+      const data = await activitiesAPI.getFollowUpsOverdue({ leadId });
+      const normalized = (Array.isArray(data) ? data : []).map(normalizeFollowUpItem);
+      setFollowUpItems(normalized);
       setPanelPos(getPanelPos());
     } catch (error) {
       setFollowUpItems([]);
@@ -337,8 +348,8 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
                   {followUpItems.map((item, index) => (
                     <div key={item?.id || `${item?.title || item?.type || "followup"}-${index}`} className="followup-picker__result-item">
                       <div className="followup-picker__result-title">{item?.title || item?.name || item?.type || "Follow-up"}</div>
-                      <div className="followup-picker__result-meta"><strong>Subject:</strong> {fmtPopupLabel(item?.subject || item?.title || item?.name)}</div>
-                      <div className="followup-picker__result-meta"><strong>Type:</strong> {fmtPopupLabel(item?.type)}</div>
+                      <div className="followup-picker__result-meta"><strong>Subject:</strong> {fmtPopupLabel(item?.subject || item?.title || item?.name || item?.type || "Follow-up")}</div>
+                      <div className="followup-picker__result-meta"><strong>Type:</strong> {fmtPopupLabel(item?.type || item?.activityType || item?.activityTypeName || "Follow-up")}</div>
                       <div className="followup-picker__result-meta">{fmtPopupDate(item?.dueDate || item?.activityDate || item?.date || item?.createdAt)}</div>
                     </div>
                   ))}

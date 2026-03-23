@@ -106,11 +106,11 @@ const Login = () => {
     const createParticles = (width, height) => Array.from({ length: 150 }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      r: Math.random() * 0.8 + 0.4,
+      r: Math.random() * 1.4 + 0.9,
       dx: (Math.random() - 0.5) * 0.28,
       dy: (Math.random() - 0.5) * 0.28,
       hue: Math.random() > 0.5 ? "99, 102, 241" : "59, 130, 246",
-      alpha: Math.random() * 0.45 + 0.3,
+      alpha: Math.random() * 0.38 + 0.36,
     }));
 
     const resize = () => {
@@ -128,7 +128,7 @@ const Login = () => {
         context.beginPath();
         context.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
         context.fillStyle = `rgba(${particle.hue}, ${particle.alpha})`;
-        context.shadowBlur = 14;
+        context.shadowBlur = 18;
         context.shadowColor = `rgba(${particle.hue}, 0.95)`;
         context.fill();
 
@@ -365,6 +365,4 @@ const Login = () => {
 };
 
 export default Login;
-
-
 
