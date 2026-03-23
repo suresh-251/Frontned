@@ -8,6 +8,8 @@ export function AddLeadDropdown({ onSelectType }) {
   const [open, setOpen] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const ref = useRef(null);
+  const primaryLeadTypes = LEAD_TYPES.slice(0, 3);
+  const secondaryLeadTypes = LEAD_TYPES.slice(3);
   useClickOutside(ref, () => {
     setOpen(false);
     setShowMore(false);
@@ -20,8 +22,7 @@ export function AddLeadDropdown({ onSelectType }) {
       </button>
       {open && (
         <div className="add-lead-menu">
-          <div className="add-lead-section-label">Quick Add</div>
-          {LEAD_TYPES.slice(0, 3).map((leadType) => {
+          {primaryLeadTypes.map((leadType) => {
             const IconComp = leadType.icon;
             return (
               <button key={leadType.key} className="add-lead-option" onClick={() => { setOpen(false); setShowMore(false); onSelectType(leadType); }}>
@@ -29,12 +30,12 @@ export function AddLeadDropdown({ onSelectType }) {
               </button>
             );
           })}
-          <div className="add-lead-divider" />
-          <button type="button" className={`add-lead-more-toggle ${showMore ? "add-lead-more-toggle--open" : ""}`} onClick={() => setShowMore((current) => !current)}>
+          {secondaryLeadTypes.length ? <div className="add-lead-divider" /> : null}
+          {secondaryLeadTypes.length ? <button type="button" className={`add-lead-more-toggle ${showMore ? "add-lead-more-toggle--open" : ""}`} onClick={() => setShowMore((current) => !current)}>
             <span>More Types</span>
             <IChevD s={11} />
-          </button>
-          {showMore && LEAD_TYPES.slice(3).map((leadType) => {
+          </button> : null}
+          {showMore && secondaryLeadTypes.map((leadType) => {
             const IconComp = leadType.icon;
             return (
               <button key={leadType.key} className="add-lead-option" onClick={() => { setOpen(false); setShowMore(false); onSelectType(leadType); }}>

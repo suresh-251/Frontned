@@ -231,6 +231,7 @@ export default function Leads() {
   const [bulkStatus, setBulkStatus] = useState(STATUS_LIST[0]);
   const [showBulkStatusPicker, setShowBulkStatusPicker] = useState(false);
   const [followUpBuckets, setFollowUpBuckets] = useState({});
+  const [todayFollowUpItems, setTodayFollowUpItems] = useState([]);
 
   const salesUserOptions = useMemo(() => {
     const names = salesUsers.map((user) => getSalesUserLabel(user)).filter(Boolean);
@@ -288,6 +289,16 @@ export default function Leads() {
     localStorage.setItem(VISIBLE_COLUMNS_STORAGE_KEY, JSON.stringify(visibleCols));
   }, [visibleCols]);
 
+  const refreshTodayFollowUpItems = useCallback(async () => {
+    try {
+      const data = await activitiesAPI.getFollowUpsToday();
+      setTodayFollowUpItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to refresh today's follow-up stats", error);
+      setTodayFollowUpItems([]);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
     let resolvedUsers = [];
@@ -317,12 +328,10 @@ export default function Leads() {
         if (!active) return;
         const normalized = normalizeLeads(data);
         setLeads(resolvedUsers.length ? applyAssigneeNames(normalized, resolvedUsers) : normalized);
-        setStats((current) => ({ ...current, totalNewLeadsDueToday: countFreshLeadsCreatedToday(normalized) }));
       } catch (error) {
         if (active) {
           console.error("Failed to fetch leads", error);
           setLeads([]);
-          setStats((current) => ({ ...current, totalNewLeadsDueToday: 0 }));
         }
       } finally {
         if (active) setLoading(false);
@@ -360,6 +369,7 @@ export default function Leads() {
         const allFollowUps = allResult.status === "fulfilled" ? allResult.value : [];
         const overdueFollowUps = overdueResult.status === "fulfilled" ? overdueResult.value : [];
         const todayFollowUps = todayResult.status === "fulfilled" ? todayResult.value : [];
+        setTodayFollowUpItems(Array.isArray(todayFollowUps) ? todayFollowUps : []);
         const now = new Date();
         const startOfTomorrow = new Date(now);
         startOfTomorrow.setHours(24, 0, 0, 0);
@@ -385,6 +395,7 @@ export default function Leads() {
         if (active) {
           console.error("Failed to fetch follow-up buckets", error);
           setFollowUpBuckets({});
+          setTodayFollowUpItems([]);
         }
       }
     };
@@ -399,8 +410,9 @@ export default function Leads() {
       .then(([dashboardResult, todayResult]) => {
         if (!active) return;
         const dashboardStats = dashboardResult.status === "fulfilled" ? dashboardResult.value : INITIAL_STATS;
-        const todayStats = todayResult.status === "fulfilled" ? buildTodayFollowUpStats(todayResult.value) : {};
-        setStats((current) => ({ ...dashboardStats, ...todayStats, totalNewLeadsDueToday: current.totalNewLeadsDueToday }));
+        const todayStats = todayResult.status === "fulfilled" ? (Array.isArray(todayResult.value) ? todayResult.value : []) : [];
+        setStats(dashboardStats);
+        setTodayFollowUpItems(todayStats);
         if (dashboardResult.status === "rejected") {
           console.error("Failed to fetch dashboard stats", dashboardResult.reason);
         }
@@ -437,6 +449,14 @@ export default function Leads() {
     loadSocialLeads();
     return () => { active = false; };
   }, [leadDataSource]);
+
+  useEffect(() => {
+    setStats((current) => ({
+      ...current,
+      totalNewLeadsDueToday: countFreshLeadsCreatedToday(leads),
+      ...buildTodayFollowUpStats(todayFollowUpItems),
+    }));
+  }, [leads, todayFollowUpItems]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -745,7 +765,30 @@ export default function Leads() {
     <div className="page sales-leads-page">
       {leadDataSource === "sales" && <div className="stat-grid">{STAT_CARDS.map(({ label, key, detailKey, detailLabel, helper, icon, alert, c }, index) => <StatCard key={label} label={label} value={stats[key] ?? 0} detailValue={stats[detailKey] ?? 0} detailLabel={detailLabel} helper={helper} icon={icon} alert={alert} c={c} delay={`${index * 0.07}s`} />)}</div>}
 
-      <div className="toolbar"><div className="toolbar-mid"><div style={{ display: "flex", height: 34, border: "1.5px solid var(--cborder)", borderRadius: 10, overflow: "hidden", background: "var(--cs)", boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)" }}>{[{ key: "sales", label: "Sales Leads" }, { key: "social", label: "Social Leads" }].map((option, index, array) => <button key={option.key} onClick={() => setLeadDataSource(option.key)} style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: 132, padding: "0 16px", border: "none", borderRight: index < array.length - 1 ? "1px solid var(--cborder)" : "none", background: leadDataSource === option.key ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "transparent", color: leadDataSource === option.key ? "var(--ci)" : "var(--cm)", fontWeight: 700 }}>{option.label}</button>)}</div>{leadDataSource === "sales" && <><div className="toolbar-divider" /><button className={`btn-ghost ${activeFilterCount > 0 ? "btn-ghost--active" : ""}`} onClick={() => setShowFilter(true)}><IFilter s={12} />&ensp;Filter{activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}</button><div className="toolbar-divider" /><div style={{ display: "flex", height: 32, border: "1.5px solid var(--cborder)", borderRadius: "8px", overflow: "hidden", background: "var(--cs)", boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)" }}>{[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: "5px", height: "100%", padding: "0 12px", border: "none", borderRight: k === "list" ? "1px solid var(--cborder)" : "none", background: viewMode === k ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "transparent", color: viewMode === k ? "var(--ci)" : "var(--cm)" }}><I s={13} />{l}</button>)}</div></>}<div className="toolbar-divider" /><div className="unified-search">{leadDataSource === "sales" && <><select className="search-field-select" value={searchField} onChange={(event) => setSearchField(event.target.value)}>{SEARCH_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><div className="unified-divider" /></>}<div className="search-wrap"><span className="search-ico"><ISearch s={14} c="#9ca3af" /></span><input type="text" className="search-inp unified-inp" placeholder={leadDataSource === "social" ? "Search social leads..." : `Search by ${activeSearchFieldLabel.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>{leadDataSource === "sales" && <><div className="toolbar-divider" /><button className={`icon-btn-outline ${showChart ? "icon-btn-outline--on" : ""}`} onClick={() => setShowChart(!showChart)}><BarChart3 size={14} /></button><div className="toolbar-divider" /><AddLeadDropdown onSelectType={handleAddLeadType} /></>}</div></div>
+      <div className="toolbar" style={{ gap: 10, marginBottom: 10, justifyContent: "center" }}>
+        <div className="toolbar-mid" style={{ gap: 8, rowGap: 8, width: "fit-content", maxWidth: "100%", justifyContent: "center" }}>
+          {leadDataSource === "sales" && <>
+            <button className={`btn-ghost ${activeFilterCount > 0 ? "btn-ghost--active" : ""}`} onClick={() => setShowFilter(true)} style={{ minHeight: 30, padding: "4px 10px", fontSize: 13 }}><IFilter s={12} />&ensp;Filter{activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}</button>
+            <div className="toolbar-divider" style={{ margin: "0 2px", height: 20 }} />
+          </>}
+          <div className="unified-search" style={{ minHeight: 30, padding: "1px 2px" }}>{leadDataSource === "sales" && <><select className="search-field-select" style={{ minWidth: 100, padding: "0 6px 0 8px", height: 26 }} value={searchField} onChange={(event) => setSearchField(event.target.value)}>{SEARCH_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><div className="unified-divider" style={{ margin: "0 4px", height: 18 }} /></>}<div className="search-wrap"><span className="search-ico"><ISearch s={14} c="#9ca3af" /></span><input type="text" className="search-inp unified-inp" style={{ width: leadDataSource === "social" ? 260 : 220, padding: "5px 28px 5px 34px", fontSize: 13.5 }} placeholder={leadDataSource === "social" ? "Search social leads..." : `Search by ${activeSearchFieldLabel.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>
+          {leadDataSource === "sales" && <>
+            <div className="toolbar-divider" style={{ margin: "0 2px", height: 20 }} />
+            <button className={`icon-btn-outline ${showChart ? "icon-btn-outline--on" : ""}`} onClick={() => setShowChart(!showChart)} style={{ width: 32, height: 32 }}><BarChart3 size={14} /></button>
+            <div className="toolbar-divider" style={{ margin: "0 2px", height: 20 }} />
+            <button className="btn-ghost" onClick={() => setShowImport(true)} style={{ minHeight: 30, padding: "4px 10px", fontSize: 13 }}>Import</button>
+            <div className="toolbar-divider" style={{ margin: "0 2px", height: 20 }} />
+            <AddLeadDropdown onSelectType={handleAddLeadType} />
+          </>}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", height: 30, border: "1.5px solid var(--cborder)", borderRadius: 8, overflow: "hidden", background: "var(--cs)", boxShadow: "0 6px 16px rgba(15, 23, 42, 0.06)" }}>
+          {[{ key: "sales", label: "Sales Leads" }, { key: "social", label: "Social Leads" }].map((option, index, array) => <button key={option.key} onClick={() => setLeadDataSource(option.key)} style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: 112, padding: "0 10px", border: "none", borderRight: index < array.length - 1 ? "1px solid var(--cborder)" : "none", background: leadDataSource === option.key ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "#ffffff", color: leadDataSource === option.key ? "var(--ci)" : "var(--ct2)", fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>{option.label}</button>)}
+        </div>
+        {leadDataSource === "sales" ? <div style={{ display: "flex", height: 30, border: "1.5px solid var(--cborder)", borderRadius: 8, overflow: "hidden", background: "var(--cs)", boxShadow: "0 6px 16px rgba(15, 23, 42, 0.06)" }}>{[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: 4, height: "100%", padding: "0 10px", border: "none", borderRight: k === "list" ? "1px solid var(--cborder)" : "none", background: viewMode === k ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "transparent", color: viewMode === k ? "var(--ci)" : "var(--cm)", fontSize: 13, whiteSpace: "nowrap" }}><I s={12} />{l}</button>)}</div> : null}
+      </div>
 
       {leadDataSource === "sales" && hasActiveFilters && <div className="chips-bar sales-leads-filter-chips">{search && <span className="chip sales-leads-filter-chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip sales-leads-filter-chip"><span className="chip-dot sales-leads-filter-chip-dot" style={{ background: STATUS_META[filters.status]?.color || "#4f46e5" }} />Status: {formatStatus(filters.status)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, status: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip sales-leads-filter-chip">Source: {formatLeadSource(filters.source)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, source: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip sales-leads-filter-chip">Assignee: {filters.assignee}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, assignee: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUp !== "All" && <span className="chip sales-leads-filter-chip">Follow-up bucket: {filters.followUp}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUp: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{sameFilterDay(filters.createdDateFrom, filters.createdDateTo) ? <span className="chip sales-leads-filter-chip">Created Date: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "", createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.createdDateFrom && <span className="chip sales-leads-filter-chip">Created from: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateTo && <span className="chip sales-leads-filter-chip">Created to: {formatFilterChipDate(filters.createdDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{sameFilterDay(filters.followUpDateFrom, filters.followUpDateTo) ? <span className="chip sales-leads-filter-chip">Follow-up: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "", followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.followUpDateFrom && <span className="chip sales-leads-filter-chip">Follow-up from: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateTo && <span className="chip sales-leads-filter-chip">Follow-up to: {formatFilterChipDate(filters.followUpDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{filters.address && <span className="chip sales-leads-filter-chip">Address: {filters.address}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, address: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.city && <span className="chip sales-leads-filter-chip">City: {filters.city}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, city: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.state && <span className="chip sales-leads-filter-chip">State: {filters.state}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, state: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.country && <span className="chip sales-leads-filter-chip">Country: {filters.country}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, country: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.zip && <span className="chip sales-leads-filter-chip">Zip: {filters.zip}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, zip: "" }))}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall sales-leads-filter-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
 
@@ -772,7 +815,7 @@ export default function Leads() {
       {leadDataSource === "sales" && <DeletedLeadsPanel leads={deletedLeads} />}
 
       {leadDataSource === "sales" && showColPanel && <ManageColumnsPanel visibleCols={visibleCols} setVisibleCols={setVisibleCols} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} wrapText={wrapText} setWrapText={setWrapText} onClose={() => setShowColPanel(false)} />}
-      {leadDataSource === "sales" && detailsLead && <LeadDetailsModal lead={detailsLead} onClose={() => setDetailsLead(null)} onDealConverted={handleDealConverted} />}
+      {leadDataSource === "sales" && detailsLead && <LeadDetailsModal lead={detailsLead} onClose={() => setDetailsLead(null)} onDealConverted={handleDealConverted} onActivitySaved={refreshTodayFollowUpItems} />}
       {leadDataSource === "sales" && editLead && <EditModal lead={editLead} onClose={() => setEditLead(null)} onSave={handleSaveLead} onDelete={handleDeleteLead} salesUsers={salesUsers} saving={savingLead} deleting={deletingLead} />}
       {leadDataSource === "sales" && showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImportLeads} />}
       {leadDataSource === "sales" && showFilter && <FilterModal onClose={() => setShowFilter(false)} filters={filters} activeFilterCount={activeFilterCount} onApply={setFilters} assignees={salesUserOptions} />}

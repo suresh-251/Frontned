@@ -34,10 +34,17 @@ import {
   assignee,
   attachmentUrl,
   compactMeetingDate,
+  contactShortcutButtonStyle,
+  contactShortcutIconColor,
+  contactShortcutKeyframes,
   followUpDisplayValue,
   fmtDate,
   fmtTime,
   getApiErrorMessage,
+  handleContactShortcutMouseDown,
+  handleContactShortcutMouseEnter,
+  handleContactShortcutMouseLeave,
+  handleContactShortcutMouseUp,
   hasValue,
   leadName,
   mapActivity,
@@ -45,6 +52,7 @@ import {
   mapComm,
   mapMeetingRecord,
   meetingMetaValue,
+  runContactShortcutAction,
   sanitizePhoneNumber,
   timelineAuthor,
   timelineDateValue,
@@ -66,28 +74,7 @@ export function LeftPanel({ lead, onConvert, onOpenTab, stacked = false, mobile 
     whatsapp: canWhatsapp,
     emails: canEmail,
   };
-  const handleShortcutClick = (id) => {
-    if (id === "calls") {
-      if (!callableNumber) return;
-      window.location.href = `tel:${callableNumber}`;
-      return;
-    }
-    if (id === "whatsapp") {
-      if (!whatsappNumber) return;
-      const whatsappUrl = `https://wa.me/${encodeURIComponent(whatsappNumber)}`;
-      const popup = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-      if (!popup) {
-        Toast.error("Allow pop-ups to open WhatsApp in a new tab.");
-      }
-      return;
-    }
-    if (id === "emails") {
-      if (!emailAddress) return;
-      window.location.href = `mailto:${encodeURIComponent(emailAddress)}`;
-      return;
-    }
-    onOpenTab?.(id);
-  };
+  const handleShortcutClick = (id) => runContactShortcutAction({ id, callableNumber, whatsappNumber, emailAddress, onOpenTab });
   return (
     <aside style={{ height: mobile ? "auto" : "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderRight: stacked ? "none" : "1px solid #e5e7eb", borderBottom: stacked ? "1px solid #e5e7eb" : "none", background: "#fff" }}>
       <div style={{ padding: hideAvatar ? "16px 18px" : 18, borderBottom: "1px solid #e5e7eb", background: "linear-gradient(180deg, #f8faff 0%, #f3f6ff 100%)" }}>
@@ -110,55 +97,19 @@ export function LeftPanel({ lead, onConvert, onOpenTab, stacked = false, mobile 
                 disabled={!enabled}
                 title={label}
                 aria-label={label}
-                style={{
-                  width: 30,
-                  height: 30,
-                  border: enabled ? "1px solid #aebfd4" : "1px solid #c7d4e3",
-                  borderRadius: "50%",
-                  background: "#ffffff",
-                  color: enabled ? "#2563eb" : "#94a3b8",
-                  cursor: enabled ? "pointer" : "not-allowed",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 0,
-                  outline: "none",
-                  boxShadow: "none",
-                  transition: "transform 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease",
-                  animation: enabled ? "leadShortcutPop 320ms ease" : "none",
-                }}
-                onMouseEnter={(event) => {
-                  if (!enabled) return;
-                  event.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
-                  event.currentTarget.style.backgroundColor = "#f8fafc";
-                  event.currentTarget.style.borderColor = "#aebfd4";
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.transform = "translateY(0) scale(1)";
-                  event.currentTarget.style.backgroundColor = "#ffffff";
-                  event.currentTarget.style.borderColor = enabled ? "#aebfd4" : "#c7d4e3";
-                }}
-                onMouseDown={(event) => {
-                  if (!enabled) return;
-                  event.currentTarget.style.transform = "scale(0.96)";
-                }}
-                onMouseUp={(event) => {
-                  if (!enabled) return;
-                  event.currentTarget.style.transform = "translateY(-2px) scale(1.04)";
-                }}
+                style={contactShortcutButtonStyle(enabled)}
+                onMouseEnter={(event) => handleContactShortcutMouseEnter(event, enabled)}
+                onMouseLeave={(event) => handleContactShortcutMouseLeave(event, enabled)}
+                onMouseDown={(event) => handleContactShortcutMouseDown(event, enabled)}
+                onMouseUp={(event) => handleContactShortcutMouseUp(event, enabled)}
               >
-                <Icon size={13} color={enabled ? "#64748b" : "#94a3b8"} />
+                <Icon size={13} color={contactShortcutIconColor(enabled)} />
               </button>
             );
           })}
         </div>
         <style>{`
-          @keyframes leadShortcutPop {
-            0% { transform: scale(0.88); opacity: 0; }
-            70% { transform: scale(1.06); opacity: 1; }
-            100% { transform: scale(1); opacity: 1; }
-          }
-
+          ${contactShortcutKeyframes}
           .lead-details-datepicker-popper {
             z-index: 900 !important;
           }

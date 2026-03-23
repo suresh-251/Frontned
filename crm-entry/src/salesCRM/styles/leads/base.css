@@ -115,7 +115,7 @@
   gap: 10px;
   max-width: 740px;
   width: 100%;
-  margin: 0 auto 22px;
+  margin: 0 auto 16px;
 }
 
 .stat-card {
@@ -128,7 +128,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 118px;
+  min-height: 108px;
   border: 1px solid color-mix(in srgb, var(--cborder) 92%, transparent);
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
@@ -150,11 +150,11 @@
     color-mix(in srgb, var(--sc-card) 92%, var(--cs)) 0%,
     color-mix(in srgb, var(--sc-card) 82%, var(--cs)) 100%
   );
-  padding: 10px 10px;
+  padding: 8px 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--cborder) 70%, transparent);
 }
 
@@ -198,7 +198,7 @@
 }
 
 .stat-body {
-  padding: 10px 11px;
+  padding: 8px 11px;
   background: transparent;
 }
 
@@ -206,7 +206,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 

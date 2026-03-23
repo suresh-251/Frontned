@@ -389,6 +389,19 @@ function MonthGrid({
         {monthMatrix.flat().map((day) => {
           const inMonth = day.getMonth() === anchorDate.getMonth();
           const isToday = sameDay(day, today);
+          if (!inMonth) {
+            return (
+              <div
+                key={day.toISOString()}
+                style={{
+                  minHeight: 144,
+                  borderRight: "1px solid var(--border-color)",
+                  borderBottom: "1px solid var(--border-color)",
+                  background: "color-mix(in srgb, var(--bg-body) 90%, var(--bg-card))",
+                }}
+              />
+            );
+          }
           const dayItems = itemsByDay[toInputDate(day)] || [];
           const previewItems = dayItems.slice(0, 3);
           const hiddenCount = Math.max(0, dayItems.length - previewItems.length);
@@ -406,9 +419,7 @@ function MonthGrid({
                 borderBottom: "1px solid var(--border-color)",
                 background: isToday
                   ? "color-mix(in srgb, var(--ci, #2563eb) 10%, var(--bg-card))"
-                  : inMonth
-                    ? "var(--bg-card)"
-                    : "color-mix(in srgb, var(--bg-body) 84%, var(--bg-card))",
+                  : "var(--bg-card)",
                 cursor: "pointer",
                 overflow: "hidden",
               }}
@@ -425,18 +436,13 @@ function MonthGrid({
                       alignItems: "center",
                       justifyContent: "center",
                       background: isToday ? "var(--ci, #2563eb)" : "transparent",
-                      color: isToday ? "#fff" : inMonth ? "var(--text-main)" : "color-mix(in srgb, var(--text-main) 35%, #94a3b8)",
+                      color: isToday ? "#fff" : "var(--text-main)",
                       fontSize: 12,
                       fontWeight: 800,
                     }}
                   >
                     {day.getDate()}
                   </span>
-                  {!inMonth ? (
-                    <span style={{ fontSize: 9.5, fontWeight: 700, color: "color-mix(in srgb, var(--text-main) 34%, #94a3b8)" }}>
-                      {day.toLocaleDateString("en-US", { month: "short" })}
-                    </span>
-                  ) : null}
                 </div>
 
                 <button
@@ -803,6 +809,18 @@ export default function CalendarPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
             {monthMatrix.flat().map((day) => {
             const inMonth = day.getMonth() === anchorDate.getMonth();
+            if (!inMonth) {
+              return (
+                <div
+                  key={day.toISOString()}
+                  style={{
+                    height: 20,
+                    borderRadius: 4,
+                    background: "transparent",
+                  }}
+                />
+              );
+            }
             const inRange = day >= startOfDay(start) && day <= endOfDay(end);
             const isToday = sameDay(day, today);
             return (
@@ -815,7 +833,7 @@ export default function CalendarPage() {
                   borderRadius: 4,
                   border: "none",
                   background: inRange ? "color-mix(in srgb, var(--ci, #2563eb) 18%, var(--bg-card))" : "transparent",
-                  color: isToday ? "var(--ci, #1d4ed8)" : inMonth ? "var(--text-main)" : "color-mix(in srgb, var(--text-main) 28%, #cbd5f5)",
+                  color: isToday ? "var(--ci, #1d4ed8)" : "var(--text-main)",
                   fontSize: 9,
                   fontWeight: isToday ? 700 : 600,
                   cursor: "pointer",

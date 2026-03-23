@@ -12,7 +12,6 @@ import {
   CALL_PURPOSE_OPTIONS,
   CALL_STATUS_OPTIONS,
   centeredComposerFieldStyle,
-  CONTACT_SHORTCUTS,
   EMAIL_TEMPLATES,
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
@@ -55,8 +54,29 @@ const getDealOwner = (deal) => deal?.dealOwner || deal?.ownerName || deal?.assig
 const getDealType = (deal) => deal?.type || deal?.dealType || "";
 const getAccountName = (deal) => deal?.accountName || deal?.account?.accountName || "";
 const getContactName = (deal) => deal?.contactName || deal?.contact?.contactName || "";
-const getContactPhone = (deal) => deal?.contactPhone || deal?.contact?.phone || deal?.contact?.mobile || deal?.phone || "";
-const getContactEmail = (deal) => deal?.contactEmail || deal?.contact?.email || deal?.email || "";
+const getContactPhone = (deal) => (
+  deal?.contactPhone
+  || deal?.contact?.phone
+  || deal?.contact?.mobile
+  || deal?.contact?.mobileNumber
+  || deal?.contact?.phoneNumber
+  || deal?.contact?.secondaryPhone
+  || deal?.contact?.whatsappNumber
+  || deal?.phone
+  || deal?.mobile
+  || deal?.mobileNumber
+  || deal?.phoneNumber
+  || ""
+);
+const getContactEmail = (deal) => (
+  deal?.contactEmail
+  || deal?.contact?.email
+  || deal?.contact?.emailAddress
+  || deal?.contact?.secondaryEmail
+  || deal?.email
+  || deal?.emailAddress
+  || ""
+);
 const getWhatsappNumber = (deal) => sanitizePhoneNumber(getContactPhone(deal));
 const formatStageLabel = (value = "") => String(value).replace(/([a-z])([A-Z])/g, "$1 $2").trim();
 const getDealContactSnapshot = (deal) => ({
@@ -64,27 +84,29 @@ const getDealContactSnapshot = (deal) => ({
   whatsappNumber: getWhatsappNumber(deal),
   emailAddress: String(getContactEmail(deal) || "").trim(),
 });
-const runShortcutAction = ({ id, callableNumber, whatsappNumber, emailAddress, onOpenTab }) => {
-  if (id === "calls") {
-    if (!callableNumber) return;
-    window.location.href = `tel:${callableNumber}`;
-    return;
-  }
-  if (id === "whatsapp") {
-    if (!whatsappNumber) return;
-    const popup = window.open(`https://wa.me/${encodeURIComponent(whatsappNumber)}`, "_blank", "noopener,noreferrer");
-    if (!popup) {
-      Toast.error("Allow pop-ups to open WhatsApp in a new tab.");
-    }
-    return;
-  }
-  if (id === "emails") {
-    if (!emailAddress) return;
-    window.location.href = `mailto:${encodeURIComponent(emailAddress)}`;
-    return;
-  }
-  onOpenTab?.(id);
-};
+
+const dealShortcutButtons = [
+  { id: "calls", label: "Call", Icon: Phone, color: "#2563eb", background: "#eff6ff", border: "#bfdbfe" },
+  { id: "whatsapp", label: "WhatsApp", Icon: FaWhatsapp, color: "#16a34a", background: "#f0fdf4", border: "#bbf7d0" },
+  { id: "emails", label: "Email", Icon: Mail, color: "#475569", background: "#f8fafc", border: "#cbd5e1" },
+];
+
+const getDealShortcutButtonStyle = (enabled) => ({
+  width: 34,
+  height: 34,
+  borderRadius: "50%",
+  border: "1px solid #dbe4f0",
+  background: "#ffffff",
+  color: "#64748b",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  boxShadow: enabled ? "0 4px 10px rgba(15, 23, 42, 0.06)" : "0 2px 6px rgba(15, 23, 42, 0.03)",
+  transition: "transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease",
+  outline: "none",
+  padding: 0,
+});
 
 function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
   const initials = (getDealName(deal).match(/\b\w/g) || []).join("").slice(0, 2).toUpperCase();
@@ -94,10 +116,37 @@ function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
     : "";
   const location = [deal?.account?.billingCity, deal?.account?.billingState, deal?.account?.billingCountry].filter(Boolean).join(", ");
   const { callableNumber, whatsappNumber, emailAddress } = getDealContactSnapshot(deal);
-  const shortcutEnabled = {
-    calls: hasValue(callableNumber),
-    whatsapp: hasValue(whatsappNumber),
-    emails: hasValue(emailAddress),
+  const canCall = hasValue(callableNumber);
+  const canWhatsapp = hasValue(whatsappNumber);
+  const canEmail = hasValue(emailAddress);
+  const handleShortcutClick = (id) => {
+    if (id === "calls") {
+      if (!canCall) {
+        Toast.error("No phone number available for this deal.");
+        return;
+      }
+      onOpenTab?.("calls");
+      window.location.href = `tel:${callableNumber}`;
+      return;
+    }
+
+    if (id === "whatsapp") {
+      if (!canWhatsapp) {
+        Toast.error("No WhatsApp number available for this deal.");
+        return;
+      }
+      onOpenTab?.("whatsapp");
+      window.open(`https://wa.me/${encodeURIComponent(whatsappNumber)}`, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (!canEmail) {
+      Toast.error("No email address available for this deal.");
+      return;
+    }
+
+    onOpenTab?.("emails");
+    window.location.href = `mailto:${encodeURIComponent(emailAddress)}`;
   };
 
   return (
@@ -112,66 +161,43 @@ function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 18 }}>
-          {CONTACT_SHORTCUTS.map(({ id, label, icon: Icon }) => {
-            const enabled = shortcutEnabled[id];
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 14 }}>
+          {dealShortcutButtons.map(({ id, label, Icon, color, background, border }) => {
+            const enabled = id === "calls" ? canCall : id === "whatsapp" ? canWhatsapp : canEmail;
             return (
               <button
                 key={id}
                 type="button"
-                onClick={() => enabled && runShortcutAction({ id, callableNumber, whatsappNumber, emailAddress, onOpenTab })}
-                disabled={!enabled}
+                onClick={() => handleShortcutClick(id)}
                 title={label}
                 aria-label={label}
-                style={{
-                  width: 30,
-                  height: 30,
-                  border: enabled ? "1px solid #aebfd4" : "1px solid #c7d4e3",
-                  borderRadius: "50%",
-                  background: "#ffffff",
-                  color: enabled ? "#2563eb" : "#94a3b8",
-                  cursor: enabled ? "pointer" : "not-allowed",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 0,
-                  outline: "none",
-                  boxShadow: "none",
-                  transition: "transform 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease",
-                  animation: enabled ? "leadShortcutPop 320ms ease" : "none",
-                }}
+                style={getDealShortcutButtonStyle(enabled)}
                 onMouseEnter={(event) => {
-                  if (!enabled) return;
-                  event.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
-                  event.currentTarget.style.backgroundColor = "#f8fafc";
-                  event.currentTarget.style.borderColor = "#aebfd4";
+                  event.currentTarget.style.transform = "translateY(-1px)";
+                  event.currentTarget.style.boxShadow = enabled ? "0 7px 14px rgba(15, 23, 42, 0.09)" : "0 4px 10px rgba(15, 23, 42, 0.05)";
+                  event.currentTarget.style.borderColor = enabled ? border : "#e2e8f0";
+                  event.currentTarget.style.background = enabled ? background : "#f8fafc";
                 }}
                 onMouseLeave={(event) => {
-                  event.currentTarget.style.transform = "translateY(0) scale(1)";
-                  event.currentTarget.style.backgroundColor = "#ffffff";
-                  event.currentTarget.style.borderColor = enabled ? "#aebfd4" : "#c7d4e3";
+                  event.currentTarget.style.transform = "translateY(0)";
+                  event.currentTarget.style.boxShadow = enabled ? "0 4px 10px rgba(15, 23, 42, 0.06)" : "0 2px 6px rgba(15, 23, 42, 0.03)";
+                  event.currentTarget.style.borderColor = "#d6dce8";
+                  event.currentTarget.style.background = "#ffffff";
                 }}
                 onMouseDown={(event) => {
-                  if (!enabled) return;
-                  event.currentTarget.style.transform = "scale(0.96)";
+                  event.currentTarget.style.transform = "translateY(0)";
+                  event.currentTarget.style.boxShadow = enabled ? "0 3px 8px rgba(15, 23, 42, 0.08)" : "0 2px 5px rgba(15, 23, 42, 0.04)";
                 }}
                 onMouseUp={(event) => {
-                  if (!enabled) return;
-                  event.currentTarget.style.transform = "translateY(-2px) scale(1.04)";
+                  event.currentTarget.style.transform = "translateY(-1px)";
+                  event.currentTarget.style.boxShadow = enabled ? "0 7px 14px rgba(15, 23, 42, 0.09)" : "0 4px 10px rgba(15, 23, 42, 0.05)";
                 }}
               >
-                <Icon size={13} color={enabled ? "#64748b" : "#94a3b8"} />
+                <Icon size={14} color={enabled ? color : "#94a3b8"} />
               </button>
             );
           })}
         </div>
-        <style>{`
-          @keyframes leadShortcutPop {
-            0% { transform: scale(0.88); opacity: 0; }
-            70% { transform: scale(1.06); opacity: 1; }
-            100% { transform: scale(1); opacity: 1; }
-          }
-        `}</style>
       </div>
 
       <div style={{ flex: mobile ? "0 0 auto" : 1, minHeight: 0, overflowY: mobile ? "visible" : "auto", padding: "0 18px 16px" }}>
