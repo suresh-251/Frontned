@@ -1,9 +1,11 @@
 import axios from "axios";
+import toast from "react-hot-toast";
 import { getAccessToken, clearAccessToken } from "../../utils/authStorage";
+import { secureStorage } from "../../utils/secureStorage";
 import { appCache } from "../utils/cache";
-export const BASE_URL = "https://crmsocial.metagensoft.com/api";
+// export const BASE_URL = "https://crmsocial.metagensoft.com/api";
 // Local dev override (requires `dotnet run` in Backend folder):
-// export const BASE_URL = "https://localhost:7015/api";
+export const BASE_URL = "https://localhost:7015/api";
 // export const BASE_URL = "http://89.116.20.215:9090/api";
 
 
@@ -12,50 +14,89 @@ const api = axios.create({
   withCredentials: true
 });
 
-// 🔐 Attach JWT + active brand automatically
+// Attach JWT + active brand automatically
 api.interceptors.request.use(config => {
   const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  const brandSlug = localStorage.getItem("brandSlug");
+  // Read brandSlug from secure storage, fall back to plain localStorage for migration
+  const brandSlug =
+    secureStorage.get("brandSlug") || localStorage.getItem("brandSlug");
   if (brandSlug) {
     config.headers["X-Brand-Id"] = brandSlug;
+    // Migrate plain to secure if found in plain
+    if (localStorage.getItem("brandSlug")) {
+      secureStorage.set("brandSlug", brandSlug);
+      localStorage.removeItem("brandSlug");
+    }
   }
   return config;
 });
 
-// 🌍 GLOBAL ERROR HANDLING
+// GLOBAL ERROR HANDLING — show user-friendly toast, return clean error
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (!error.response) {
+      toast.error("Network error. Please check your connection.");
       return Promise.reject(new Error("Network error"));
     }
 
     const { status, data } = error.response;
 
+    // Extract user-friendly message from backend structured response
+    const message = data?.message || data?.error || "";
+    const action = data?.action;
+    const hint = data?.hint;
+
     if (status === 401) {
+      // Social media token expired — prompt reconnect, not logout
+      const requestUrl = error.config?.url || "";
+      const isSocialEndpoint = requestUrl.startsWith("/facebook/") || requestUrl.startsWith("/instagram/");
+
+      if (action === "ReconnectAccount" || data?.error === "token_expired" || isSocialEndpoint) {
+        toast.error(
+          message || "Your social media session has expired. Please reconnect your account.",
+          { duration: 6000 }
+        );
+        const err = new Error(message || "Social token expired");
+        err.code = "social_token_expired";
+        err.action = "ReconnectAccount";
+        return Promise.reject(err);
+      }
+
+      // App session expired
       clearAccessToken();
       appCache.clearAllUserCaches();
+      toast.error("Session expired. Please log in again.");
       window.location.href = "/login";
-      return Promise.reject(new Error("Session expired. Redirecting to login..."));
+      return Promise.reject(new Error("Session expired"));
     }
 
     if (status === 403) {
-      return Promise.reject(new Error("Permission denied"));
+      toast.error(message || "You don't have permission to perform this action.");
+      return Promise.reject(new Error(message || "Permission denied"));
+    }
+
+    if (status === 404) {
+      // Don't toast for 404s — let calling code decide
+      return Promise.reject(new Error(message || "Resource not found"));
     }
 
     if (status === 400 || status === 409) {
-      return Promise.reject(
-        new Error(data?.message || "Invalid request")
-      );
+      toast.error(message || "Invalid request. Please check your input.");
+      return Promise.reject(new Error(message || "Invalid request"));
+    }
+
+    if (status === 429) {
+      toast.error("Too many requests. Please wait a moment and try again.");
+      return Promise.reject(new Error("Rate limited"));
     }
 
     if (status >= 500) {
-      return Promise.reject(
-        new Error("Server error. Please try again later.")
-      );
+      toast.error("Something went wrong on our end. Please try again later.");
+      return Promise.reject(new Error("Server error"));
     }
 
     return Promise.reject(error);

@@ -6,7 +6,7 @@ import { useBrand } from "../context/BrandContext";
  * Fetches the full analytics summary for the active brand.
  * Re-fetches automatically when the brand or day window changes.
  */
-export default function useAnalytics(days = 7, platform = null, sortBy = "engagement") {
+export default function useAnalytics(days = 0, platform = null, sortBy = "engagement") {
   const { activeBrand } = useBrand();
 
   const [summary, setSummary]         = useState(null);

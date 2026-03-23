@@ -1,25 +1,50 @@
+import { secureStorage } from "./secureStorage";
+
 const ACCESS_TOKEN_KEY = "accessToken";
+const LEGACY_KEY = "accessToken"; // plain localStorage key for migration
 
-export const getAccessToken = () => (
-  localStorage.getItem(ACCESS_TOKEN_KEY) || sessionStorage.getItem(ACCESS_TOKEN_KEY) || null
-);
+export const getAccessToken = () => {
+  // Check secure storage first, then fall back to legacy plain storage + migrate
+  const secure = secureStorage.get(ACCESS_TOKEN_KEY);
+  if (secure) return secure;
 
-export const hasPersistentAccessToken = () => Boolean(localStorage.getItem(ACCESS_TOKEN_KEY));
+  // Migrate from plain localStorage/sessionStorage
+  const plain =
+    localStorage.getItem(LEGACY_KEY) ||
+    sessionStorage.getItem(LEGACY_KEY) ||
+    null;
+  if (plain) {
+    secureStorage.set(ACCESS_TOKEN_KEY, plain);
+    localStorage.removeItem(LEGACY_KEY);
+    sessionStorage.removeItem(LEGACY_KEY);
+    return plain;
+  }
+
+  return null;
+};
+
+export const hasPersistentAccessToken = () =>
+  Boolean(secureStorage.get(ACCESS_TOKEN_KEY) || localStorage.getItem(LEGACY_KEY));
 
 export const setAccessToken = (token, persist = true) => {
   if (!token) return;
 
+  // Always store in secure storage (obfuscated)
   if (persist) {
-    localStorage.setItem(ACCESS_TOKEN_KEY, token);
-    sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+    secureStorage.set(ACCESS_TOKEN_KEY, token);
+    sessionStorage.removeItem(LEGACY_KEY);
+    localStorage.removeItem(LEGACY_KEY);
     return;
   }
 
-  sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  // Session-only: use sessionStorage (short-lived, cleared on tab close)
+  sessionStorage.setItem(LEGACY_KEY, token);
+  secureStorage.remove(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_KEY);
 };
 
 export const clearAccessToken = () => {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+  secureStorage.remove(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_KEY);
+  sessionStorage.removeItem(LEGACY_KEY);
 };

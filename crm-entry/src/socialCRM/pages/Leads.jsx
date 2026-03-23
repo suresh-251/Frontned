@@ -4,15 +4,16 @@ import { useEffect, useState, useRef } from "react";
 import useFacebookLeads from "../hooks/useFacebookLeads";
 import { useBrand } from "../context/BrandContext";
 import { appCache } from "../utils/cache";
-import { getAvailablePages } from "../api/facebook.pages.api";
-import { getLeadForms, syncLeadsByForm, getLeadFilterOptions, getLeadHistory, editLeadRemark, deleteLeadRemark } from "../api/facebook.leads.api";
+import { getConnectedPages } from "../api/facebook.pages.api";
+import { getLeadForms, syncLeadsByForm, syncAllLeads, getLeadFilterOptions, getLeadHistory, editLeadRemark, deleteLeadRemark } from "../api/facebook.leads.api";
+import { getAccessToken } from "../../utils/authStorage";
 import { getGoogleSheetConfig, updateGoogleSheetConfig } from "../api/brand.api";
 import useUsers from "../hooks/useUsers";
 import * as XLSX from "xlsx";
 import * as signalR from "@microsoft/signalr";
 import { BASE_URL } from "../api/apiClient";
 import Toast from "../../salesCRM/utils/toast";
-import { getDepartments } from "../../hr_CRM/api/hr.dept";
+import { getDepartments } from "../api/departments.api";
 import { useAuth } from "../../auth/AuthContext";
 import LeadAssignmentModal from "../components/facebook/LeadAssignmentModal";
 
@@ -21,6 +22,7 @@ import {
   FaChevronDown, FaCheck, FaTimes, FaEye, FaEdit, FaTrashAlt,
   FaChevronRight, FaChevronLeft, FaSpinner,
   FaCheckSquare, FaCalendarAlt, FaBuilding, FaUserPlus, FaHistory,
+  FaPhone, FaWhatsapp, FaEnvelope, FaSms,
 } from "react-icons/fa";
 
 const HUB_URL = BASE_URL.replace("/api", "") + "/hubs/leads";
@@ -276,29 +278,31 @@ export default function Leads() {
     if (!formId) return Toast?.error?.("Select a form first");
     setSyncing(true);
     try {
-      await syncLeadsByForm(formId);
+      // Pass pageId from the selected form for correct token resolution
+      const form = forms.find(f => f.id === formId);
+      await syncLeadsByForm(formId, null, form?.pageId);
       Toast?.success?.("Leads synced successfully");
       reload({});
     } catch {
-      Toast?.error?.("Failed to sync leads from Meta");
+      // Error toast is shown by apiClient interceptor
     } finally {
       setSyncing(false);
     }
   };
 
   const handleSyncAllForms = async () => {
-    if (!forms.length) return Toast?.error?.("No forms available to sync");
     setSyncAllLoading(true);
-    let successCount = 0;
-    for (const form of forms) {
-      try {
-        await syncLeadsByForm(form.id);
-        successCount++;
-      } catch { /* continue with next form */ }
+    try {
+      const result = await syncAllLeads();
+      Toast?.success?.(result.message || "All leads synced successfully");
+      // Refresh forms list (may have discovered new forms from Meta)
+      await loadForms();
+      reload({});
+    } catch {
+      // Error toast is shown by apiClient interceptor
+    } finally {
+      setSyncAllLoading(false);
     }
-    Toast?.success?.(`Synced ${successCount}/${forms.length} form(s)`);
-    setSyncAllLoading(false);
-    reload({});
   };
 
   /* =========================
@@ -320,7 +324,7 @@ useEffect(() => {
 
   const connection = new signalR.HubConnectionBuilder()
     .withUrl(HUB_URL, {
-      accessTokenFactory: () => localStorage.getItem("accessToken")
+      accessTokenFactory: () => getAccessToken() || ""
     })
     .withAutomaticReconnect()
     .configureLogging(signalR.LogLevel.Warning)
@@ -355,6 +359,75 @@ useEffect(() => {
   /* =========================
      LOAD PAGES & FORMS
      ========================= */
+  const [socialTokenError, setSocialTokenError] = useState(false);
+
+  const loadForms = async () => {
+    const slug = activeBrand?.slug;
+    if (!slug) { setPages([]); setForms([]); return; }
+
+    const cacheKey = `ph_pages_${slug}`;
+    const formsCacheKey = `ph_forms_${slug}`;
+
+    try {
+      // Fire both API calls in parallel for faster loading
+      const [filterResult, metaFormsResult] = await Promise.allSettled([
+        getLeadFilterOptions(),
+        getLeadForms(),
+      ]);
+
+      // Check for social token errors
+      const filterErr = filterResult.status === "rejected" ? filterResult.reason : null;
+      const formsErr = metaFormsResult.status === "rejected" ? metaFormsResult.reason : null;
+      if (filterErr?.code === "social_token_expired" || formsErr?.code === "social_token_expired") {
+        setSocialTokenError(true);
+      } else {
+        setSocialTokenError(false);
+      }
+
+      // Process DB filter options (pages + forms)
+      let dbForms = [];
+      if (filterResult.status === "fulfilled") {
+        const result = filterResult.value;
+        const p = result.pages || [];
+        setPages(p);
+        appCache.set(cacheKey, p);
+        dbForms = (result.forms || []).map(f => ({
+          id: f.formId || f.id,
+          name: f.name || f.formId || f.id,
+          pageId: f.pageId ? String(f.pageId) : "",
+        }));
+        if (dbForms.length) {
+          setForms(dbForms);
+          appCache.set(formsCacheKey, dbForms);
+        }
+      } else if (!appCache.isFresh(cacheKey)) {
+        getConnectedPages()
+          .then(p => { setPages(p); appCache.set(cacheKey, p); })
+          .catch(() => setPages([]));
+      }
+
+      // Merge with Meta forms (richer data with questions, status, etc.)
+      if (metaFormsResult.status === "fulfilled") {
+        const metaForms = metaFormsResult.value;
+        if (metaForms.length) {
+          const metaIds = new Set(metaForms.map(f => f.id));
+          const merged = [
+            ...metaForms.map(mf => {
+              const dbForm = dbForms.find(f => String(f.id) === String(mf.id));
+              return { ...mf, pageId: String(mf.pageId || dbForm?.pageId || "") };
+            }),
+            ...dbForms.filter(f => !metaIds.has(f.id)),
+          ];
+          setForms(merged);
+          appCache.set(formsCacheKey, merged);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load pages/forms:", err);
+      if (err?.code === "social_token_expired") setSocialTokenError(true);
+    }
+  };
+
   useEffect(() => {
     const slug = activeBrand?.slug;
     if (!slug) { setPages([]); setForms([]); return; }
@@ -367,57 +440,7 @@ useEffect(() => {
     if (cachedPages) setPages(cachedPages.data);
     if (cachedForms) setForms(cachedForms.data);
 
-    // Fetch forms from Meta Graph API (live data) and pages from DB
-    const loadData = async () => {
-      let dbForms = [];
-      try {
-        // Try the fast filter endpoint first (DB-backed)
-        const result = await getLeadFilterOptions();
-        const p = result.pages || [];
-        setPages(p);
-        appCache.set(cacheKey, p);
-        // Normalize filter-option forms (formId → id)
-        dbForms = (result.forms || []).map(f => ({
-          id: f.formId || f.id,
-          name: f.name || f.formId || f.id,
-          pageId: f.pageId ? String(f.pageId) : "",
-        }));
-        // Set forms immediately from DB so dropdown populates right away
-        if (dbForms.length) {
-          setForms(dbForms);
-          appCache.set(formsCacheKey, dbForms);
-        }
-      } catch {
-        if (!appCache.isFresh(cacheKey)) {
-          getAvailablePages()
-            .then(p => { setPages(p); appCache.set(cacheKey, p); })
-            .catch(() => setPages([]));
-        }
-      }
-
-      // Try to enhance with Meta forms (latest data)
-      try {
-        const metaForms = await getLeadForms();
-        if (metaForms.length) {
-          // Merge: Meta forms + any DB-only forms not in Meta
-          // Preserve pageId from DB forms when Meta forms lack it
-          const metaIds = new Set(metaForms.map(f => f.id));
-          const merged = [
-            ...metaForms.map(mf => {
-              const dbForm = dbForms.find(f => String(f.id) === String(mf.id));
-              return { ...mf, pageId: String(mf.pageId || dbForm?.pageId || "") };
-            }),
-            ...dbForms.filter(f => !metaIds.has(f.id)),
-          ];
-          setForms(merged);
-          appCache.set(formsCacheKey, merged);
-        }
-      } catch {
-        // DB forms already set above — no action needed
-      }
-    };
-
-    loadData();
+    loadForms();
   }, [activeBrand?.slug]);
 
   // Load Google Sheet config per brand
@@ -648,9 +671,7 @@ useEffect(() => {
       } else {
         Toast?.success(`Removed ${toRemove.length} department(s)`);
       }
-      for (const id of toRemove) {
-        await removeDepartmentFromForm(filters.formId, id);
-      }
+      await Promise.all(toRemove.map(id => removeDepartmentFromForm(filters.formId, id)));
       setAppliedDeptIds([...selectedDeptIds]);
     } catch {
       Toast?.error("Failed to apply department changes");
@@ -748,10 +769,18 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* ── Social Token Error Banner ── */}
+        {socialTokenError && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+            <span className="font-medium">Your social media session has expired.</span>
+            <span>Please reconnect your Facebook account to load pages and forms.</span>
+          </div>
+        )}
+
         {/* ── Filter Bar ── */}
         <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm flex-wrap">
           <FilterDropdown
-            label="Page"
+            label={activeBrand ? `${activeBrand.name} - Pages` : "Page"}
             options={pages.map(p => ({ label: p.name, value: p.pageId }))}
             value={filters.pageId}
             onChange={val => reload({ pageId: val, formId: "" })}
@@ -765,6 +794,7 @@ useEffect(() => {
             ).map(f => ({ label: f.name, value: f.id }))}
             value={filters.formId}
             onChange={val => reload({ formId: val })}
+            disabled={!filters.pageId}
           />
 
           {/* Sync from Meta */}
@@ -1144,9 +1174,37 @@ useEffect(() => {
                         </td>
 
                         <td className="px-4 py-3">
-                          {l.email && <p className="text-xs text-indigo-600 font-medium truncate max-w-[150px]">{l.email}</p>}
-                          {l.phone && <p className="text-xs text-gray-500">{l.phone}</p>}
-                          {!l.email && !l.phone && <span className="text-gray-300">—</span>}
+                          <div className="space-y-1">
+                            {l.email && <p className="text-xs text-indigo-600 font-medium truncate max-w-[150px]">{l.email}</p>}
+                            {l.phone && <p className="text-xs text-gray-500">{l.phone}</p>}
+                            {!l.email && !l.phone && <span className="text-gray-300">—</span>}
+                            {(l.phone || l.email) && (
+                              <div className="flex items-center gap-1 pt-1">
+                                {l.phone && (
+                                  <>
+                                    <a href={`tel:${l.phone}`} title="Call"
+                                      className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors">
+                                      <FaPhone className="w-3 h-3" />
+                                    </a>
+                                    <a href={`https://wa.me/${l.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer" title="WhatsApp"
+                                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors">
+                                      <FaWhatsapp className="w-3 h-3" />
+                                    </a>
+                                    <a href={`sms:${l.phone}`} title="SMS"
+                                      className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
+                                      <FaSms className="w-3 h-3" />
+                                    </a>
+                                  </>
+                                )}
+                                {l.email && (
+                                  <a href={`mailto:${l.email}`} title="Email"
+                                    className="p-1.5 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 transition-colors">
+                                    <FaEnvelope className="w-3 h-3" />
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         
                         <td className="px-4 py-3">
@@ -1439,8 +1497,36 @@ useEffect(() => {
                          </div>
                       </div>
                       {l.email && <p className="text-xs text-indigo-600 font-medium truncate mb-1">{l.email}</p>}
-                      {l.phone && <p className="text-xs text-gray-500 mb-2">{l.phone}</p>}
-                      
+                      {l.phone && <p className="text-xs text-gray-500 mb-1">{l.phone}</p>}
+
+                      {/* Quick action buttons */}
+                      {(l.phone || l.email) && (
+                        <div className="flex items-center gap-1.5 mb-2">
+                          {l.phone && (
+                            <>
+                              <a href={`tel:${l.phone}`} title="Call"
+                                className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors">
+                                <FaPhone className="w-3 h-3" />
+                              </a>
+                              <a href={`https://wa.me/${l.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer" title="WhatsApp"
+                                className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors">
+                                <FaWhatsapp className="w-3 h-3" />
+                              </a>
+                              <a href={`sms:${l.phone}`} title="SMS"
+                                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
+                                <FaSms className="w-3 h-3" />
+                              </a>
+                            </>
+                          )}
+                          {l.email && (
+                            <a href={`mailto:${l.email}`} title="Email"
+                              className="p-1.5 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 transition-colors">
+                              <FaEnvelope className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+
                       <div className="flex gap-2 mb-3 mt-3">
                          <select
                             value={l.status || "New"}
@@ -1477,6 +1563,35 @@ useEffect(() => {
       {/* ── DETAILS MODAL ── */}
       <Modal isOpen={!!selectedLead} onClose={() => setSelectedLead(null)} title="Lead Form Details" size="lg">
         <div className="space-y-5">
+          {/* Quick contact actions */}
+          {selectedLead && (selectedLead.phone || selectedLead.email) && (
+            <div className="flex items-center gap-2 flex-wrap p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide mr-2">Quick Actions</span>
+              {selectedLead.phone && (
+                <>
+                  <a href={`tel:${selectedLead.phone}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
+                    <FaPhone className="w-3 h-3" /> Call
+                  </a>
+                  <a href={`https://wa.me/${selectedLead.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors">
+                    <FaWhatsapp className="w-3 h-3" /> WhatsApp
+                  </a>
+                  <a href={`sms:${selectedLead.phone}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
+                    <FaSms className="w-3 h-3" /> SMS
+                  </a>
+                </>
+              )}
+              {selectedLead.email && (
+                <a href={`mailto:${selectedLead.email}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 transition-colors">
+                  <FaEnvelope className="w-3 h-3" /> Email
+                </a>
+              )}
+            </div>
+          )}
+
           {/* Form fields */}
           {selectedLead?.fields && Object.keys(selectedLead.fields).length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

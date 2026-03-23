@@ -35,8 +35,7 @@ const DAY_OPTIONS = [
 // ── Trend metric options (for main area chart) ────────────────────────────────
 const TREND_METRICS = [
   { key: "totalEngagement",  label: "Engagement",  color: "#6366f1" },
-  { key: "totalReach",       label: "Reach",        color: "#10b981" },
-  { key: "totalImpressions", label: "Impressions",  color: "#8b5cf6" },
+  { key: "totalImpressions", label: "Views",        color: "#10b981" },
   { key: "totalLikes",       label: "Likes",        color: "#ef4444" },
   { key: "totalComments",    label: "Comments",     color: "#f59e0b" },
   { key: "totalClicks",      label: "Clicks",       color: "#f97316" },
@@ -299,11 +298,11 @@ export default function Analytics() {
         ) : (
           <>
             <StatCard icon={<FiTrendingUp  size={18} />} label="Total Posts"      value={summary?.totalPosts}       color="blue"    />
-            <StatCard icon={<FiEye         size={18} />} label="Total Reach"      value={summary?.totalReach}       color="indigo"  />
-            <StatCard icon={<FiEye         size={18} />} label="Impressions"      value={summary?.totalImpressions} color="violet"  />
+            <StatCard icon={<FiEye         size={18} />} label="Views"            value={summary?.totalImpressions} color="indigo"  />
             <StatCard icon={<FiHeart       size={18} />} label="Engagement"       value={summary?.totalEngagement}  color="rose"    />
             <StatCard icon={<FiMessageSquare size={18}/>} label="Comments"        value={summary?.totalComments}    color="orange"  />
             <StatCard icon={<FiUsers       size={18} />} label="Total Leads"      value={summary?.totalLeads}       color="emerald" />
+            <StatCard icon={<FiTrendingUp  size={18} />} label="Clicks"           value={summary?.totalClicks}      color="violet"  />
           </>
         )}
       </div>
@@ -496,8 +495,8 @@ export default function Analytics() {
                         </div>
 
                         <div className="flex items-center justify-between px-4 py-2 bg-slate-50 text-[10px] font-semibold text-slate-400">
-                          <span><FiEye className="inline mr-1" size={11} />Reach: {fmt(post.reach)}</span>
-                          <span>Imp: {fmt(post.impressions)}</span>
+                          <span><FiEye className="inline mr-1" size={11} />Views: {fmt(post.impressions)}</span>
+                          <span>Engagement: {fmt(post.engagement)}</span>
                         </div>
                       </div>
                     );

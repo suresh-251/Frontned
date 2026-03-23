@@ -152,8 +152,12 @@ export default function useFacebookLeads() {
 
       if (slugRef.current !== requestSlug) return; // brand changed while in flight
 
-      const currentData = JSON.stringify(leadsRef.current);
-      if (JSON.stringify(data) !== currentData) {
+      // Fast shallow comparison: skip re-render if data hasn't meaningfully changed
+      const prev = leadsRef.current;
+      const changed =
+        data.length !== prev.length ||
+        data.some((d, i) => d.id !== prev[i]?.id || d.status !== prev[i]?.status || d.remark !== prev[i]?.remark);
+      if (changed) {
         setLeads(data);
         appCache.set(leadsCacheKey(requestSlug), data);
       }

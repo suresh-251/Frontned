@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   getConnectedPages,
+  getAvailablePages,
   selectPage,
   subscribePage,
   unsubscribePage,
@@ -11,6 +12,7 @@ import {
   activateInstagramAccount,
   getInstagramAccounts,
 } from "../api/instagram.accounts.api";
+import { connectFacebook } from "../api/auth.api";
 
 export default function PageSelection() {
   const navigate = useNavigate();
@@ -24,15 +26,37 @@ export default function PageSelection() {
   const [selectedFbPage, setSelectedFbPage] = useState("");
   const [selectedIgAccount, setSelectedIgAccount] = useState("");
   const [subscribingPageId, setSubscribingPageId] = useState(null);
+  const [tokenError, setTokenError] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [pages, accounts] = await Promise.all([
-          getConnectedPages(),
-          getInstagramAccounts().catch(() => []),
-        ]);
+        // Try fetching all available pages from Facebook API (includes business pages)
+        // Falls back to stored/connected pages if the live fetch fails
+        let pages;
+        try {
+          const available = await getAvailablePages();
+          // Normalize available pages to match connected pages shape
+          pages = (Array.isArray(available) ? available : []).map(p => ({
+            pageId: p.pageId || p.PageId || p.id,
+            name: p.name || p.Name || p.pageId || "Unnamed Page",
+            isActive: p.isActive || p.IsActive || false,
+            isSubscribed: p.isSubscribed || p.IsSubscribed || false,
+            isStored: p.isStored || p.IsStored || false,
+            source: p.source || p.Source || "personal",
+          }));
+          setTokenError(false);
+        } catch (err) {
+          // Check if this is a token expiry error
+          if (err?.code === "social_token_expired" || err?.message?.includes("reconnect")) {
+            setTokenError(true);
+          }
+          // Fallback to stored pages from DB
+          pages = await getConnectedPages();
+        }
+
+        const accounts = await getInstagramAccounts().catch(() => []);
 
         const facebook = Array.isArray(pages) ? pages : [];
         const instagram = Array.isArray(accounts) ? accounts : [];
@@ -70,7 +94,20 @@ export default function PageSelection() {
         toast.success(`Subscribed "${page.name}" to Graph API.`);
       }
       // Refresh pages to reflect new subscription state
-      const updated = await getConnectedPages();
+      let updated;
+      try {
+        const available = await getAvailablePages();
+        updated = (Array.isArray(available) ? available : []).map(p => ({
+          pageId: p.pageId || p.PageId || p.id,
+          name: p.name || p.Name || p.pageId || "Unnamed Page",
+          isActive: p.isActive || p.IsActive || false,
+          isSubscribed: p.isSubscribed || p.IsSubscribed || false,
+          isStored: p.isStored || p.IsStored || false,
+          source: p.source || p.Source || "personal",
+        }));
+      } catch {
+        updated = await getConnectedPages();
+      }
       setFbPages(Array.isArray(updated) ? updated : []);
     } catch {
       toast.error("Subscription update failed. Please try again.");
@@ -100,7 +137,7 @@ export default function PageSelection() {
         await activateInstagramAccount(selectedIgAccount);
       }
 
-      toast.success("Selection saved.");
+      toast.success("Page activated! Syncing leads, analytics & inbox in background...");
       navigate(returnUrl || "/crm/socialmedia/dashboard", { replace: true });
     } catch {
       toast.error("Could not save selection. Please try again.");
@@ -117,11 +154,32 @@ export default function PageSelection() {
           Choose the Facebook page and Instagram account to use in this brand.
         </p>
 
+        {/* Token expired banner */}
+        {tokenError && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-medium text-red-800 mb-2">
+              Your Facebook session has expired or been invalidated. Please reconnect your account to see all available pages.
+            </p>
+            <button
+              onClick={() => connectFacebook()}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Reconnect Facebook
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <p className="mt-6 text-sm text-gray-500">Loading connected accounts...</p>
         ) : !hasAnythingToSelect ? (
           <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            No Facebook page or Instagram account found. Reconnect Meta and grant page permissions.
+            <p>No Facebook page or Instagram account found.</p>
+            <button
+              onClick={() => connectFacebook()}
+              className="mt-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Connect Facebook Account
+            </button>
           </div>
         ) : (
           <>
@@ -149,8 +207,13 @@ export default function PageSelection() {
                         onChange={(e) => setSelectedFbPage(e.target.value)}
                       />
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-gray-800">{p.name}</p>
+                          {p.source === "business" && (
+                            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                              Business
+                            </span>
+                          )}
                           {p.isSubscribed ? (
                             <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
                               Subscribed

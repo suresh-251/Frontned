@@ -1,4 +1,5 @@
 import api from "./apiClient";
+import { secureStorage } from "../../utils/secureStorage";
 
 /** Get all brands for the current user */
 export const getBrands = async () => {
@@ -59,14 +60,14 @@ export const deleteBrand = async (slug) => {
  */
 export const activateBrand = async (slug) => {
   const res = await api.post(`/brands/${slug}/activate`);
-  localStorage.setItem("brandSlug", slug);
+  secureStorage.set("brandSlug", slug);
   return res.data;
 };
 
 /** Clear the active brand */
 export const clearActiveBrand = async () => {
   await api.delete("/brands/activate");
-  localStorage.removeItem("brandSlug");
+  secureStorage.remove("brandSlug");
 };
 
 /** Get all social accounts connected under a brand */

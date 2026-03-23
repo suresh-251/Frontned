@@ -1,13 +1,13 @@
 import api from "./apiClient";
 import { BASE_URL } from "./apiClient";
+import { getAccessToken } from "../../utils/authStorage";
 import * as signalR from "@microsoft/signalr";
 
 const LEADS_HUB_URL = BASE_URL.replace("/api", "") + "/hubs/leads";
 
 export function createLeadsHubConnection() {
-  const token = localStorage.getItem("accessToken");
   return new signalR.HubConnectionBuilder()
-    .withUrl(LEADS_HUB_URL, token ? { accessTokenFactory: () => token } : {})
+    .withUrl(LEADS_HUB_URL, { accessTokenFactory: () => getAccessToken() || "" })
     .withAutomaticReconnect()
     .configureLogging(signalR.LogLevel.Warning)
     .build();
@@ -27,9 +27,17 @@ export const getLeadForms = async () => {
   return res.data || [];
 };
 
-export const syncLeadsByForm = async (formId, platform) => {
-  const params = platform ? { platform } : {};
+export const syncLeadsByForm = async (formId, platform, pageId) => {
+  const params = {};
+  if (platform) params.platform = platform;
+  if (pageId) params.pageId = pageId;
   const res = await api.post(`/facebook/leads/forms/${formId}/sync`, null, { params });
+  return res.data;
+};
+
+/** Syncs ALL lead forms across ALL brand pages from Meta. */
+export const syncAllLeads = async () => {
+  const res = await api.post("/facebook/leads/sync-all");
   return res.data;
 };
 
