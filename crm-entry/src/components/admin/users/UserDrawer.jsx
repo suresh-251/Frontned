@@ -92,7 +92,7 @@ export default function UserDrawer({
         <div className="border-b px-4 py-3 flex justify-between items-center">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">
-              {user?.name || "User"}
+              {user?.username || user?.name || "User"}
             </h3>
 
             <p className="text-xs text-slate-500">

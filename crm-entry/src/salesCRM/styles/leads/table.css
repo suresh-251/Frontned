@@ -224,6 +224,20 @@
   overflow-wrap: anywhere;
 }
 
+.sales-deals-table .th-next-step,
+.sales-deals-table .td-next-step {
+  width: 160px;
+  min-width: 160px;
+  max-width: 160px;
+}
+
+.sales-deals-table .td-next-step,
+.sales-deals-table .td-next-step .cell-txt {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 /* Head */
 .thead-row {
   background: color-mix(in srgb, var(--cs) 92%, var(--cb));
@@ -477,10 +491,46 @@
   white-space: nowrap;
 }
 
+.sales-deals-stage-trigger {
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sales-stage-bg) 92%, white);
+  border: 1px solid color-mix(in srgb, var(--sales-stage-color) 22%, #e2e8f0);
+  font-weight: 700;
+}
+
+.sales-deals-stage-trigger:hover {
+  filter: none;
+  background: color-mix(in srgb, var(--sales-stage-bg) 86%, white);
+}
+
 .sales-deals-delete-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.sales-deals-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 88%, #dbe4f0);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-card) 92%, var(--bg-body));
+  color: color-mix(in srgb, var(--text-main) 64%, #64748b);
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.sales-deals-action-button:hover,
+.sales-deals-action-button:focus-visible {
+  border-color: color-mix(in srgb, var(--text-main) 20%, #cbd5e1);
+  background: color-mix(in srgb, var(--bg-card) 82%, var(--bg-body));
+  color: var(--text-main);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
 }
 
 .sales-accounts-name-link {
@@ -569,7 +619,7 @@
 .sales-leads-table .followup-btn,
 .sales-leads-table .assignee-pill,
 .sales-leads-table .assignee-pill__label {
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.35;
 }
 
@@ -885,4 +935,3 @@
   color: var(--ci);
   font-weight: 600;
 }
-

@@ -281,9 +281,14 @@ export default function CreateUser({ onSuccess, onClose }) {
       firstName: "",
       lastName: "",
       mobileNumber: "",
-      department: "",
-      designation: "",
     },
+    employeeId: "",
+    gender: "",
+    assignedBranch: "",
+    department: "",
+    designation: "",
+    employmentType: "",
+    payrollAmount: "",
   });
 
   /* =======================
@@ -486,17 +491,62 @@ export default function CreateUser({ onSuccess, onClose }) {
         />
 
         <input
+          placeholder="Employee ID"
+          value={form.employeeId}
+          onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
+          className="rounded-xl border px-4 py-3 text-sm"
+        />
+
+        <select
+          value={form.gender}
+          onChange={(e) => setForm({ ...form, gender: e.target.value })}
+          className="rounded-xl border px-4 py-3 text-sm bg-white"
+        >
+          <option value="">Select Gender</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Other">Other</option>
+        </select>
+
+        <input
           placeholder="Designation"
-          value={form.profile.designation}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              profile: {
-                ...form.profile,
-                designation: e.target.value,
-              },
-            })
-          }
+          value={form.designation}
+          onChange={(e) => setForm({ ...form, designation: e.target.value })}
+          className="rounded-xl border px-4 py-3 text-sm"
+        />
+
+        <input
+          placeholder="Department"
+          value={form.department}
+          onChange={(e) => setForm({ ...form, department: e.target.value })}
+          className="rounded-xl border px-4 py-3 text-sm"
+        />
+
+        <input
+          placeholder="Assigned Branch"
+          value={form.assignedBranch}
+          onChange={(e) => setForm({ ...form, assignedBranch: e.target.value })}
+          className="rounded-xl border px-4 py-3 text-sm"
+        />
+
+        <select
+          value={form.employmentType}
+          onChange={(e) => setForm({ ...form, employmentType: e.target.value })}
+          className="rounded-xl border px-4 py-3 text-sm bg-white"
+        >
+          <option value="">Employment Type</option>
+          <option value="FullTime">Full Time</option>
+          <option value="PartTime">Part Time</option>
+          <option value="Contract">Contract</option>
+          <option value="Internship">Internship</option>
+        </select>
+
+        <input
+          placeholder="Payroll Amount"
+          type="number"
+          min="0"
+          value={form.payrollAmount}
+          onChange={(e) => setForm({ ...form, payrollAmount: e.target.value })}
           className="rounded-xl border px-4 py-3 text-sm"
         />
 

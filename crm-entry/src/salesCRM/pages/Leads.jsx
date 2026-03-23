@@ -5,6 +5,7 @@ import { BarChart3, History } from "lucide-react";
 import * as XLSX from "xlsx";
 import leadsAPI from "../api/leads.api";
 import activitiesAPI from "../api/activities.api";
+import { getLeads as getSocialLeads } from "../../socialCRM/api/facebook.leads.api";
 import LeadDetailsModal from "../components/LeadDetailsModal.jsx";
 import { ALL_COLUMNS, CLEARED_FILTERS, DEFAULT_FILTERS, INITIAL_STATS, STAT_CARDS, STATUS_LIST, STATUS_META } from "./leads/constants";
 import {
@@ -126,6 +127,38 @@ function getSalesUserLabel(user) {
   return user?.name?.trim() || user?.username || user?.email || `User ${user?.userId || user?.id || ""}`;
 }
 
+function buildTodayFollowUpStats(items = []) {
+  const list = Array.isArray(items) ? items : [];
+  const countByType = (matcher) => list.filter((item) => matcher(String(item?.type || item?.activityType || item?.activityTypeName || ""))).length;
+  return {
+    callsToMakeDueToday: countByType((type) => type.toLowerCase().includes("call")),
+    emailsToSendDueToday: countByType((type) => type.toLowerCase().includes("email")),
+    meetingsToScheduleDueToday: countByType((type) => type.toLowerCase().includes("meeting")),
+  };
+}
+
+function countFreshLeadsCreatedToday(items = []) {
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return (Array.isArray(items) ? items : []).filter((lead) => {
+    const raw = String(lead?.createdAt || lead?.createdDate || "").trim();
+    if (!raw) return false;
+    const createdKey = raw.includes("T") ? raw.split("T")[0] : raw.split(" ")[0];
+    return createdKey === todayKey;
+  }).length;
+}
+
+function formatSocialLeadDate(value) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function DeletedLeadsPanel({ leads }) {
   const [open, setOpen] = useState(false);
   if (!leads.length) return null;
@@ -144,11 +177,14 @@ function DeletedLeadsPanel({ leads }) {
 }
 
 export default function Leads() {
+  const [leadDataSource, setLeadDataSource] = useState("sales");
   const [leads, setLeads] = useState([]);
+  const [socialLeads, setSocialLeads] = useState([]);
   const [deletedLeads, setDeletedLeads] = useState([]);
   const [salesUsers, setSalesUsers] = useState([]);
   const [stats, setStats] = useState(INITIAL_STATS);
   const [loading, setLoading] = useState(true);
+  const [socialLoading, setSocialLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [searchField, setSearchField] = useState("all");
   const [showFilter, setShowFilter] = useState(false);
@@ -195,6 +231,7 @@ export default function Leads() {
   const [bulkStatus, setBulkStatus] = useState(STATUS_LIST[0]);
   const [showBulkStatusPicker, setShowBulkStatusPicker] = useState(false);
   const [followUpBuckets, setFollowUpBuckets] = useState({});
+  const [todayFollowUpItems, setTodayFollowUpItems] = useState([]);
 
   const salesUserOptions = useMemo(() => {
     const names = salesUsers.map((user) => getSalesUserLabel(user)).filter(Boolean);
@@ -252,6 +289,16 @@ export default function Leads() {
     localStorage.setItem(VISIBLE_COLUMNS_STORAGE_KEY, JSON.stringify(visibleCols));
   }, [visibleCols]);
 
+  const refreshTodayFollowUpItems = useCallback(async () => {
+    try {
+      const data = await activitiesAPI.getFollowUpsToday();
+      setTodayFollowUpItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to refresh today's follow-up stats", error);
+      setTodayFollowUpItems([]);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
     let resolvedUsers = [];
@@ -301,7 +348,7 @@ export default function Leads() {
         if (!active) return;
 
         const bucketMap = {};
-        const rank = { overdue: 3, today: 2, upcoming: 1 };
+        const rank = { overdue: 4, today: 3, tomorrow: 2, upcoming: 1 };
         const assignBucket = (item, bucket) => {
           const leadId = Number(item?.leadId || 0);
           if (!leadId) return;
@@ -322,16 +369,23 @@ export default function Leads() {
         const allFollowUps = allResult.status === "fulfilled" ? allResult.value : [];
         const overdueFollowUps = overdueResult.status === "fulfilled" ? overdueResult.value : [];
         const todayFollowUps = todayResult.status === "fulfilled" ? todayResult.value : [];
+        setTodayFollowUpItems(Array.isArray(todayFollowUps) ? todayFollowUps : []);
         const now = new Date();
         const startOfTomorrow = new Date(now);
         startOfTomorrow.setHours(24, 0, 0, 0);
+        const endOfTomorrow = new Date(startOfTomorrow);
+        endOfTomorrow.setHours(23, 59, 59, 999);
 
         allFollowUps.forEach((item) => {
           const dueDate = item?.dueDate ? new Date(item.dueDate) : null;
           const status = String(item?.status || "").toLowerCase();
           const isDone = item?.isCompleted || status === "completed";
-          const isUpcoming = dueDate && !Number.isNaN(dueDate.getTime()) && dueDate >= startOfTomorrow && !isDone;
-          if (isUpcoming) assignBucket(item, "upcoming");
+          if (!dueDate || Number.isNaN(dueDate.getTime()) || isDone) return;
+          if (dueDate >= startOfTomorrow && dueDate <= endOfTomorrow) {
+            assignBucket(item, "tomorrow");
+            return;
+          }
+          if (dueDate > endOfTomorrow) assignBucket(item, "upcoming");
         });
         overdueFollowUps.forEach((item) => assignBucket(item, "overdue"));
         todayFollowUps.forEach((item) => assignBucket(item, "today"));
@@ -341,6 +395,7 @@ export default function Leads() {
         if (active) {
           console.error("Failed to fetch follow-up buckets", error);
           setFollowUpBuckets({});
+          setTodayFollowUpItems([]);
         }
       }
     };
@@ -351,12 +406,57 @@ export default function Leads() {
     leadsAPI.getDeleted()
       .then((data) => { if (active) { const normalized = normalizeLeads(data); setDeletedLeads(resolvedUsers.length ? applyAssigneeNames(normalized, resolvedUsers) : normalized); } })
       .catch((error) => { if (active) { console.error("Failed to fetch deleted leads", error); setDeletedLeads([]); } });
-    leadsAPI.getDashboard()
-      .then((data) => { if (active) setStats(data); })
-      .catch((error) => { if (active) { console.error("Failed to fetch dashboard stats", error); setStats(INITIAL_STATS); } });
+    Promise.allSettled([leadsAPI.getDashboard(), activitiesAPI.getFollowUpsToday()])
+      .then(([dashboardResult, todayResult]) => {
+        if (!active) return;
+        const dashboardStats = dashboardResult.status === "fulfilled" ? dashboardResult.value : INITIAL_STATS;
+        const todayStats = todayResult.status === "fulfilled" ? (Array.isArray(todayResult.value) ? todayResult.value : []) : [];
+        setStats(dashboardStats);
+        setTodayFollowUpItems(todayStats);
+        if (dashboardResult.status === "rejected") {
+          console.error("Failed to fetch dashboard stats", dashboardResult.reason);
+        }
+        if (todayResult.status === "rejected") {
+          console.error("Failed to fetch today's follow-up stats", todayResult.reason);
+        }
+      })
+      .catch((error) => { if (active) { console.error("Failed to fetch lead stats", error); setStats(INITIAL_STATS); } });
 
     return () => { active = false; };
   }, [applyAssigneeNames]);
+
+  useEffect(() => {
+    if (leadDataSource !== "social") return undefined;
+
+    let active = true;
+
+    const loadSocialLeads = async () => {
+      setSocialLoading(true);
+      try {
+        const items = await getSocialLeads();
+        if (!active) return;
+        setSocialLeads(Array.isArray(items) ? items : []);
+      } catch (error) {
+        if (active) {
+          console.error("Failed to fetch social leads", error);
+          setSocialLeads([]);
+        }
+      } finally {
+        if (active) setSocialLoading(false);
+      }
+    };
+
+    loadSocialLeads();
+    return () => { active = false; };
+  }, [leadDataSource]);
+
+  useEffect(() => {
+    setStats((current) => ({
+      ...current,
+      totalNewLeadsDueToday: countFreshLeadsCreatedToday(leads),
+      ...buildTodayFollowUpStats(todayFollowUpItems),
+    }));
+  }, [leads, todayFollowUpItems]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -487,8 +587,8 @@ export default function Leads() {
     const followUpInfo = followUpBuckets[lead.id];
     return {
       ...lead,
-      followUpBucket: followUpInfo?.bucket || "All",
-      followUpBucketDueDate: followUpInfo?.dueDate || lead.followUpDate || lead.nextFollowUpAt || "",
+      followUpBucket: followUpInfo?.bucket || "none",
+      followUpBucketDueDate: followUpInfo?.dueDate || "",
     };
   }), [followUpBuckets, leads]);
 
@@ -538,6 +638,25 @@ export default function Leads() {
     const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
     return sortDir === "desc" ? -cmp : cmp;
   }), [enrichedLeads, filters, search, searchField, sortBy, sortDir]);
+
+  const filteredSocialLeads = useMemo(() => {
+    const query = normalizeFilterText(search);
+    return socialLeads.filter((lead) => {
+      if (!query) return true;
+      const searchable = normalizeFilterText([
+        lead.id,
+        lead.name,
+        lead.email,
+        lead.phone,
+        lead.platform,
+        lead.status,
+        lead.assignedToUserName,
+        lead.formName,
+        lead.pageName,
+      ].join(" "));
+      return searchable.includes(query);
+    });
+  }, [search, socialLeads]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const paginated = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
@@ -644,34 +763,64 @@ export default function Leads() {
 
   return (
     <div className="page sales-leads-page">
-      <div className="stat-grid">{STAT_CARDS.map(({ label, key, detailKey, detailLabel, helper, icon, alert, c }, index) => <StatCard key={label} label={label} value={stats[key] ?? 0} detailValue={stats[detailKey] ?? 0} detailLabel={detailLabel} helper={helper} icon={icon} alert={alert} c={c} delay={`${index * 0.07}s`} />)}</div>
+      {leadDataSource === "sales" && <div className="stat-grid">{STAT_CARDS.map(({ label, key, detailKey, detailLabel, helper, icon, alert, c }, index) => <StatCard key={label} label={label} value={stats[key] ?? 0} detailValue={stats[detailKey] ?? 0} detailLabel={detailLabel} helper={helper} icon={icon} alert={alert} c={c} delay={`${index * 0.07}s`} />)}</div>}
 
-      <div className="toolbar"><div className="toolbar-mid"><button className={`btn-ghost ${activeFilterCount > 0 ? "btn-ghost--active" : ""}`} onClick={() => setShowFilter(true)}><IFilter s={12} />&ensp;Filter{activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}</button><div className="toolbar-divider" /><div style={{ display: "flex", height: 32, border: "1.5px solid var(--cborder)", borderRadius: "8px", overflow: "hidden", background: "var(--cs)", boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)" }}>{[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: "5px", height: "100%", padding: "0 12px", border: "none", borderRight: k === "list" ? "1px solid var(--cborder)" : "none", background: viewMode === k ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "transparent", color: viewMode === k ? "var(--ci)" : "var(--cm)" }}><I s={13} />{l}</button>)}</div><div className="toolbar-divider" /><div className="unified-search"><select className="search-field-select" value={searchField} onChange={(event) => setSearchField(event.target.value)}>{SEARCH_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><div className="unified-divider" /><div className="search-wrap"><span className="search-ico"><ISearch s={14} c="#9ca3af" /></span><input type="text" className="search-inp unified-inp" placeholder={`Search by ${activeSearchFieldLabel.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} /></div></div><div className="toolbar-divider" /><button className={`icon-btn-outline ${showChart ? "icon-btn-outline--on" : ""}`} onClick={() => setShowChart(!showChart)}><BarChart3 size={14} /></button><div className="toolbar-divider" /><AddLeadDropdown onSelectType={handleAddLeadType} /></div></div>
+      <div className="toolbar" style={{ gap: 10, marginBottom: 10, justifyContent: "center" }}>
+        <div className="toolbar-mid" style={{ gap: 8, rowGap: 8, width: "fit-content", maxWidth: "100%", justifyContent: "center" }}>
+          {leadDataSource === "sales" && <>
+            <button className={`btn-ghost ${activeFilterCount > 0 ? "btn-ghost--active" : ""}`} onClick={() => setShowFilter(true)} style={{ minHeight: 30, padding: "4px 10px", fontSize: 13 }}><IFilter s={12} />&ensp;Filter{activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}</button>
+            <div className="toolbar-divider" style={{ margin: "0 2px", height: 20 }} />
+          </>}
+          <div className="unified-search" style={{ minHeight: 30, padding: "1px 2px" }}>{leadDataSource === "sales" && <><select className="search-field-select" style={{ minWidth: 100, padding: "0 6px 0 8px", height: 26 }} value={searchField} onChange={(event) => setSearchField(event.target.value)}>{SEARCH_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><div className="unified-divider" style={{ margin: "0 4px", height: 18 }} /></>}<div className="search-wrap"><span className="search-ico"><ISearch s={14} c="#9ca3af" /></span><input type="text" className="search-inp unified-inp" style={{ width: leadDataSource === "social" ? 260 : 220, padding: "5px 28px 5px 34px", fontSize: 13.5 }} placeholder={leadDataSource === "social" ? "Search social leads..." : `Search by ${activeSearchFieldLabel.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>
+          {leadDataSource === "sales" && <>
+            <div className="toolbar-divider" style={{ margin: "0 2px", height: 20 }} />
+            <button className={`icon-btn-outline ${showChart ? "icon-btn-outline--on" : ""}`} onClick={() => setShowChart(!showChart)} style={{ width: 32, height: 32 }}><BarChart3 size={14} /></button>
+            <div className="toolbar-divider" style={{ margin: "0 2px", height: 20 }} />
+            <button className="btn-ghost" onClick={() => setShowImport(true)} style={{ minHeight: 30, padding: "4px 10px", fontSize: 13 }}>Import</button>
+            <div className="toolbar-divider" style={{ margin: "0 2px", height: 20 }} />
+            <AddLeadDropdown onSelectType={handleAddLeadType} />
+          </>}
+        </div>
+      </div>
 
-      {hasActiveFilters && <div className="chips-bar sales-leads-filter-chips">{search && <span className="chip sales-leads-filter-chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip sales-leads-filter-chip"><span className="chip-dot sales-leads-filter-chip-dot" style={{ background: STATUS_META[filters.status]?.color || "#4f46e5" }} />Status: {formatStatus(filters.status)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, status: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip sales-leads-filter-chip">Source: {formatLeadSource(filters.source)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, source: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip sales-leads-filter-chip">Assignee: {filters.assignee}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, assignee: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUp !== "All" && <span className="chip sales-leads-filter-chip">Follow-up bucket: {filters.followUp}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUp: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{sameFilterDay(filters.createdDateFrom, filters.createdDateTo) ? <span className="chip sales-leads-filter-chip">Created Date: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "", createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.createdDateFrom && <span className="chip sales-leads-filter-chip">Created from: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateTo && <span className="chip sales-leads-filter-chip">Created to: {formatFilterChipDate(filters.createdDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{sameFilterDay(filters.followUpDateFrom, filters.followUpDateTo) ? <span className="chip sales-leads-filter-chip">Follow-up: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "", followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.followUpDateFrom && <span className="chip sales-leads-filter-chip">Follow-up from: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateTo && <span className="chip sales-leads-filter-chip">Follow-up to: {formatFilterChipDate(filters.followUpDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{filters.address && <span className="chip sales-leads-filter-chip">Address: {filters.address}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, address: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.city && <span className="chip sales-leads-filter-chip">City: {filters.city}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, city: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.state && <span className="chip sales-leads-filter-chip">State: {filters.state}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, state: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.country && <span className="chip sales-leads-filter-chip">Country: {filters.country}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, country: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.zip && <span className="chip sales-leads-filter-chip">Zip: {filters.zip}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, zip: "" }))}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall sales-leads-filter-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", height: 30, border: "1.5px solid var(--cborder)", borderRadius: 8, overflow: "hidden", background: "var(--cs)", boxShadow: "0 6px 16px rgba(15, 23, 42, 0.06)" }}>
+          {[{ key: "sales", label: "Sales Leads" }, { key: "social", label: "Social Leads" }].map((option, index, array) => <button key={option.key} onClick={() => setLeadDataSource(option.key)} style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: 112, padding: "0 10px", border: "none", borderRight: index < array.length - 1 ? "1px solid var(--cborder)" : "none", background: leadDataSource === option.key ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "#ffffff", color: leadDataSource === option.key ? "var(--ci)" : "var(--ct2)", fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>{option.label}</button>)}
+        </div>
+        {leadDataSource === "sales" ? <div style={{ display: "flex", height: 30, border: "1.5px solid var(--cborder)", borderRadius: 8, overflow: "hidden", background: "var(--cs)", boxShadow: "0 6px 16px rgba(15, 23, 42, 0.06)" }}>{[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: 4, height: "100%", padding: "0 10px", border: "none", borderRight: k === "list" ? "1px solid var(--cborder)" : "none", background: viewMode === k ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "transparent", color: viewMode === k ? "var(--ci)" : "var(--cm)", fontSize: 13, whiteSpace: "nowrap" }}><I s={12} />{l}</button>)}</div> : null}
+      </div>
 
-      {selected.size > 0 && <div className="bulk-bar sales-leads-bulk-bar"><span className="bulk-cnt sales-leads-bulk-count">{selected.size} selected</span><button className="bulk-btn sales-leads-bulk-button">Assign Assignee</button>{showBulkStatusPicker ? <><select className="bulk-select sales-leads-bulk-select" value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}>{STATUS_LIST.map((status) => <option key={status} value={status}>{formatStatus(status)}</option>)}</select><button className="bulk-btn sales-leads-bulk-button" onClick={handleBulkStatusChange}>Apply Status</button><button className="bulk-btn sales-leads-bulk-button" onClick={() => setShowBulkStatusPicker(false)}>Cancel</button></> : <button className="bulk-btn sales-leads-bulk-button" onClick={() => setShowBulkStatusPicker(true)}>Change Status</button>}<button className="bulk-btn sales-leads-bulk-button" onClick={handleExportSelected}>Export</button><button className="bulk-btn bulk-btn--danger sales-leads-bulk-button" onClick={handleBulkDelete}>Delete</button><button className="bulk-close sales-leads-bulk-close" onClick={() => { setSelected(new Set()); setShowBulkStatusPicker(false); }}><IX s={12} c="#6b7280" /></button></div>}
+      {leadDataSource === "sales" && hasActiveFilters && <div className="chips-bar sales-leads-filter-chips">{search && <span className="chip sales-leads-filter-chip">{activeSearchFieldLabel}: &ldquo;{search}&rdquo;<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setSearch("")}><IX s={9} c="#4f46e5" /></button></span>}{filters.status !== "All" && <span className="chip sales-leads-filter-chip"><span className="chip-dot sales-leads-filter-chip-dot" style={{ background: STATUS_META[filters.status]?.color || "#4f46e5" }} />Status: {formatStatus(filters.status)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, status: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.source !== "All" && <span className="chip sales-leads-filter-chip">Source: {formatLeadSource(filters.source)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, source: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.assignee !== "All" && <span className="chip sales-leads-filter-chip">Assignee: {filters.assignee}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, assignee: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUp !== "All" && <span className="chip sales-leads-filter-chip">Follow-up bucket: {filters.followUp}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUp: "All" }))}><IX s={9} c="#4f46e5" /></button></span>}{sameFilterDay(filters.createdDateFrom, filters.createdDateTo) ? <span className="chip sales-leads-filter-chip">Created Date: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "", createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.createdDateFrom && <span className="chip sales-leads-filter-chip">Created from: {formatFilterChipDate(filters.createdDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.createdDateTo && <span className="chip sales-leads-filter-chip">Created to: {formatFilterChipDate(filters.createdDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, createdDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{sameFilterDay(filters.followUpDateFrom, filters.followUpDateTo) ? <span className="chip sales-leads-filter-chip">Follow-up: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "", followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span> : <>{filters.followUpDateFrom && <span className="chip sales-leads-filter-chip">Follow-up from: {formatFilterChipDate(filters.followUpDateFrom)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateFrom: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.followUpDateTo && <span className="chip sales-leads-filter-chip">Follow-up to: {formatFilterChipDate(filters.followUpDateTo)}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, followUpDateTo: "" }))}><IX s={9} c="#4f46e5" /></button></span>}</>}{filters.address && <span className="chip sales-leads-filter-chip">Address: {filters.address}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, address: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.city && <span className="chip sales-leads-filter-chip">City: {filters.city}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, city: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.state && <span className="chip sales-leads-filter-chip">State: {filters.state}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, state: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.country && <span className="chip sales-leads-filter-chip">Country: {filters.country}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, country: "" }))}><IX s={9} c="#4f46e5" /></button></span>}{filters.zip && <span className="chip sales-leads-filter-chip">Zip: {filters.zip}<button className="chip-x sales-leads-filter-chip-remove" onClick={() => setFilters((current) => ({ ...current, zip: "" }))}><IX s={9} c="#4f46e5" /></button></span>}<button className="chip-clearall sales-leads-filter-clearall" onClick={() => { setSearch(""); handleClearFilters(); }}>Clear all</button></div>}
 
-      {loading && (
+      {leadDataSource === "sales" && selected.size > 0 && <div className="bulk-bar sales-leads-bulk-bar"><span className="bulk-cnt sales-leads-bulk-count">{selected.size} selected</span>{showBulkStatusPicker ? <><div style={{ display: "inline-flex", alignItems: "stretch", border: "1.5px solid var(--cborder)", borderRadius: 10, overflow: "hidden", background: "var(--cs)" }}><select className="bulk-select sales-leads-bulk-select" value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)} style={{ border: "none", borderRight: "1.5px solid var(--cborder)", borderRadius: 0, minWidth: 170, background: "transparent" }}>{STATUS_LIST.map((status) => <option key={status} value={status}>{formatStatus(status)}</option>)}</select><button className="bulk-btn sales-leads-bulk-button" onClick={handleBulkStatusChange} style={{ border: "none", borderRadius: 0, boxShadow: "none" }}>Apply Status</button></div><button className="bulk-btn sales-leads-bulk-button" onClick={() => setShowBulkStatusPicker(false)}>Cancel</button></> : <button className="bulk-btn sales-leads-bulk-button" onClick={() => setShowBulkStatusPicker(true)}>Change Status</button>}<button className="bulk-btn sales-leads-bulk-button" onClick={handleExportSelected}>Export</button><button className="bulk-btn bulk-btn--danger sales-leads-bulk-button" onClick={handleBulkDelete}>Delete</button><button className="bulk-close sales-leads-bulk-close" onClick={() => { setSelected(new Set()); setShowBulkStatusPicker(false); }}><IX s={12} c="#6b7280" /></button></div>}
+
+      {leadDataSource === "sales" && loading && (
         <div style={{ marginBottom: 16, border: "1px solid #dbe4f0", borderRadius: 16, background: "#ffffff", padding: "12px 14px", color: "#64748b", fontSize: 13, fontWeight: 600 }}>
           Loading leads. Secondary panels like deleted history, dashboard stats, and assignee names may finish a moment after the table.
         </div>
       )}
 
-      {viewMode === "kanban" && <KanbanBoard leads={filtered} groupBy={kanbanGroupBy} setGroupBy={setKanbanGroupBy} onUpdateLead={updateLead} onOpenDetails={fetchLeadDetail} />}
+      {leadDataSource === "social" && socialLoading && (
+        <div style={{ marginBottom: 16, border: "1px solid #dbe4f0", borderRadius: 16, background: "#ffffff", padding: "12px 14px", color: "#64748b", fontSize: 13, fontWeight: 600 }}>
+          Loading social leads from socialCRM.
+        </div>
+      )}
 
-      {viewMode === "list" && <div className="table-card-shell sales-leads-table-shell"><div className="table-card sales-leads-table-card"><div className="table-scroll sales-leads-table-scroll"><table className={`table sales-leads-table ${wrapText ? "table--wrap" : ""}`}><thead><tr className="thead-row sales-leads-table-head-row"><th className="th th-check"><input type="checkbox" className="cb" checked={allOnPageSel} onChange={toggleAll} /></th>{activeCols.map((col) => <th key={col.key} className={`th sales-leads-table-head-cell th-${col.key}`} onClick={() => { if (sortBy === col.key) setSortDir((current) => current === "asc" ? "desc" : "asc"); else { setSortBy(col.key); setSortDir("asc"); } }}><span className="th-inner">{col.label}<SortIcon sortBy={sortBy} sortDir={sortDir} col={col.key} /></span></th>)}<th className="th th-actions sales-leads-table-head-cell"><button className={`icon-btn-outline ${showColPanel ? "icon-btn-outline--on" : ""}`} onClick={() => setShowColPanel(true)}><ISettings s={13} /></button></th></tr></thead><tbody>{paginated.map((lead, rowIndex) => { const serial = (page - 1) * rowsPerPage + rowIndex + 1; const initials = getInitials(lead.name); const isSel = selected.has(lead.id); return <tr key={lead.id} className={`row sales-leads-table-row ${isSel ? "row--sel" : ""}`}><td className="td td-check"><input type="checkbox" className="cb" checked={isSel} onChange={() => toggleOne(lead.id)} /></td>{activeCols.map((col) => { switch (col.key) { case "serial": return <td key="serial" className="td"><span className="cell-txt">{serial}</span></td>; case "name": return <td key="name" className="td td-name"><div className="name-cell sales-leads-name-cell"><div className="avatar sales-leads-avatar" style={{ background: lead.avatarBg }}>{initials}</div><div className="name-block sales-leads-name-block"><span className="sales-leads-name-link__label sales-leads-name-text">{lead.name}</span><button className="name-link sales-leads-name-link" onClick={() => fetchLeadDetail(lead.id)} title={`Open ${lead.name || "lead"} details`} aria-label={`Open ${lead.name || "lead"} details`}><span className="sales-leads-name-link__meta">View <IChevR s={11} /></span></button></div></div></td>; case "status": return <td key="status" className="td td-status"><StatusCell value={lead.status} onChange={(value) => updateLead(lead.id, "status", value)} /></td>; case "followUp": return <td key="followUp" className="td td-followup"><FollowUpCell value={lead.followUpBucketDueDate || lead.followUpDate} bucket={lead.followUpBucket} leadId={lead.id} onChange={(value) => updateLead(lead.id, "followUpDate", value)} /></td>; case "source": return <td key="source" className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td>; case "score": return <td key="score" className="td td-score"><ScoreBar score={lead.score} /></td>; case "company": return <td key="company" className="td"><span className="cell-txt">{lead.company}</span></td>; case "contact": return <td key="contact" className="td td-contact"><div className="contact-cell sales-leads-contact-cell">{lead.email ? <span className="contact-email">{lead.email}</span> : null}{lead.phone ? <span className="contact-phone">{lead.phone}</span> : null}{!lead.email && !lead.phone ? <span className="cell-txt">-</span> : null}</div></td>; case "assignee": return <td key="assignee" className="td td-assignee"><AssigneeCell value={lead.assignee} options={salesUserOptions} onChange={(value) => updateLead(lead.id, "assignee", value)} /></td>; case "createdDate": return <td key="createdDate" className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td>; default: return <td key={col.key} className={`td ${col.key === "comments" ? "td-wrap-limit td-comments" : ""}`}><span className="cell-txt">{String(lead[col.key] ?? "")}</span></td>; } })}<td className="td td-actions"><div className="row-acts sales-leads-row-actions"><button className="act-btn act-btn--edit" onClick={async () => { const detailedLead = await fetchLeadForEdit(lead.id); setEditLead(detailedLead || lead); }}><IEdit s={12} /></button></div></td></tr>; })}</tbody></table></div></div></div>}
+      {leadDataSource === "sales" && viewMode === "kanban" && <KanbanBoard leads={filtered} groupBy={kanbanGroupBy} setGroupBy={setKanbanGroupBy} onUpdateLead={updateLead} onOpenDetails={fetchLeadDetail} />}
 
-      <DeletedLeadsPanel leads={deletedLeads} />
+      {leadDataSource === "sales" && viewMode === "list" && <div className="table-card-shell sales-leads-table-shell"><div className="table-card sales-leads-table-card"><div className="table-scroll sales-leads-table-scroll"><table className={`table sales-leads-table ${wrapText ? "table--wrap" : ""}`}><thead><tr className="thead-row sales-leads-table-head-row"><th className="th th-check"><input type="checkbox" className="cb" checked={allOnPageSel} onChange={toggleAll} /></th>{activeCols.map((col) => <th key={col.key} className={`th sales-leads-table-head-cell th-${col.key}`} onClick={() => { if (sortBy === col.key) setSortDir((current) => current === "asc" ? "desc" : "asc"); else { setSortBy(col.key); setSortDir("asc"); } }}><span className="th-inner">{col.label}<SortIcon sortBy={sortBy} sortDir={sortDir} col={col.key} /></span></th>)}<th className="th th-actions sales-leads-table-head-cell"><button className={`icon-btn-outline ${showColPanel ? "icon-btn-outline--on" : ""}`} onClick={() => setShowColPanel(true)}><ISettings s={13} /></button></th></tr></thead><tbody>{paginated.map((lead, rowIndex) => { const serial = (page - 1) * rowsPerPage + rowIndex + 1; const initials = getInitials(lead.name); const isSel = selected.has(lead.id); return <tr key={lead.id} className={`row sales-leads-table-row ${isSel ? "row--sel" : ""}`}><td className="td td-check"><input type="checkbox" className="cb" checked={isSel} onChange={() => toggleOne(lead.id)} /></td>{activeCols.map((col) => { switch (col.key) { case "serial": return <td key="serial" className="td"><span className="cell-txt">{serial}</span></td>; case "name": return <td key="name" className="td td-name"><div className="name-cell sales-leads-name-cell"><div className="avatar sales-leads-avatar" style={{ background: lead.avatarBg }}>{initials}</div><div className="name-block sales-leads-name-block"><span className="sales-leads-name-link__label sales-leads-name-text">{lead.name}</span><button className="name-link sales-leads-name-link" onClick={() => fetchLeadDetail(lead.id)} title={`Open ${lead.name || "lead"} details`} aria-label={`Open ${lead.name || "lead"} details`}><span className="sales-leads-name-link__meta">View <IChevR s={11} /></span></button></div></div></td>; case "status": return <td key="status" className="td td-status"><StatusCell value={lead.status} onChange={(value) => updateLead(lead.id, "status", value)} /></td>; case "followUp": return <td key="followUp" className="td td-followup"><FollowUpCell value={lead.followUpBucketDueDate || lead.followUpDate} bucket={lead.followUpBucket} leadId={lead.id} onChange={(value) => updateLead(lead.id, "followUpDate", value)} /></td>; case "source": return <td key="source" className="td"><span className="cell-txt">{formatLeadSource(lead.source)}</span></td>; case "score": return <td key="score" className="td td-score"><ScoreBar score={lead.score} /></td>; case "company": return <td key="company" className="td"><span className="cell-txt">{lead.company}</span></td>; case "contact": return <td key="contact" className="td td-contact"><div className="contact-cell sales-leads-contact-cell">{lead.email ? <span className="contact-email">{lead.email}</span> : null}{lead.phone ? <span className="contact-phone">{lead.phone}</span> : null}{!lead.email && !lead.phone ? <span className="cell-txt">-</span> : null}</div></td>; case "assignee": return <td key="assignee" className="td td-assignee"><AssigneeCell value={lead.assignee} options={salesUserOptions} onChange={(value) => updateLead(lead.id, "assignee", value)} /></td>; case "createdDate": return <td key="createdDate" className="td"><span className="date-txt">{fmtDate(lead.createdDate)}</span></td>; default: return <td key={col.key} className={`td ${col.key === "comments" ? "td-wrap-limit td-comments" : ""}`}><span className="cell-txt">{String(lead[col.key] ?? "")}</span></td>; } })}<td className="td td-actions"><div className="row-acts sales-leads-row-actions"><button className="act-btn act-btn--edit sales-deals-action-button" onClick={async () => { const detailedLead = await fetchLeadForEdit(lead.id); setEditLead(detailedLead || lead); }}><IEdit s={12} /></button></div></td></tr>; })}</tbody></table></div></div></div>}
 
-      {showColPanel && <ManageColumnsPanel visibleCols={visibleCols} setVisibleCols={setVisibleCols} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} wrapText={wrapText} setWrapText={setWrapText} onClose={() => setShowColPanel(false)} />}
-      {detailsLead && <LeadDetailsModal lead={detailsLead} onClose={() => setDetailsLead(null)} onDealConverted={handleDealConverted} />}
-      {editLead && <EditModal lead={editLead} onClose={() => setEditLead(null)} onSave={handleSaveLead} onDelete={handleDeleteLead} salesUsers={salesUsers} saving={savingLead} deleting={deletingLead} />}
-      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImportLeads} />}
-      {showFilter && <FilterModal onClose={() => setShowFilter(false)} filters={filters} activeFilterCount={activeFilterCount} onApply={setFilters} assignees={salesUserOptions} />}
-      {createLeadType && <CreateLeadModal leadType={createLeadType} onClose={() => setCreateLeadType(null)} onSave={handleCreateLead} />}
-      {showChart && <LeadsPerformanceChart onClose={() => setShowChart(false)} leads={leads} />}
+      {leadDataSource === "social" && <div className="table-card-shell sales-leads-table-shell"><div className="table-card sales-leads-table-card"><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 16px 8px" }}><div><div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Social Leads</div><div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>Pulled from socialCRM endpoints and shown separately from sales leads.</div></div><div style={{ fontSize: 12, fontWeight: 700, color: "#475569", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 999, padding: "6px 10px" }}>{filteredSocialLeads.length} lead{filteredSocialLeads.length === 1 ? "" : "s"}</div></div><div className="table-scroll sales-leads-table-scroll"><table className="table sales-leads-table"><thead><tr className="thead-row sales-leads-table-head-row"><th className="th">Name</th><th className="th">Platform</th><th className="th">Contact</th><th className="th">Status</th><th className="th">Assigned To</th><th className="th">Form / Page</th><th className="th">Created</th></tr></thead><tbody>{filteredSocialLeads.length ? filteredSocialLeads.map((lead) => <tr key={`social-${lead.id}`} className="row sales-leads-table-row"><td className="td"><div className="name-cell sales-leads-name-cell"><div className="avatar sales-leads-avatar" style={{ background: "#0f766e" }}>{getInitials(lead.name || "SL")}</div><div className="name-block sales-leads-name-block"><span className="sales-leads-name-link__label sales-leads-name-text">{lead.name || "Unnamed lead"}</span><span className="sales-leads-name-link__meta">{lead.email || lead.phone || "Social lead"}</span></div></div></td><td className="td"><span className="cell-txt">{lead.platform || "Facebook"}</span></td><td className="td td-contact"><div className="contact-cell sales-leads-contact-cell">{lead.email ? <span className="contact-email">{lead.email}</span> : null}{lead.phone ? <span className="contact-phone">{lead.phone}</span> : null}{!lead.email && !lead.phone ? <span className="cell-txt">-</span> : null}</div></td><td className="td"><span className="cell-txt">{lead.status || "New"}</span></td><td className="td"><span className="cell-txt">{lead.assignedToUserName || "Unassigned"}</span></td><td className="td"><span className="cell-txt">{lead.formName || lead.formId || lead.pageName || lead.pageId || "-"}</span></td><td className="td"><span className="date-txt">{formatSocialLeadDate(lead.createdAt || lead.metaCreatedAt || lead.createdDate)}</span></td></tr>) : <tr className="row sales-leads-table-row"><td className="td" colSpan={7}><div style={{ padding: "28px 12px", textAlign: "center", color: "#64748b", fontWeight: 600 }}>No social leads found for the current brand or search.</div></td></tr>}</tbody></table></div></div></div>}
+
+      {leadDataSource === "sales" && <DeletedLeadsPanel leads={deletedLeads} />}
+
+      {leadDataSource === "sales" && showColPanel && <ManageColumnsPanel visibleCols={visibleCols} setVisibleCols={setVisibleCols} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} wrapText={wrapText} setWrapText={setWrapText} onClose={() => setShowColPanel(false)} />}
+      {leadDataSource === "sales" && detailsLead && <LeadDetailsModal lead={detailsLead} onClose={() => setDetailsLead(null)} onDealConverted={handleDealConverted} onActivitySaved={refreshTodayFollowUpItems} />}
+      {leadDataSource === "sales" && editLead && <EditModal lead={editLead} onClose={() => setEditLead(null)} onSave={handleSaveLead} onDelete={handleDeleteLead} salesUsers={salesUsers} saving={savingLead} deleting={deletingLead} />}
+      {leadDataSource === "sales" && showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImportLeads} />}
+      {leadDataSource === "sales" && showFilter && <FilterModal onClose={() => setShowFilter(false)} filters={filters} activeFilterCount={activeFilterCount} onApply={setFilters} assignees={salesUserOptions} />}
+      {leadDataSource === "sales" && createLeadType && <CreateLeadModal leadType={createLeadType} onClose={() => setCreateLeadType(null)} onSave={handleCreateLead} />}
+      {leadDataSource === "sales" && showChart && <LeadsPerformanceChart onClose={() => setShowChart(false)} leads={leads} />}
     </div>
   );
 }
-

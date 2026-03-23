@@ -3,6 +3,7 @@ import { Activity, Calendar, FileText, Mail, Paperclip, Phone, UserCheck } from 
 import { FaWhatsapp } from "react-icons/fa";
 import { BASE_URL } from "../../api/apiClient";
 import { formatLeadSource, formatStatus } from "../../pages/leads/utils";
+import Toast from "../../utils/toast";
 
 export const TABS = [
   ["activity", "Activity", Activity],
@@ -76,6 +77,7 @@ export const CONTACT_ROLE_OPTIONS = [
 
 export const card = { border: "1px solid #b8c7da", borderRadius: 14, background: "#fff", boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.28), 0 1px 2px rgba(15, 23, 42, 0.03)" };
 export const input = { width: "100%", minHeight: 36, padding: "8px 11px", border: "1px solid #b8c7da", borderRadius: 12, outline: "none", fontSize: 12, color: "#334155", background: "#fff", boxSizing: "border-box", boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 1px 2px rgba(15, 23, 42, 0.02)" };
+export const centeredComposerFieldStyle = { width: "80%", margin: "0 auto" };
 export const floatingWrap = { position: "relative", width: "100%", paddingTop: 10 };
 export const floatingInput = { ...input, minHeight: 44, padding: "12px 11px 7px" };
 export const floatingLabel = { position: "absolute", top: -7, left: 12, padding: "0 5px 0 0", fontSize: 9.5, fontWeight: 700, color: "#475569", background: "#ffffff", pointerEvents: "none", letterSpacing: "0.01em", lineHeight: 1.1 };
@@ -110,6 +112,72 @@ export const hasValue = (v) => !(v === null || v === undefined || (typeof v !== 
 export const leadName = (lead) => [lead?.firstName, lead?.lastName].filter(Boolean).join(" ").trim() || lead?.name || "Lead";
 export const assignee = (lead) => lead?.assignee || lead?.assignedToUserName || lead?.assignedUserName || (lead?.assignedToUserId ? `User ${lead.assignedToUserId}` : "");
 export const sanitizePhoneNumber = (value = "") => String(value).replace(/[^\d+]/g, "");
+export const runContactShortcutAction = ({ id, callableNumber, whatsappNumber, emailAddress, onOpenTab }) => {
+  if (id === "calls") {
+    if (!callableNumber) return;
+    window.location.href = `tel:${callableNumber}`;
+    return;
+  }
+  if (id === "whatsapp") {
+    if (!whatsappNumber) return;
+    const whatsappUrl = `https://wa.me/${encodeURIComponent(whatsappNumber)}`;
+    const popup = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    if (!popup) {
+      Toast.error("Allow pop-ups to open WhatsApp in a new tab.");
+    }
+    return;
+  }
+  if (id === "emails") {
+    if (!emailAddress) return;
+    window.location.href = `mailto:${encodeURIComponent(emailAddress)}`;
+    return;
+  }
+  onOpenTab?.(id);
+};
+export const contactShortcutButtonStyle = (enabled) => ({
+  width: 30,
+  height: 30,
+  border: enabled ? "1px solid #aebfd4" : "1px solid #c7d4e3",
+  borderRadius: "50%",
+  background: "#ffffff",
+  color: enabled ? "#2563eb" : "#94a3b8",
+  cursor: enabled ? "pointer" : "not-allowed",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
+  outline: "none",
+  boxShadow: "none",
+  transition: "transform 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease",
+  animation: enabled ? "leadShortcutPop 320ms ease" : "none",
+});
+export const contactShortcutIconColor = (enabled) => (enabled ? "#64748b" : "#94a3b8");
+export const handleContactShortcutMouseEnter = (event, enabled) => {
+  if (!enabled) return;
+  event.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
+  event.currentTarget.style.backgroundColor = "#f8fafc";
+  event.currentTarget.style.borderColor = "#aebfd4";
+};
+export const handleContactShortcutMouseLeave = (event, enabled) => {
+  event.currentTarget.style.transform = "translateY(0) scale(1)";
+  event.currentTarget.style.backgroundColor = "#ffffff";
+  event.currentTarget.style.borderColor = enabled ? "#aebfd4" : "#c7d4e3";
+};
+export const handleContactShortcutMouseDown = (event, enabled) => {
+  if (!enabled) return;
+  event.currentTarget.style.transform = "scale(0.96)";
+};
+export const handleContactShortcutMouseUp = (event, enabled) => {
+  if (!enabled) return;
+  event.currentTarget.style.transform = "translateY(-2px) scale(1.04)";
+};
+export const contactShortcutKeyframes = `
+  @keyframes leadShortcutPop {
+    0% { transform: scale(0.88); opacity: 0; }
+    70% { transform: scale(1.06); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+`;
 export const formatDisplayText = (value = "") => String(value)
   .replace(/([a-z])([A-Z])/g, "$1 $2")
   .replace(/_/g, " ")

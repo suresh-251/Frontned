@@ -299,6 +299,19 @@ export default function Inbox() {
     return () => { cancelled = true; };
   }, [activeBrand?.slug, fetchMessages]);
 
+  // ── Auto-sync: if no conversations exist after initial load, sync once ───
+  const autoSynced = useRef(false);
+  useEffect(() => {
+    if (!activeBrand?.slug || loadingConvos || syncing || autoSynced.current) return;
+    if (convos.length === 0 && dataSlug === activeBrand?.slug) {
+      autoSynced.current = true;
+      runSync();
+    }
+  }, [activeBrand?.slug, loadingConvos, syncing, convos.length, dataSlug, runSync]);
+
+  // Reset auto-sync on brand switch
+  useEffect(() => { autoSynced.current = false; }, [activeBrand?.slug]);
+
   // Close filter dropdown on outside click
   useEffect(() => {
     const h = (e) => { if (filterRef.current && !filterRef.current.contains(e.target)) setFilterOpen(false); };

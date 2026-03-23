@@ -12,6 +12,17 @@ const unwrapArrayPayload = (payload) => {
   return [];
 };
 
+const normalizeActivityPreview = (item) => {
+  const normalizedType = item?.type || item?.activityType || item?.activityTypeName || "Follow-up";
+  const normalizedSubject = item?.subject || item?.title || item?.name || normalizedType;
+
+  return {
+    ...item,
+    type: normalizedType,
+    subject: normalizedSubject,
+  };
+};
+
 const activitiesAPI = {
   // Get all activities
   getAll: async () => {
@@ -73,9 +84,14 @@ const activitiesAPI = {
     return unwrapArrayPayload(response.data);
   },
 
-  getFollowUpsOverdue: async () => {
-    const response = await apiClient.get('/Activities/followups/overdue');
-    return unwrapArrayPayload(response.data);
+  getFollowUpsOverdue: async ({ leadId, type } = {}) => {
+    const response = await apiClient.get('/Activities/followups/overdue', {
+      params: {
+        ...(leadId ? { leadId } : {}),
+        ...(type ? { type } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data).map(normalizeActivityPreview);
   },
 
   // Get activity by ID

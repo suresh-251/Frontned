@@ -11,7 +11,7 @@ import {
   Timeline,
 } from "./leadDetails/sections";
 
-export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
+export default function LeadDetailsModal({ lead, onClose, onDealConverted, onActivitySaved }) {
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [activeTab, setActiveTab] = useState("activity");
   const [timeline, setTimeline] = useState([]);
@@ -61,6 +61,11 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const handleActivitySaved = async () => {
+    await loadTimeline();
+    await onActivitySaved?.();
+  };
 
   return (
     <>
@@ -187,7 +192,7 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
 
               {mobilePanel === "activities" ? (
                 <div style={{ borderRadius: 20, overflow: "hidden", background: "#ffffff", border: "1px solid #d8e3ef", boxShadow: "0 10px 24px rgba(148, 163, 184, 0.14)", display: "flex", flexDirection: "column", minHeight: 0, flex: "0 0 auto" }}>
-                  <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} timeline={timeline} compact mobile />
+                  <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={handleActivitySaved} timeline={timeline} compact mobile />
                 </div>
               ) : null}
 
@@ -204,7 +209,7 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
                   <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} onOpenTab={setActiveTab} stacked={false} hideAvatar />
                 </div>
                 <div style={{ minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
-                  <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} timeline={timeline} compact />
+                  <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={handleActivitySaved} timeline={timeline} compact />
                 </div>
               </div>
               <div style={{ minHeight: 0, borderTop: "1px solid #e5e7eb", background: "#fbfdff", overflow: "hidden" }}>
@@ -217,7 +222,7 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted }) {
                 <LeftPanel lead={lead} onConvert={() => setShowConvertModal(true)} onOpenTab={setActiveTab} stacked={false} />
               </div>
               <div style={{ minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
-                <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={loadTimeline} timeline={timeline} compact={false} />
+                <Middle lead={lead} activeTab={activeTab} onTabChange={setActiveTab} onActivitySaved={handleActivitySaved} timeline={timeline} compact={false} />
               </div>
               <div style={{ minHeight: 0, overflow: "hidden" }}>
                 <Timeline items={timeline} loading={timelineLoading} onRefresh={loadTimeline} stacked={false} />

@@ -1,20 +1,27 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
+
 import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell,
 } from "recharts";
-import { FiRefreshCw, FiTrendingUp, FiUsers, FiEye, FiHeart, FiMessageSquare, FiAward, FiDownloadCloud, FiChevronLeft, FiChevronRight, FiImage, FiExternalLink } from "react-icons/fi";
+
+import {
+  FiRefreshCw, FiTrendingUp, FiUsers, FiEye, FiHeart,
+  FiMessageSquare, FiAward, FiDownloadCloud,
+  FiZap, FiBarChart2, FiShare2, FiStar, FiChevronLeft,
+  FiChevronRight, FiImage, FiExternalLink,
+} from "react-icons/fi";
 import { useBrand } from "../context/BrandContext";
 import useAnalytics from "../hooks/useAnalytics";
+import { getChannelMetrics, getGrowthMetrics } from "../api/analytics.api";
 
-// ── Colors ──────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 const PLATFORM_COLORS = {
   facebook:  "#1877F2",
   instagram: "#E1306C",
   linkedin:  "#0A66C2",
 };
-const PIE_FALLBACK = ["#6366f1", "#10b981", "#f59e0b", "#ef4444"];
 
 const PLATFORMS = [
   { value: "all",       label: "All Platforms" },
@@ -23,81 +30,95 @@ const PLATFORMS = [
   { value: "linkedin",  label: "LinkedIn"      },
 ];
 
-// ── Day filter options ───────────────────────────────────────────────────────
 const DAY_OPTIONS = [
-  { label: "7 days",  value: 7  },
-  { label: "14 days", value: 14 },
-  { label: "30 days", value: 30 },
-  { label: "60 days", value: 60 },
-  { label: "90 days", value: 90 },
+  { label: "7d",  value: 7  },
+  { label: "14d", value: 14 },
+  { label: "30d", value: 30 },
+  { label: "60d", value: 60 },
+  { label: "90d", value: 90 },
 ];
 
-// ── Trend metric options (for main area chart) ────────────────────────────────
 const TREND_METRICS = [
   { key: "totalEngagement",  label: "Engagement",  color: "#6366f1" },
-  { key: "totalImpressions", label: "Views",        color: "#10b981" },
-  { key: "totalLikes",       label: "Likes",        color: "#ef4444" },
-  { key: "totalComments",    label: "Comments",     color: "#f59e0b" },
-  { key: "totalClicks",      label: "Clicks",       color: "#f97316" },
-  { key: "postsCount",       label: "Posts",        color: "#3b82f6" },
+  { key: "totalReach",       label: "Reach",       color: "#10b981" },
+  { key: "totalImpressions", label: "Impressions", color: "#8b5cf6" },
+  { key: "totalLikes",       label: "Likes",       color: "#ef4444" },
+  { key: "totalComments",    label: "Comments",    color: "#f59e0b" },
+  { key: "totalClicks",      label: "Clicks",      color: "#f97316" },
+  { key: "postsCount",       label: "Posts",       color: "#3b82f6" },
 ];
 
-// ── Formatters ───────────────────────────────────────────────────────────────
+// ── Formatters ────────────────────────────────────────────────────────────────
 function fmt(n) {
-  if (n == null) return "—";
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K";
-  return n.toLocaleString();
+  if (n == null || n === "") return "—";
+  const num = Number(n);
+  if (isNaN(num)) return "—";
+  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + "M";
+  if (num >= 1_000)     return (num / 1_000).toFixed(1) + "K";
+  return num.toLocaleString();
 }
 function fmtDate(dateStr) {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// ── Skeleton card ────────────────────────────────────────────────────────────
-function SkeletonCard() {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function pick(obj, ...keys) {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v != null && !isNaN(Number(v))) return Number(v);
+  }
+  return 0;
+}
+
+// ── Skeleton donut card ───────────────────────────────────────────────────────
+function SkeletonDonutCard() {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 animate-pulse">
-      <div className="h-3 bg-slate-200 rounded w-1/2 mb-3" />
-      <div className="h-7 bg-slate-200 rounded w-2/3" />
+    <div className="bg-white rounded-3xl border border-slate-200 p-5 flex flex-col items-center gap-3 animate-pulse">
+      <div className="w-36 h-36 rounded-full bg-slate-200" />
+      <div className="h-2.5 w-20 rounded-full bg-slate-200" />
+      <div className="h-5 w-14 rounded-full bg-slate-100" />
     </div>
   );
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, color }) {
-  const colorMap = {
-    blue:    "bg-blue-50 text-blue-600",
-    indigo:  "bg-indigo-50 text-indigo-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    rose:    "bg-rose-50 text-rose-600",
-    orange:  "bg-orange-50 text-orange-600",
-    violet:  "bg-violet-50 text-violet-600",
-    slate:   "bg-slate-100 text-slate-600",
-  };
+// ── Donut card ────────────────────────────────────────────────────────────────
+function DonutCard({ icon, label, value, percent, color = "#6366f1" }) {
+  const SIZE = 120; const STROKE = 10;
+  const r = (SIZE - STROKE) / 2;
+  const circ = 2 * Math.PI * r;
+  const safePercent = Math.max(0.02, Math.min(percent || 0, 1));
+  const offset = circ * (1 - safePercent);
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
-      <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${colorMap[color] ?? colorMap.slate}`}>
-        {icon}
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col items-center hover:shadow-md transition">
+      <div className="relative mb-3">
+        <svg width={SIZE} height={SIZE} style={{ transform: "rotate(-90deg)" }}>
+          <circle cx={SIZE/2} cy={SIZE/2} r={r} stroke="#e5e7eb" strokeWidth={STROKE} fill="none" />
+          <circle cx={SIZE/2} cy={SIZE/2} r={r} stroke={color} strokeWidth={STROKE} fill="none"
+            strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+            style={{ transition: "all 0.6s ease" }} />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className="mb-1" style={{ color }}>{icon}</div>
+          <p className="text-lg font-bold text-slate-800">{value}</p>
+        </div>
       </div>
-      <div className="min-w-0">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">{label}</p>
-        <p className="text-xl font-black text-slate-800 mt-0.5">{fmt(value)}</p>
-      </div>
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
     </div>
   );
 }
 
-// ── Custom tooltip ───────────────────────────────────────────────────────────
+// ── Chart tooltip ─────────────────────────────────────────────────────────────
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs">
-      <p className="font-bold text-slate-700 mb-2">{fmtDate(label)}</p>
+    <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-4 py-3 text-xs min-w-[140px]">
+      <p className="font-semibold text-slate-500 mb-2">{fmtDate(label)}</p>
       {payload.map((p) => (
-        <div key={p.dataKey} className="flex items-center gap-2 mb-1">
-          <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
-          <span className="text-slate-500 capitalize">{p.name ?? p.dataKey}:</span>
+        <div key={p.dataKey} className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+            <span className="text-slate-500 capitalize">{p.name ?? p.dataKey}</span>
+          </div>
           <span className="font-bold text-slate-800">{fmt(p.value)}</span>
         </div>
       ))}
@@ -105,17 +126,37 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
-function Empty({ message }) {
+// ── Stat card (summary row under top posts) ──────────────────────────────────
+const STAT_COLORS = {
+  blue:    "bg-blue-50 text-blue-600 border-blue-200",
+  indigo:  "bg-indigo-50 text-indigo-600 border-indigo-200",
+  rose:    "bg-rose-50 text-rose-600 border-rose-200",
+  orange:  "bg-orange-50 text-orange-600 border-orange-200",
+  emerald: "bg-emerald-50 text-emerald-600 border-emerald-200",
+  violet:  "bg-violet-50 text-violet-600 border-violet-200",
+};
+function StatCard({ icon, label, value, color = "blue" }) {
+  const cls = STAT_COLORS[color] || STAT_COLORS.blue;
   return (
-    <div className="flex flex-col items-center justify-center py-10 text-slate-400">
-      <FiTrendingUp size={28} className="mb-2 opacity-40" />
-      <p className="text-xs font-medium">{message}</p>
+    <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold ${cls}`}>
+      {icon}
+      <span>{label}</span>
+      <span className="font-black">{fmt(value)}</span>
     </div>
   );
 }
 
-// ── Post image with broken-image fallback ────────────────────────────────────
+// ── Empty state ───────────────────────────────────────────────────────────────
+function Empty({ message }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-3">
+      <FiBarChart2 size={28} className="text-slate-300" />
+      <p className="text-xs text-slate-400 max-w-[200px] text-center leading-relaxed">{message}</p>
+    </div>
+  );
+}
+
+// ── Post image ────────────────────────────────────────────────────────────────
 function getPostUrl(post) {
   const p = post.platform?.toLowerCase();
   if (p === "facebook" && post.postId?.includes("_")) {
@@ -127,29 +168,30 @@ function getPostUrl(post) {
   return null;
 }
 
-function PostImage({ post, platformColor }) {
+function PostImage({ post }) {
   const [imgError, setImgError] = useState(false);
   const postUrl = getPostUrl(post);
 
   if (!post.mediaUrl || imgError) {
     return (
-      <div className="w-full h-40 bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center gap-2">
-        <FiImage size={28} className="text-slate-300" />
+      <div className="w-full h-40 bg-slate-100 flex flex-col items-center justify-center gap-2">
+        <FiImage size={20} className="text-slate-300" />
         {postUrl ? (
           <a href={postUrl} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
-            <FiExternalLink size={12} /> View on {post.platform}
+            className="flex items-center gap-1 text-[11px] text-indigo-500 hover:underline">
+            <FiExternalLink size={11} /> View post
           </a>
         ) : (
-          <span className="text-[10px] text-slate-400">Image unavailable</span>
+          <span className="text-[10px] text-slate-400">No image</span>
         )}
       </div>
     );
   }
 
   return (
-    <div className="w-full aspect-square bg-slate-100 overflow-hidden relative">
-      <img src={post.mediaUrl} alt="Post" className="w-full h-full object-cover" loading="lazy" onError={() => setImgError(true)} />
+    <div className="w-full h-40 overflow-hidden bg-slate-100">
+      <img src={post.mediaUrl} alt="Post" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+        loading="lazy" onError={() => setImgError(true)} />
     </div>
   );
 }
@@ -158,205 +200,419 @@ function PostImage({ post, platformColor }) {
 // MAIN PAGE
 // ============================================================================
 export default function Analytics() {
-  const [days, setDays]                       = useState(7);
-  const [trendMetric, setTrendMetric]         = useState("totalEngagement");
+  const [days,             setDays]             = useState(7);
+  const [trendMetric,      setTrendMetric]      = useState("totalEngagement");
   const [selectedPlatform, setSelectedPlatform] = useState("all");
-  const [postSort, setPostSort]               = useState("engagement");
+  const [postSort,         setPostSort]         = useState("engagement");
+
   const { activeBrand } = useBrand();
-  const { summary, loading, error, refresh, sync, syncing, syncResult } = useAnalytics(days, selectedPlatform, postSort);
+  const { summary, loading, error, refresh, sync, syncing, syncResult } =
+    useAnalytics(days, selectedPlatform, postSort);
+
+  const [channelMetrics, setChannelMetrics] = useState([]);
+  const [growthData,     setGrowthData]     = useState(null);
+
+  useEffect(() => {
+    if (!activeBrand?.slug) return;
+    getChannelMetrics(days).then(setChannelMetrics).catch(() => setChannelMetrics([]));
+    getGrowthMetrics().then(setGrowthData).catch(() => setGrowthData(null));
+  }, [activeBrand?.slug, days]);
+
+  // ── Debug: log raw API responses to spot blank fields ─────────────────────
+  useEffect(() => {
+    if (summary)       console.log("[Analytics] summary →",       summary);
+    if (channelMetrics?.length) console.log("[Analytics] channelMetrics →", channelMetrics);
+    if (growthData)    console.log("[Analytics] growthData →",    growthData);
+  }, [summary, channelMetrics, growthData]);
+
   const postsScrollRef = useRef(null);
 
   if (!activeBrand) {
     return (
-      <div className="w-full min-h-screen bg-[#F8FAFC] p-6 flex items-center justify-center">
-        <p className="text-slate-400 font-medium text-sm">No active brand — please select or create a brand first.</p>
+      <div className="w-full min-h-screen bg-slate-50 flex items-center justify-center">
+        <p className="text-slate-400 text-sm">Select a brand to view analytics.</p>
       </div>
     );
   }
 
-  // ── Derived data ─────────────────────────────────────────────────────────
-  const daily     = summary?.dailyBreakdown    ?? [];
-  const platforms = summary?.platformBreakdown ?? [];
-  const topPosts  = summary?.topPosts          ?? [];
-
-  // Pie chart data — engagement per platform
-  const pieData = platforms.map((p, i) => ({
-    name:  p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
-    value: Number(p.totalEngagement) || 0,
-    color: PLATFORM_COLORS[p.platform] ?? PIE_FALLBACK[i % PIE_FALLBACK.length],
-  }));
-
-  // Filtered top posts
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const daily       = summary?.dailyBreakdown ?? [];
+  const topPosts    = summary?.topPosts       ?? [];
   const filteredPosts = selectedPlatform === "all"
     ? topPosts
     : topPosts.filter(p => p.platform === selectedPlatform);
 
+  const totReach         = pick(summary ?? {}, "totalReach");
+  const totImpr          = pick(summary ?? {}, "totalImpressions");
+  const totPosts         = pick(summary ?? {}, "totalPosts");
+  const totFollowers     = pick(summary ?? {}, "totalFollowers");
+  // newFollowers: sum across all channels (getChannelMetrics is the correct source)
+  const totNewFollowers  = channelMetrics.reduce((sum, ch) => sum + (Number(ch.newFollowers) || 0), 0);
+  const totUnfollows     = pick(summary ?? {}, "unfollows", "followersLost", "followerLoss");
+  const totProfileVisits = pick(summary ?? {}, "profileVisits", "pageVisits", "profilePageViews");
+  // growthRate: getGrowthMetrics returns followersGrowthPercent (confirmed from Dashboard.jsx)
+  // If previousFollowers === 0, the backend sets 100% (division-by-zero cap) — treat as "New"
+  const rawGrowthRate        = growthData?.followersGrowthPercent ?? null;
+  const prevFollowers        = growthData?.previousFollowers ?? null;
+  const isFirstTimeTracking  = prevFollowers === 0 && rawGrowthRate != null;
+  const avgPostReach     = totPosts > 0 ? Math.round(totReach / totPosts) : 0;
+
+  const audienceCards = [
+    {
+      icon: <FiUsers size={18} />,
+      label: "Total Followers",
+      value: fmt(totFollowers),
+      percent: Math.min(totFollowers / 100_000, 1),
+      color: "#6366f1",
+    },
+    {
+      icon: <FiTrendingUp size={18} />,
+      label: "New Followers",
+      value: fmt(totNewFollowers),
+      percent: Math.min(totNewFollowers / Math.max(totFollowers, 1), 1),
+      color: "#10b981",
+    },
+    {
+      icon: <FiZap size={18} />,
+      label: "Growth Rate",
+      value: isFirstTimeTracking
+        ? "New"
+        : rawGrowthRate != null
+          ? `${Number(rawGrowthRate).toFixed(1)}%`
+          : "—",
+      percent: isFirstTimeTracking ? 0.05 : rawGrowthRate != null ? Math.min(Math.abs(rawGrowthRate) / 100, 1) : 0,
+      color: "#8b5cf6",
+    },
+    {
+      icon: <FiShare2 size={18} />,
+      label: "Unfollows",
+      value: fmt(totUnfollows),
+      percent: Math.min(totUnfollows / Math.max(totFollowers, 1), 1),
+      color: "#ef4444",
+    },
+  ];
+
+  const maxReachImpr = Math.max(totReach, totImpr, 1);
+
+  const reachCards = [
+    {
+      icon: <FiEye size={18} />,
+      label: "Reach",
+      value: fmt(totReach),
+      percent: totReach / maxReachImpr,
+      color: "#10b981",
+    },
+    {
+      icon: <FiBarChart2 size={18} />,
+      label: "Impressions",
+      value: fmt(totImpr),
+      percent: totImpr / maxReachImpr,
+      color: "#8b5cf6",
+    },
+    {
+      icon: <FiStar size={18} />,
+      label: "Profile Visits",
+      value: fmt(totProfileVisits),
+      percent: Math.min(totProfileVisits / Math.max(totReach, 1), 1),
+      color: "#f59e0b",
+    },
+    {
+      icon: <FiImage size={18} />,
+      label: "Post Reach",
+      value: fmt(avgPostReach),
+      percent: Math.min(avgPostReach / Math.max(totReach, 1), 1),
+      color: "#3b82f6",
+    },
+    {
+      icon: <FiAward size={18} />,
+      label: "Total Posts",
+      value: fmt(totPosts),
+      percent: Math.min(totPosts / 100, 1),
+      color: "#f97316",
+    },
+  ];
+
+  const activeMeta = TREND_METRICS.find(m => m.key === trendMetric) || TREND_METRICS[0];
+
+  // ── Platform breakdown pie data (derived from channelMetrics) ───────────
+  const pieData = Object.entries(
+    channelMetrics.reduce((acc, ch) => {
+      const p = (ch.platform || "unknown").toLowerCase();
+      acc[p] = (acc[p] || 0) + (Number(ch.totalEngagement) || 0);
+      return acc;
+    }, {})
+  ).map(([name, value]) => ({
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    value,
+    color: PLATFORM_COLORS[name] || "#94a3b8",
+  }));
+
   return (
-    <div className="w-full min-h-screen bg-[#F8FAFC] p-6">
+    <div className="w-full min-h-screen bg-slate-50 p-6 space-y-5">
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-black text-slate-800 tracking-tight">Analytics</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Brand: <span className="font-bold text-slate-700">{activeBrand.name}</span>
-            {" · "}{days}-day window
-          </p>
-        </div>
+      {/* ── HEADER ────────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
 
-        <div className="flex flex-wrap items-center gap-3">
-
-          {/* Platform selector dropdown */}
-          <select value={selectedPlatform} onChange={(e) => setSelectedPlatform(e.target.value)}
-            className="px-3 py-2 text-xs font-bold bg-white border border-slate-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer"
-            style={selectedPlatform !== "all" ? { color: PLATFORM_COLORS[selectedPlatform], borderColor: PLATFORM_COLORS[selectedPlatform] + "80" } : {}}>
-            {PLATFORMS.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </select>
-
-          {/* Day filter */}
-          <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            {DAY_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setDays(opt.value)}
-                className={`px-4 py-2 text-xs font-bold transition-all ${
-                  days === opt.value
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+          {/* Title */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center shrink-0">
+              <FiBarChart2 className="text-white" size={18} />
+            </div>
+            <div>
+              <h1 className="text-lg font-black text-slate-900 leading-tight">Analytics</h1>
+              <p className="text-xs text-slate-400 font-medium">
+                {activeBrand.name} · Last {days} days
+              </p>
+            </div>
           </div>
 
-          {/* Sync */}
-          <button onClick={sync} disabled={syncing || loading}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-xs font-bold shadow-sm transition-all">
-            <FiDownloadCloud size={13} className={syncing ? "animate-bounce" : ""} />
-            {syncing ? "Syncing…" : "Sync"}
-          </button>
+          {/* Controls */}
+          <div className="flex flex-wrap items-center gap-2">
 
-          {/* Refresh */}
-          <button onClick={refresh} disabled={loading}
-            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 shadow-sm transition-all disabled:opacity-50">
-            <FiRefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </button>
+            {/* Platform select */}
+            <select
+              value={selectedPlatform}
+              onChange={(e) => setSelectedPlatform(e.target.value)}
+              className="h-9 px-3 text-xs font-bold bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer"
+            >
+              {PLATFORMS.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+
+            {/* Day pills */}
+            <div className="flex items-center bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
+              {DAY_OPTIONS.map((opt) => (
+                <button key={opt.value} onClick={() => setDays(opt.value)}
+                  className={`px-3 py-2 text-xs font-bold transition-all ${
+                    days === opt.value
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Sync */}
+            <button onClick={sync} disabled={syncing || loading}
+              className="h-9 flex items-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-colors">
+              <FiDownloadCloud size={14} className={syncing ? "animate-bounce" : ""} />
+              {syncing ? "Syncing…" : "Sync Data"}
+            </button>
+
+            {/* Refresh */}
+            <button onClick={refresh} disabled={loading}
+              className="h-9 flex items-center gap-2 px-3 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 rounded-xl text-xs font-bold transition-colors disabled:opacity-40">
+              <FiRefreshCw size={13} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ── Sync result banner ────────────────────────────────────────────── */}
+      {/* ── ALERTS ────────────────────────────────────────────────────────── */}
       {syncResult && (
-        <div className={`mb-4 px-4 py-3 rounded-xl text-xs font-medium border ${
+        <div className={`flex items-start gap-3 px-5 py-3 rounded-xl text-xs font-medium border ${
           syncResult.errors?.length > 0
-            ? "bg-rose-50 border-rose-200 text-rose-700"
+            ? "bg-red-50 border-red-200 text-red-700"
             : "bg-emerald-50 border-emerald-200 text-emerald-700"
         }`}>
-          {syncResult.message && <p>{syncResult.message}</p>}
-          {syncResult.errors?.map((e, i) => <p key={i}>{e}</p>)}
+          <div className="space-y-0.5">
+            {syncResult.message && <p className="font-semibold">{syncResult.message}</p>}
+            {syncResult.errors?.map((e, i) => <p key={i}>{e}</p>)}
+          </div>
         </div>
       )}
-
-      {/* ── Error banner ────────────────────────────────────────────────────── */}
       {error && (
-        <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium px-4 py-3 rounded-xl">
+        <div className="px-5 py-3 rounded-xl text-xs font-medium bg-red-50 border border-red-200 text-red-700">
           {error}
         </div>
       )}
-
-      {/* ── No data in window but posts exist banner ──────────────────────── */}
-      {!loading && !error && summary?.totalPosts === 0 && (summary?.totalPostsInDb > 0 || (syncResult?.postsSynced > 0 && !syncResult?.errors?.length)) && (
-        <div className="mb-4 px-4 py-3 rounded-xl border bg-amber-50 border-amber-200 text-amber-800 text-xs font-medium flex items-center gap-2">
-          <FiTrendingUp size={14} className="flex-shrink-0" />
-          <span>
-            {summary?.totalPostsInDb > 0
-              ? `${summary.totalPostsInDb} post(s) synced but none fall within the last ${days} days.`
-              : `${syncResult.postsSynced} post(s) synced but none fall within the last ${days} days.`}
-            {" "}Try selecting a wider date range (30, 60, or 90 days) to see older data.
-          </span>
+      {!loading && !error && summary?.totalPosts === 0 &&
+        (summary?.totalPostsInDb > 0 || (syncResult?.postsSynced > 0 && !syncResult?.errors?.length)) && (
+        <div className="px-5 py-3 rounded-xl border bg-amber-50 border-amber-200 text-amber-700 text-xs font-medium">
+          {summary?.totalPostsInDb > 0
+            ? `${summary.totalPostsInDb} post(s) exist but none fall within the last ${days} days.`
+            : `${syncResult.postsSynced} post(s) synced but none fall within the last ${days} days.`}
+          {" "}Try a wider date range.
         </div>
       )}
 
-      {/* ── Platform banner (when a specific platform is selected) ─────────── */}
-      {selectedPlatform !== "all" && (
-        <div className="mb-4 px-4 py-3 rounded-xl border flex items-center gap-3"
-          style={{ background: PLATFORM_COLORS[selectedPlatform] + "10", borderColor: PLATFORM_COLORS[selectedPlatform] + "40" }}>
-          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: PLATFORM_COLORS[selectedPlatform] }} />
-          <span className="text-xs font-bold capitalize" style={{ color: PLATFORM_COLORS[selectedPlatform] }}>
-            {selectedPlatform} — showing metrics for this platform
-          </span>
+      {/* ── AUDIENCE METRICS ──────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center shrink-0">
+            <FiUsers className="text-violet-500" size={15} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Audience Metrics</h3>
+            <p className="text-[10px] text-slate-400">Follower growth · Last {days} days</p>
+          </div>
         </div>
-      )}
+        <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+          {loading
+            ? Array.from({ length: 4 }).map((_, i) => <SkeletonDonutCard key={i} />)
+            : audienceCards.map((card, i) => <DonutCard key={i} {...card} />)
+          }
+        </div>
+      </div>
 
-      {/* ── KPI STAT CARDS ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+      {/* ── REACH & VISIBILITY ────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
+            <FiEye className="text-emerald-500" size={15} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Reach & Visibility Metrics</h3>
+            <p className="text-[10px] text-slate-400">Content distribution · Last {days} days</p>
+          </div>
+        </div>
+        <div className="p-5 grid grid-cols-2 md:grid-cols-5 gap-4">
+          {loading
+            ? Array.from({ length: 5 }).map((_, i) => <SkeletonDonutCard key={i} />)
+            : reachCards.map((card, i) => <DonutCard key={i} {...card} />)
+          }
+        </div>
+      </div>
+
+      {/* ── ENGAGEMENT TREND ──────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+
+        {/* Dark header */}
+        <div className="bg-slate-900 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-white">
+            <FiTrendingUp size={16} />
+            <h3 className="text-sm font-bold">Engagement Trend</h3>
+            <span className="text-slate-400 text-xs">· Last {days} days</span>
+          </div>
+
+          {/* Metric pills */}
+          <div className="flex flex-wrap gap-1.5">
+            {TREND_METRICS.map((m) => (
+              <button key={m.key} onClick={() => setTrendMetric(m.key)}
+                className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
+                  trendMetric === m.key
+                    ? "text-white"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                style={trendMetric === m.key ? { background: m.color } : {}}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Chart */}
+        <div className="p-5">
+          {loading ? (
+            <div className="h-52 flex items-center justify-center">
+              <FiRefreshCw size={20} className="text-slate-300 animate-spin" />
+            </div>
+          ) : daily.length === 0 ? (
+            <Empty message="No trend data yet. Metrics sync runs every 15 minutes." />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart data={daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gradTrend" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor={activeMeta.color} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={activeMeta.color} stopOpacity={0}   />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={fmtDate}
+                  tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  axisLine={false} tickLine={false} dy={6} />
+                <YAxis tickFormatter={fmt}
+                  tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  axisLine={false} tickLine={false} width={40} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey={trendMetric}
+                  stroke={activeMeta.color} strokeWidth={2.5}
+                  fill="url(#gradTrend)" name={activeMeta.label}
+                  dot={false} activeDot={{ r: 4, fill: activeMeta.color }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ── TOP POSTS ─────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+              <FiAward className="text-amber-500" size={15} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">
+                {postSort === "latest" ? "Latest Posts" : "Top Performing Posts"}
+              </h3>
+              <p className="text-[10px] text-slate-400">
+                {selectedPlatform === "all" ? "All platforms" : <span className="capitalize">{selectedPlatform}</span>}
+                {" · "}Last {days} days
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-400 font-semibold">Sort:</span>
+            <div className="flex bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
+              {[
+                { value: "engagement", label: "Engagement" },
+                { value: "latest",     label: "Latest"     },
+              ].map((opt) => (
+                <button key={opt.value} onClick={() => setPostSort(opt.value)}
+                  className={`px-3 py-1.5 text-xs font-bold transition-all ${
+                    postSort === opt.value
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {/* Scroll buttons */}
+            <button onClick={() => postsScrollRef.current?.scrollBy({ left: -310, behavior: "smooth" })}
+              className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-colors">
+              <FiChevronLeft size={16} />
+            </button>
+            <button onClick={() => postsScrollRef.current?.scrollBy({ left: 310, behavior: "smooth" })}
+              className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-colors">
+              <FiChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Posts carousel */}
         {loading ? (
-          Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+          <div className="px-6 py-12 flex items-center justify-center">
+            <FiRefreshCw size={20} className="text-slate-300 animate-spin" />
+          </div>
+        ) : filteredPosts.length === 0 ? (
+          <Empty message="No post metrics yet. Sync to pull fresh data from your platforms." />
         ) : (
-          <>
-            <StatCard icon={<FiTrendingUp  size={18} />} label="Total Posts"      value={summary?.totalPosts}       color="blue"    />
-            <StatCard icon={<FiEye         size={18} />} label="Views"            value={summary?.totalImpressions} color="indigo"  />
-            <StatCard icon={<FiHeart       size={18} />} label="Engagement"       value={summary?.totalEngagement}  color="rose"    />
-            <StatCard icon={<FiMessageSquare size={18}/>} label="Comments"        value={summary?.totalComments}    color="orange"  />
-            <StatCard icon={<FiUsers       size={18} />} label="Total Leads"      value={summary?.totalLeads}       color="emerald" />
-            <StatCard icon={<FiTrendingUp  size={18} />} label="Clicks"           value={summary?.totalClicks}      color="violet"  />
-          </>
+          <div className="px-6 py-4 flex flex-wrap gap-2">
+            <StatCard icon={<FiTrendingUp  size={14} />} label="Total Posts"      value={summary?.totalPosts}       color="blue"    />
+            <StatCard icon={<FiEye         size={14} />} label="Views"            value={summary?.totalImpressions} color="indigo"  />
+            <StatCard icon={<FiHeart       size={14} />} label="Engagement"       value={summary?.totalEngagement}  color="rose"    />
+            <StatCard icon={<FiMessageSquare size={14}/>} label="Comments"        value={summary?.totalComments}    color="orange"  />
+            <StatCard icon={<FiUsers       size={14} />} label="Total Leads"      value={summary?.totalLeads}       color="emerald" />
+            <StatCard icon={<FiTrendingUp  size={14} />} label="Clicks"           value={summary?.totalClicks}      color="violet"  />
+          </div>
         )}
       </div>
 
-      {/* ── MAIN GRID ───────────────────────────────────────────────────────── */}
+      {/* ── PLATFORM BREAKDOWN ───────────────────────────────────────────── */}
       <div className="grid grid-cols-12 gap-6">
 
-        {/* LEFT — Engagement trend chart (8/12) */}
-        <div className="col-span-12 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiTrendingUp className="text-blue-500" size={14} /> Engagement Trend
-            </h3>
-            <div className="flex items-center gap-3">
-              <select value={trendMetric} onChange={(e) => setTrendMetric(e.target.value)}
-                className="text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer">
-                {TREND_METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-              </select>
-              <span className="text-[10px] text-slate-400 font-semibold">Last {days} days</span>
-            </div>
-          </div>
-          <div className="p-4">
-            {loading ? (
-              <div className="h-52 flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : daily.length === 0 ? (
-              <Empty message="No trend data yet. Metrics sync runs every 15 minutes." />
-            ) : (() => {
-              const activeMeta = TREND_METRICS.find(m => m.key === trendMetric) || TREND_METRICS[0];
-              return (
-                <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={daily} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="gradTrend" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor={activeMeta.color} stopOpacity={0.25} />
-                        <stop offset="95%" stopColor={activeMeta.color} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={fmt} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Area type="monotone" dataKey={activeMeta.key} stroke={activeMeta.color} strokeWidth={2}
-                      fill="url(#gradTrend)" dot={false} name={activeMeta.label.toLowerCase()} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              );
-            })()}
-          </div>
-        </div>
-
-        {/* RIGHT — Platform breakdown pie (4/12) */}
-        <div className="col-span-12 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* Platform breakdown pie */}
+        <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100">
             <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
               <FiAward className="text-indigo-500" size={14} /> Platform Breakdown

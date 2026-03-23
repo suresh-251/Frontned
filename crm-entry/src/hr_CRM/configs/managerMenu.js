@@ -24,7 +24,8 @@ export const MANAGER_MENU = [
       { label: "OffBoarding", path: "/crm/hr/offboarding" },
       { label: "Exit Interview", path: "/crm/hr/exit-interview" }, // New Module
       { label: "Employee Training", path: "/crm/hr/employee-training" }, // New Module
-      { label: "Digital Signature", path: "/crm/hr/digital-signature" } // New Module
+      { label: "Digital Signature", path: "/crm/hr/digital-signature" },
+      { label: "Job Openings", path: "/crm/hr/job-openings" }
     ]
   },
 

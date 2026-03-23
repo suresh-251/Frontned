@@ -55,7 +55,10 @@ api.interceptors.response.use(
       const requestUrl = error.config?.url || "";
       const isSocialEndpoint = requestUrl.startsWith("/facebook/") || requestUrl.startsWith("/instagram/");
 
-      if (action === "ReconnectAccount" || data?.error === "token_expired" || isSocialEndpoint) {
+      const isSocialTokenIssue = action === "ReconnectAccount" || action === "ReLogin"
+        || action === "ReAuthorize" || data?.error === "token_expired";
+
+      if (isSocialTokenIssue || isSocialEndpoint) {
         toast.error(
           message || "Your social media session has expired. Please reconnect your account.",
           { duration: 6000 }

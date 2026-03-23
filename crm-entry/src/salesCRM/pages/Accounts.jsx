@@ -203,15 +203,12 @@ function AccountFormModal({ mode, initialValues, existingAccounts, submitError, 
   );
 
   const title = mode === "edit" ? "Edit Account" : "Add Account";
-  const subtitle = mode === "edit" ? "Update account details using the Accounts API" : "Create a new account manually in CRM";
-
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{ width: 620, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(event) => event.stopPropagation()}>
         <div className="modal-hdr">
           <div>
             <div className="modal-title">{title}</div>
-            <div className="modal-sub">{subtitle}</div>
           </div>
           <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
         </div>
@@ -725,8 +722,8 @@ export default function Accounts() {
                     })}
                     <td className="td td-actions">
                       <div className="row-acts sales-accounts-row-actions" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <button className="act-btn act-btn--edit" onClick={() => { setAccountFormError(""); setEditAccount(account); }}><Pencil size={12} /></button>
-                        <button className="act-btn act-btn--edit sales-accounts-delete-button" onClick={() => handleDeleteAccount(account)}><Trash2 size={12} /></button>
+                        <button className="act-btn act-btn--edit sales-deals-action-button" onClick={() => { setAccountFormError(""); setEditAccount(account); }}><Pencil size={15} strokeWidth={1.9} /></button>
+                        <button className="act-btn act-btn--edit sales-deals-action-button sales-deals-delete-button sales-accounts-delete-button" onClick={() => handleDeleteAccount(account)}><Trash2 size={15} strokeWidth={1.9} /></button>
                       </div>
                     </td>
                   </tr>

@@ -2316,8 +2316,8 @@ export default function PostHistory() {
                 ? <EmptyCard icon="✏️" msg={platformFilter === "All" ? "No drafts saved yet." : `No ${platformFilter} drafts.`} />
                 : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {filteredDrafts.map(post => (
-                      <div key={post.id} ref={(node) => setDraftItemRef(post.id, node)} className="will-change-transform">
-                        <div className={`transition-all duration-300 ease-out ${removingDraftId === post.id ? "pointer-events-none -translate-y-2 scale-95 opacity-0" : "translate-y-0 scale-100 opacity-100"}`}>
+                      <div key={post.id} ref={(node) => setDraftItemRef(post.id, node)} className="will-change-transform h-full">
+                        <div className={`h-full transition-all duration-300 ease-out ${removingDraftId === post.id ? "pointer-events-none -translate-y-2 scale-95 opacity-0" : "translate-y-0 scale-100 opacity-100"}`}>
                           <DraftCard post={post}
                             onDelete={(p) => setDeletingDraft(p)}
                             onEdit={(p) => { setResumingDraft(p); setCompose(true); }}

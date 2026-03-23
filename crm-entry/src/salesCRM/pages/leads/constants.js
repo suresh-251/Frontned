@@ -78,7 +78,7 @@ export const STAT_CARDS = [
     label: "Total New Leads",
     key: "totalNewLeads",
     detailKey: "totalNewLeadsDueToday",
-    detailLabel: "due today",
+    detailLabel: "today",
     helper: "Fresh opportunities waiting for action",
     icon: Users,
     alert: Bell,
@@ -192,8 +192,6 @@ export const ALL_COLUMNS = [
 
 export const LEAD_TYPES = [
   { key: "manual", label: "Manual Lead", icon: User, source: "CustomizedInput" },
-  { key: "social", label: "Social Lead", icon: Share2, source: "SocialMedia" },
-  { key: "import", label: "Import Leads", icon: Upload, source: null },
   { key: "website", label: "Website Lead", icon: Globe, source: "ContactUsForm" },
   { key: "campaign", label: "Campaign Lead", icon: Megaphone, source: "EmailCampaign" },
   { key: "referral", label: "Referral Lead", icon: Handshake, source: "ClientReferral" },

@@ -769,6 +769,37 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* ── Platform Breakdown Counts ── */}
+        {_leads.length > 0 && (() => {
+          const counts = {};
+          _leads.forEach(l => {
+            const p = (l.platform || "Facebook").toLowerCase();
+            counts[p] = (counts[p] || 0) + 1;
+          });
+          const PLAT_STYLE = {
+            facebook:  { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", dot: "bg-blue-500" },
+            instagram: { bg: "bg-pink-50", border: "border-pink-200", text: "text-pink-700", dot: "bg-pink-500" },
+            linkedin:  { bg: "bg-sky-50",  border: "border-sky-200",  text: "text-sky-700",  dot: "bg-sky-500"  },
+          };
+          return (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 border border-gray-200 text-gray-700 text-sm font-bold">
+                <FaUsers className="w-3.5 h-3.5" />
+                {_leads.length} Total Leads
+              </div>
+              {Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([plat, count]) => {
+                const s = PLAT_STYLE[plat] || PLAT_STYLE.facebook;
+                return (
+                  <div key={plat} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${s.bg} border ${s.border} ${s.text} text-sm font-semibold`}>
+                    <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+                    {plat.charAt(0).toUpperCase() + plat.slice(1)}: {count}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         {/* ── Social Token Error Banner ── */}
         {socialTokenError && (
           <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
