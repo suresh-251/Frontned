@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
+import { clearAccessToken, getAccessToken, hasPersistentAccessToken, setAccessToken as persistAccessToken } from "../utils/authStorage";
+import { appCache } from "../socialCRM/utils/cache";
  
 const AuthContext = createContext(null);
  
@@ -25,7 +27,7 @@ export const AuthProvider = ({ children }) => {
  
     const initAuth = async () => {
  
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
  
       if (!token) {
         setLoading(false);
@@ -87,30 +89,37 @@ export const AuthProvider = ({ children }) => {
   --------------------------------------------------
   */
  
-  const setSession = (token) => {
- 
+  const setSession = (token, options = {}) => {
+    const { persist = hasPersistentAccessToken() } = options;
+
     if (!token || token.split(".").length !== 3) {
       throw new Error("Invalid JWT");
     }
- 
-    localStorage.setItem("accessToken", token);
-    setAccessToken(token);
- 
+
+    // Clear previous user's cached data if switching accounts
     const decoded = jwtDecode(token);
- 
+    const prevUserId = user?.sub;
+    const newUserId = decoded.sub;
+    if (prevUserId && prevUserId !== newUserId) {
+      appCache.clearAllUserCaches();
+    }
+
+    persistAccessToken(token, persist);
+    setAccessToken(token);
+
     setUser(decoded);
- 
+
     setPwdResetRequired(decoded.pwd_reset_required === "true");
     setPwdResetCompleted(decoded.pwd_reset_completed === "true");
- 
+
     const perms = Array.isArray(decoded?.perm)
       ? decoded.perm
       : decoded?.perm
       ? [decoded.perm]
       : [];
- 
+
     setPermissions(perms);
- 
+
   };
  
  
@@ -121,17 +130,18 @@ export const AuthProvider = ({ children }) => {
   */
  
   const logout = () => {
- 
-    localStorage.clear();
- 
+
+    clearAccessToken();
+    appCache.clearAllUserCaches();
+
     setAccessToken(null);
     setUser(null);
     setPermissions([]);
- 
+
     setPwdResetRequired(false);
     setPwdResetCompleted(false);
     setAuthChecking(false);
- 
+
   };
  
  

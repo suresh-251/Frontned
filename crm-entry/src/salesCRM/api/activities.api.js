@@ -4,11 +4,30 @@ import apiClient from './apiClient';
  * Activities API Service
  */
 
+const unwrapArrayPayload = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+};
+
 const activitiesAPI = {
   // Get all activities
   getAll: async () => {
     const response = await apiClient.get('/Activities');
-    return response.data;
+    return unwrapArrayPayload(response.data);
+  },
+
+  getCalendar: async ({ startDate, endDate, userId } = {}) => {
+    const response = await apiClient.get('/Activities/calendar', {
+      params: {
+        ...(startDate ? { startDate } : {}),
+        ...(endDate ? { endDate } : {}),
+        ...(userId ? { userId } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data);
   },
 
   getOpen: async ({ leadId, dealId } = {}) => {
@@ -18,7 +37,7 @@ const activitiesAPI = {
         ...(dealId ? { dealId } : {}),
       },
     });
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 
   getClosed: async ({ leadId, dealId } = {}) => {
@@ -28,7 +47,35 @@ const activitiesAPI = {
         ...(dealId ? { dealId } : {}),
       },
     });
-    return response.data;
+    return unwrapArrayPayload(response.data);
+  },
+
+  getFollowUps: async ({ leadId, assignedToUserId, fromDate, toDate, status } = {}) => {
+    const response = await apiClient.get('/Activities/followups', {
+      params: {
+        ...(leadId ? { leadId } : {}),
+        ...(assignedToUserId ? { assignedToUserId } : {}),
+        ...(fromDate ? { fromDate } : {}),
+        ...(toDate ? { toDate } : {}),
+        ...(status ? { status } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data);
+  },
+
+  getFollowUpsToday: async ({ leadId, assignedToUserId } = {}) => {
+    const response = await apiClient.get('/Activities/followups/today', {
+      params: {
+        ...(leadId ? { leadId } : {}),
+        ...(assignedToUserId ? { assignedToUserId } : {}),
+      },
+    });
+    return unwrapArrayPayload(response.data);
+  },
+
+  getFollowUpsOverdue: async () => {
+    const response = await apiClient.get('/Activities/followups/overdue');
+    return unwrapArrayPayload(response.data);
   },
 
   // Get activity by ID
@@ -81,7 +128,7 @@ const activitiesAPI = {
   // Get activities by deal ID
   getByDealId: async (dealId) => {
     const response = await apiClient.get(`/Activities/deal/${dealId}`);
-    return response.data;
+    return unwrapArrayPayload(response.data);
   },
 };
 

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import DatePicker from "react-datepicker";
 import { ALL_COLUMNS, LEAD_FIELDS, LEAD_SOURCE_OPTIONS, LEAD_TYPES } from "./constants";
 import { formatLeadSource, guessField, leadToUpdatePayload, parseCSV, sanitizeLeadSource, sanitizeStatus, splitFullName } from "./utils";
-import { IChevD, IPlus, IUpload, IX, useClickOutside } from "./shared";
+import { IChevD, IPlus, IUpload, IX, parseDateTimeValue, toDateTimeValue, useClickOutside } from "./shared";
 
 export function AddLeadDropdown({ onSelectType }) {
   const [open, setOpen] = useState(false);
@@ -209,7 +210,15 @@ export function EditModal({ lead, onClose, onSave, onDelete, salesUsers = [], sa
           </div>
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>Next Follow-Up</label>
-            <input type="date" value={form.nextFollowUpAt ? String(form.nextFollowUpAt).slice(0, 10) : ""} onChange={(event) => handle("nextFollowUpAt", event.target.value ? `${event.target.value}T00:00:00.000Z` : null)} style={inputStyle} />
+            <DatePicker
+              selected={parseDateTimeValue(form.nextFollowUpAt)}
+              onChange={(date) => handle("nextFollowUpAt", date ? `${toDateTimeValue(date)}:00` : null)}
+              showTimeSelect
+              timeIntervals={15}
+              dateFormat="MMM d, yyyy h:mm aa"
+              className="lead-followup-datepicker"
+              customInput={<input style={inputStyle} />}
+            />
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "#374151", marginTop: 24 }}>
             <input type="checkbox" checked={!!form.whatsappEnabled} onChange={(event) => handle("whatsappEnabled", event.target.checked)} />

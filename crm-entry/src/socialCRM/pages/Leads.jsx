@@ -2,8 +2,11 @@
 
 import { useEffect, useState, useRef } from "react";
 import useFacebookLeads from "../hooks/useFacebookLeads";
+import { useBrand } from "../context/BrandContext";
+import { appCache } from "../utils/cache";
 import { getAvailablePages } from "../api/facebook.pages.api";
-import { getLeadForms, getLeadHistory } from "../api/facebook.leads.api";
+import { getLeadForms, syncLeadsByForm, getLeadFilterOptions, getLeadHistory, editLeadRemark, deleteLeadRemark } from "../api/facebook.leads.api";
+import { getGoogleSheetConfig, updateGoogleSheetConfig } from "../api/brand.api";
 import useUsers from "../hooks/useUsers";
 import * as XLSX from "xlsx";
 import * as signalR from "@microsoft/signalr";
@@ -14,8 +17,8 @@ import { useAuth } from "../../auth/AuthContext";
 import LeadAssignmentModal from "../components/facebook/LeadAssignmentModal";
 
 import {
-  FaUsers, FaTimesCircle, FaList, FaTh, FaSearch, FaSync, FaFileExport, FaFilter,
-  FaChevronDown, FaCheck, FaTimes, FaEye,
+  FaUsers, FaTimesCircle, FaList, FaTh, FaSearch, FaSync, FaFileExport,
+  FaChevronDown, FaCheck, FaTimes, FaEye, FaEdit, FaTrashAlt,
   FaChevronRight, FaChevronLeft, FaSpinner,
   FaCheckSquare, FaCalendarAlt, FaBuilding, FaUserPlus, FaHistory,
 } from "react-icons/fa";
@@ -194,10 +197,12 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, pageSiz
 export default function Leads() {
   const { user } = useAuth();
   const myUserId = user?.sub || user?.id || user?.userId || user?.uid;
+  const { activeBrand } = useBrand();
 
   const {
     leads,
     loading,
+    dataSlug,
     filters,
     reload,
     changeStatus,
@@ -227,9 +232,6 @@ export default function Leads() {
   const [selectedDeptIds, setSelectedDeptIds] = useState([]);   // current checkbox state
   const [appliedDeptIds, setAppliedDeptIds] = useState([]);     // last-saved server state
   const [applying, setApplying] = useState(false);
-  const [assignStartDate, setAssignStartDate] = useState("");
-  const [assignEndDate, setAssignEndDate] = useState("");
-  const [showTimeRange, setShowTimeRange] = useState(false);
   const [formLeadCount, setFormLeadCount] = useState(null); // preview count for dept assignment
 
   const [remarkMap, setRemarkMap] = useState({});
@@ -237,9 +239,15 @@ export default function Leads() {
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   // Multi-user/dept assignment modal
   const [assignModalLead, setAssignModalLead] = useState(null);
-  // Remark history for the details modal
+  // Remark history (inline popover in table)
   const [remarkHistory, setRemarkHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLeadId, setHistoryLeadId] = useState(null);
+  const [newRemarkText, setNewRemarkText] = useState("");
+  const [savingRemark, setSavingRemark] = useState(false);
+  const [editingRemarkId, setEditingRemarkId] = useState(null);
+  const [editingRemarkText, setEditingRemarkText] = useState("");
+  const historyPopRef = useRef();
   
   // UI & Selection States
   const [viewMode, setViewMode] = useState("list");
@@ -252,13 +260,52 @@ export default function Leads() {
   const [exportFriendlyLabels, setExportFriendlyLabels] = useState(true);
   const [filterFromDate, setFilterFromDate] = useState("");
   const [filterToDate, setFilterToDate] = useState("");
+  const [showDateRange, setShowDateRange] = useState(false);
+
+  // ── Google Sheets settings ──────────────────────────────────────────
+  const [showSheetSettings, setShowSheetSettings] = useState(false);
+  const [sheetConfig, setSheetConfig] = useState({ spreadsheetId: "", sheetName: "Leads", enabled: false });
+  const [sheetSaving, setSheetSaving] = useState(false);
+  const [sheetMsg, setSheetMsg] = useState("");
+
+  // ── Manual Sync from Meta ──────────────────────────────────────────
+  const [syncing, setSyncing] = useState(false);
+  const [syncAllLoading, setSyncAllLoading] = useState(false);
+
+  const handleSyncForm = async (formId) => {
+    if (!formId) return Toast?.error?.("Select a form first");
+    setSyncing(true);
+    try {
+      await syncLeadsByForm(formId);
+      Toast?.success?.("Leads synced successfully");
+      reload({});
+    } catch {
+      Toast?.error?.("Failed to sync leads from Meta");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSyncAllForms = async () => {
+    if (!forms.length) return Toast?.error?.("No forms available to sync");
+    setSyncAllLoading(true);
+    let successCount = 0;
+    for (const form of forms) {
+      try {
+        await syncLeadsByForm(form.id);
+        successCount++;
+      } catch { /* continue with next form */ }
+    }
+    Toast?.success?.(`Synced ${successCount}/${forms.length} form(s)`);
+    setSyncAllLoading(false);
+    reload({});
+  };
 
   /* =========================
      INITIAL LOAD
      ========================= */
-  useEffect(() => {
-    reload({});
-  }, []);
+  // The useFacebookLeads hook handles initial load and brand switches internally.
+  // Only call reload for SignalR or manual refresh — not on mount/brand change.
 
   /* =========================
      SIGNALR REAL-TIME
@@ -309,20 +356,86 @@ useEffect(() => {
      LOAD PAGES & FORMS
      ========================= */
   useEffect(() => {
-    getAvailablePages().then(setPages);
-  }, []);
+    const slug = activeBrand?.slug;
+    if (!slug) { setPages([]); setForms([]); return; }
+
+    const cacheKey = `ph_pages_${slug}`;
+    const formsCacheKey = `ph_forms_${slug}`;
+    const cachedPages = appCache.getStale(cacheKey);
+    const cachedForms = appCache.getStale(formsCacheKey);
+
+    if (cachedPages) setPages(cachedPages.data);
+    if (cachedForms) setForms(cachedForms.data);
+
+    // Fetch forms from Meta Graph API (live data) and pages from DB
+    const loadData = async () => {
+      let dbForms = [];
+      try {
+        // Try the fast filter endpoint first (DB-backed)
+        const result = await getLeadFilterOptions();
+        const p = result.pages || [];
+        setPages(p);
+        appCache.set(cacheKey, p);
+        // Normalize filter-option forms (formId → id)
+        dbForms = (result.forms || []).map(f => ({
+          id: f.formId || f.id,
+          name: f.name || f.formId || f.id,
+          pageId: f.pageId ? String(f.pageId) : "",
+        }));
+        // Set forms immediately from DB so dropdown populates right away
+        if (dbForms.length) {
+          setForms(dbForms);
+          appCache.set(formsCacheKey, dbForms);
+        }
+      } catch {
+        if (!appCache.isFresh(cacheKey)) {
+          getAvailablePages()
+            .then(p => { setPages(p); appCache.set(cacheKey, p); })
+            .catch(() => setPages([]));
+        }
+      }
+
+      // Try to enhance with Meta forms (latest data)
+      try {
+        const metaForms = await getLeadForms();
+        if (metaForms.length) {
+          // Merge: Meta forms + any DB-only forms not in Meta
+          // Preserve pageId from DB forms when Meta forms lack it
+          const metaIds = new Set(metaForms.map(f => f.id));
+          const merged = [
+            ...metaForms.map(mf => {
+              const dbForm = dbForms.find(f => String(f.id) === String(mf.id));
+              return { ...mf, pageId: String(mf.pageId || dbForm?.pageId || "") };
+            }),
+            ...dbForms.filter(f => !metaIds.has(f.id)),
+          ];
+          setForms(merged);
+          appCache.set(formsCacheKey, merged);
+        }
+      } catch {
+        // DB forms already set above — no action needed
+      }
+    };
+
+    loadData();
+  }, [activeBrand?.slug]);
+
+  // Load Google Sheet config per brand
+  useEffect(() => {
+    const slug = activeBrand?.slug;
+    if (!slug) return;
+    getGoogleSheetConfig(slug)
+      .then(cfg => setSheetConfig({
+        spreadsheetId: cfg.spreadsheetId || "",
+        sheetName: cfg.sheetName || "Leads",
+        enabled: !!cfg.enabled,
+      }))
+      .catch(() => setSheetConfig({ spreadsheetId: "", sheetName: "Leads", enabled: false }));
+  }, [activeBrand?.slug]);
 
   useEffect(() => {
     getDepartments().then(setDepartments).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!filters.pageId) {
-      setForms([]);
-      return;
-    }
-    getLeadForms(filters.pageId).then(setForms);
-  }, [filters.pageId]);
 
   // Live preview: count leads in selected form matching date range
   useEffect(() => {
@@ -330,13 +443,13 @@ useEffect(() => {
     const timer = setTimeout(() => {
       countFormLeads(
         filters.formId,
-        assignStartDate || null,
-        assignEndDate || null
+        filterFromDate || null,
+        filterToDate || null
       ).then(setFormLeadCount);
     }, 400);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.formId, assignStartDate, assignEndDate]);
+  }, [filters.formId, filterFromDate, filterToDate]);
 
   /* =========================
      SELECT LEADS LOGIC
@@ -360,7 +473,12 @@ useEffect(() => {
      ========================= */
   const getLeadDate = (l) => new Date(l.metaCreatedAt || l.syncedAt || l.createdAt);
 
-  const filteredLeads = leads.filter(l => {
+  // Guard: don't show stale data from a previous brand during transition
+  // Allow data when dataSlug matches OR during initial load (dataSlug is catching up)
+  const slugMatches = !activeBrand?.slug || dataSlug === activeBrand?.slug;
+  const _leads = slugMatches ? leads : [];
+
+  const filteredLeads = _leads.filter(l => {
     // 1. Search Query
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -411,6 +529,7 @@ useEffect(() => {
     const rows = exportLeads.map(l => {
       const row = {
         Name: l.name || "",
+        Platform: l.platform || "Facebook",
         Email: l.email || "",
         Phone: l.phone || "",
         Status: l.status || "",
@@ -449,6 +568,29 @@ useEffect(() => {
 
     XLSX.writeFile(workbook, mode === "selected" ? "facebook-leads-selected.xlsx" : "facebook-leads-all.xlsx");
     Toast?.success(`Exported ${exportLeads.length} leads successfully.`);
+  };
+
+  /* =========================
+     GOOGLE SHEETS SAVE
+     ========================= */
+  const saveSheetConfig = async () => {
+    if (!activeBrand?.slug) return;
+    setSheetSaving(true);
+    setSheetMsg("");
+    try {
+      const result = await updateGoogleSheetConfig(activeBrand.slug, sheetConfig);
+      setSheetConfig({
+        spreadsheetId: result.spreadsheetId || "",
+        sheetName: result.sheetName || "Leads",
+        enabled: !!result.enabled,
+      });
+      setSheetMsg("✅ Saved");
+      setTimeout(() => setSheetMsg(""), 3000);
+    } catch (err) {
+      setSheetMsg("❌ " + (err?.response?.data?.message || "Save failed"));
+    } finally {
+      setSheetSaving(false);
+    }
   };
 
   /* =========================
@@ -495,8 +637,8 @@ useEffect(() => {
         const result = await assignByFormToDepartments(
           filters.formId,
           depts,
-          assignStartDate || null,
-          assignEndDate || null,
+          filterFromDate || null,
+          filterToDate || null,
         );
         const leadAssigned = result?.added ?? "?";
         Toast?.success(
@@ -539,19 +681,34 @@ useEffect(() => {
   };
 
   /* =========================
-     LOAD REMARK HISTORY WHEN DETAILS MODAL OPENS
+     LOAD REMARK HISTORY (inline popover)
      ========================= */
   useEffect(() => {
-    if (!selectedLead) {
+    if (!historyLeadId) {
       setRemarkHistory([]);
+      setNewRemarkText("");
+      setEditingRemarkId(null);
+      setEditingRemarkText("");
       return;
     }
     setHistoryLoading(true);
-    getLeadHistory(selectedLead.id)
+    getLeadHistory(historyLeadId)
       .then(data => setRemarkHistory(Array.isArray(data) ? data : []))
       .catch(() => setRemarkHistory([]))
       .finally(() => setHistoryLoading(false));
-  }, [selectedLead]);
+  }, [historyLeadId]);
+
+  // Close history popover on outside click
+  useEffect(() => {
+    if (!historyLeadId) return;
+    const handler = (e) => {
+      if (historyPopRef.current && !historyPopRef.current.contains(e.target)) {
+        setHistoryLeadId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [historyLeadId]);
 
   /* =========================
      RENDER
@@ -561,71 +718,65 @@ useEffect(() => {
       <div className="max-w-screen-2xl mx-auto px-4 py-4 space-y-5">
         
         {/* ── Page Header ── */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage and track your Facebook leads</p>
-        </div>
-
-        
-        {/* ── Top Action Bar ── */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <button 
-            onClick={handleToggleSelectMode}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-all active:scale-95 ${
-              isSelectMode 
-                ? "bg-indigo-100 text-indigo-700 border border-indigo-200 hover:bg-indigo-200" 
-                : "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200"
-            }`}
-          >
-            <FaCheckSquare className={`w-3.5 h-3.5 ${isSelectMode ? "text-indigo-600" : "text-gray-400"}`} /> 
-            {isSelectMode ? "Cancel Selection" : "Select Leads"}
-          </button>
-          
-          <div className="flex items-center gap-1 ml-auto">
-            <button onClick={() => setViewMode("list")}
-              className={`p-2 rounded-lg border transition-all ${viewMode === "list" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
-              <FaList className="w-4 h-4" />
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
+            <p className="text-sm text-gray-500 mt-1">Manage and track your Facebook leads</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleToggleSelectMode}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-all active:scale-95 ${
+                isSelectMode 
+                  ? "bg-indigo-100 text-indigo-700 border border-indigo-200 hover:bg-indigo-200" 
+                  : "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200"
+              }`}
+            >
+              <FaCheckSquare className={`w-3.5 h-3.5 ${isSelectMode ? "text-indigo-600" : "text-gray-400"}`} /> 
+              {isSelectMode ? "Cancel Selection" : "Select Leads"}
             </button>
-            <button onClick={() => setViewMode("grid")}
-              className={`p-2 rounded-lg border transition-all ${viewMode === "grid" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
-              <FaTh className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setViewMode("list")}
+                className={`p-2 rounded-lg border transition-all ${viewMode === "list" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
+                <FaList className="w-4 h-4" />
+              </button>
+              <button onClick={() => setViewMode("grid")}
+                className={`p-2 rounded-lg border transition-all ${viewMode === "grid" ? "bg-white border-indigo-300 text-indigo-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-gray-300 bg-white"}`}>
+                <FaTh className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
         {/* ── Filter Bar ── */}
-        <div className="flex items-center gap-4 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm flex-wrap">
-          <div className="flex items-center gap-2 text-sm">
-             <FaFilter className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-             <span className="text-gray-500 font-medium">Filters</span>
-          </div>
-
-          <FilterDropdown 
-            label="Page" 
-            options={pages.map(p => ({ label: p.name, value: p.pageId }))} 
-            value={filters.pageId} 
-            onChange={val => reload({ pageId: val, formId: "" })} 
-          />
-          
-          <FilterDropdown 
-            label="Form" 
-            options={forms.map(f => ({ label: f.name, value: f.id }))} 
-            value={filters.formId} 
-            onChange={val => reload({ formId: val })} 
-            disabled={!filters.pageId}
+        <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm flex-wrap">
+          <FilterDropdown
+            label="Page"
+            options={pages.map(p => ({ label: p.name, value: p.pageId }))}
+            value={filters.pageId}
+            onChange={val => reload({ pageId: val, formId: "" })}
           />
 
-          {/* Department quick filter */}
-          <select
-            value={filters.departmentId || ""}
-            onChange={e => reload({ departmentId: e.target.value || undefined })}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-700"
+          <FilterDropdown
+            label="Form"
+            options={(filters.pageId
+              ? forms.filter(f => String(f.pageId) === String(filters.pageId))
+              : forms
+            ).map(f => ({ label: f.name, value: f.id }))}
+            value={filters.formId}
+            onChange={val => reload({ formId: val })}
+          />
+
+          {/* Sync from Meta */}
+          <button
+            onClick={() => filters.formId ? handleSyncForm(filters.formId) : handleSyncAllForms()}
+            disabled={syncing || syncAllLoading || !forms.length}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            title={filters.formId ? "Sync leads for selected form from Meta" : "Sync leads for all forms from Meta"}
           >
-            <option value="">All Departments</option>
-            {departments.map(d => (
-              <option key={d.departmentId} value={d.departmentId}>{d.departmentName}</option>
-            ))}
-          </select>
+            <FaSync className={`w-3 h-3 ${syncing || syncAllLoading ? "animate-spin" : ""}`} />
+            {syncing || syncAllLoading ? "Syncing…" : filters.formId ? "Sync Form" : "Sync All"}
+          </button>
 
           {/* My Leads quick filter */}
           <button
@@ -642,31 +793,48 @@ useEffect(() => {
             <FaCheck className="w-3 h-3" /> My Leads
           </button>
 
-          {/* Calendar Date Filter */}
-          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 ml-auto">
-             <FaCalendarAlt className="w-3.5 h-3.5 text-gray-400" />
-             <input 
-                type="date" 
-                value={filterFromDate} 
-                onChange={e => setFilterFromDate(e.target.value)} 
-                className="bg-transparent text-sm text-gray-600 focus:outline-none" 
-             />
-             <span className="text-gray-400 text-xs font-medium px-1">to</span>
-             <input 
-                type="date" 
-                value={filterToDate} 
-                onChange={e => setFilterToDate(e.target.value)} 
-                className="bg-transparent text-sm text-gray-600 focus:outline-none" 
-             />
-             {(filterFromDate || filterToDate) && (
-                <button onClick={() => { setFilterFromDate(""); setFilterToDate(""); }} className="ml-2 text-rose-500 hover:text-rose-700 p-1">
-                  <FaTimes className="w-3 h-3" />
-                </button>
-             )}
-          </div>
+          {/* Date Range Toggle */}
+          <button
+            onClick={() => setShowDateRange(p => !p)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-all ml-auto
+              ${showDateRange || filterFromDate || filterToDate
+                ? "bg-amber-50 border-amber-300 text-amber-700"
+                : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
+          >
+            <FaCalendarAlt className="w-3.5 h-3.5" />
+            {showDateRange ? "Hide Range" : "Show Range"}
+            {(filterFromDate || filterToDate) && !showDateRange && (
+              <span className="w-2 h-2 rounded-full bg-amber-500 ml-0.5" />
+            )}
+          </button>
+
+          {/* Date Range (collapsible) */}
+          {showDateRange && (
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+               <input
+                  type="date"
+                  value={filterFromDate}
+                  onChange={e => setFilterFromDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-600 focus:outline-none"
+               />
+               <span className="text-gray-400 text-xs font-medium px-1">to</span>
+               <input
+                  type="date"
+                  value={filterToDate}
+                  onChange={e => setFilterToDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-600 focus:outline-none"
+               />
+               {(filterFromDate || filterToDate) && (
+                  <button onClick={() => { setFilterFromDate(""); setFilterToDate(""); }} className="ml-1 text-rose-500 hover:text-rose-700 p-1">
+                    <FaTimes className="w-3 h-3" />
+                  </button>
+               )}
+            </div>
+          )}
         </div>
 
-        {/* ── Department Assignment Panel (unified toggle) ── */}
+        {/* ── Department Assignment Panel — only visible when a form is selected ── */}
+        {filters.formId && (
         <div className="bg-white rounded-xl border border-gray-100 px-4 py-4 shadow-sm space-y-3">
           {/* Header row */}
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -681,43 +849,19 @@ useEffect(() => {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Form selector */}
-              <select
-                value={filters.formId}
-                onChange={e => reload({ formId: e.target.value })}
-                disabled={!filters.pageId}
-                className={`text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all
-                  ${!filters.pageId ? "bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed" : "bg-white border-gray-200 text-gray-700"}`}
-              >
-                <option value="">— Select Form —</option>
-                {forms.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-
-              {/* Time range toggle */}
-              <button
-                onClick={() => setShowTimeRange(p => !p)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all
-                  ${showTimeRange ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
-              >
-                <FaCalendarAlt className="w-3 h-3" />
-                {showTimeRange ? "Hide Range" : "Set Time Range"}
-              </button>
-
               {/* Lead count preview badge */}
-              {filters.formId && formLeadCount !== null && (
+              {formLeadCount !== null && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700">
                   <FaUsers className="w-3 h-3" />
                   {formLeadCount} lead{formLeadCount !== 1 ? "s" : ""}
-                  {(assignStartDate || assignEndDate) ? " in range" : " in form"}
+                  {(filterFromDate || filterToDate) ? " in range" : " in form"}
                 </span>
               )}
 
               {/* Apply button */}
               <button
                 onClick={handleApplyDeptChanges}
-                disabled={!filters.formId || applying}
+                disabled={applying}
                 className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
               >
                 {applying ? <FaSpinner className="w-3.5 h-3.5 animate-spin" /> : <FaCheck className="w-3.5 h-3.5" />}
@@ -726,33 +870,8 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* Time range row */}
-          {showTimeRange && (
-            <div className="flex items-center gap-3 flex-wrap pl-1">
-              <span className="text-xs text-gray-500 font-medium">Time range (for assigns):</span>
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
-                <FaCalendarAlt className="w-3 h-3 text-gray-400" />
-                <input type="date" value={assignStartDate} onChange={e => setAssignStartDate(e.target.value)}
-                  className="bg-transparent text-sm text-gray-600 focus:outline-none" />
-                <span className="text-gray-400 text-xs px-1">to</span>
-                <input type="date" value={assignEndDate} onChange={e => setAssignEndDate(e.target.value)}
-                  className="bg-transparent text-sm text-gray-600 focus:outline-none" />
-                {(assignStartDate || assignEndDate) && (
-                  <button onClick={() => { setAssignStartDate(""); setAssignEndDate(""); }} className="ml-1 text-rose-400 hover:text-rose-600">
-                    <FaTimes className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-gray-400 italic">Only leads created within this range will be assigned.</p>
-            </div>
-          )}
-
           {/* Department checkbox grid */}
-          {!filters.formId ? (
-            <p className="text-xs text-gray-400 italic pl-1">
-              {!filters.pageId ? "Select a page then a form to manage department assignments." : "Select a form above to manage department assignments."}
-            </p>
-          ) : departments.length === 0 ? (
+          {departments.length === 0 ? (
             <p className="text-xs text-gray-400 italic pl-1">No departments available.</p>
           ) : (
             <div className="space-y-2">
@@ -808,6 +927,7 @@ useEffect(() => {
             </div>
           )}
         </div>
+        )}
 
         {/* ── Table Toolbar ── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -848,6 +968,18 @@ useEffect(() => {
             <button onClick={() => reload({})} className="ml-2 p-1.5 text-gray-400 hover:text-indigo-600 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all" title="Refresh">
               <FaSync className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-500" : ""}`} />
             </button>
+
+            <button
+              onClick={() => setShowSheetSettings(!showSheetSettings)}
+              className={`ml-1 flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-all ${
+                sheetConfig.enabled
+                  ? "bg-green-50 border-green-300 text-green-700 hover:bg-green-100"
+                  : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+              }`}
+              title="Google Sheets Settings"
+            >
+              📊 Sheets {sheetConfig.enabled ? "ON" : "OFF"}
+            </button>
           </div>
           
           <div className="flex items-center gap-2">
@@ -862,12 +994,66 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* ── Google Sheets Settings Panel ── */}
+        {showSheetSettings && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">📊 Google Sheets Integration</h3>
+              <button onClick={() => setShowSheetSettings(false)} className="text-gray-400 hover:text-gray-600">
+                <FaTimes className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              When enabled, new leads will be automatically appended to your Google Sheet.
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[220px]">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Spreadsheet ID</label>
+                <input
+                  type="text"
+                  value={sheetConfig.spreadsheetId}
+                  onChange={e => setSheetConfig(c => ({ ...c, spreadsheetId: e.target.value }))}
+                  placeholder="e.g. 1TskPqMIiPYjAY5Eo1IywSfUkkjK4y9n1eSxDQUkBZk8"
+                  className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+              </div>
+              <div className="w-40">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sheet Name</label>
+                <input
+                  type="text"
+                  value={sheetConfig.sheetName}
+                  onChange={e => setSheetConfig(c => ({ ...c, sheetName: e.target.value }))}
+                  placeholder="Leads"
+                  className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sheetConfig.enabled}
+                  onChange={e => setSheetConfig(c => ({ ...c, enabled: e.target.checked }))}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-gray-600">Enable</span>
+              </label>
+              <button
+                onClick={saveSheetConfig}
+                disabled={sheetSaving}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all"
+              >
+                {sheetSaving ? "Saving..." : "Save"}
+              </button>
+              {sheetMsg && <span className="text-sm">{sheetMsg}</span>}
+            </div>
+          </div>
+        )}
+
         {/* ── LIST VIEW ── */}
         {viewMode === "list" ? (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10">
                   <tr className="bg-gray-50 border-b border-gray-100">
                     {isSelectMode && (
                       <th className="w-10 px-4 py-3">
@@ -879,8 +1065,8 @@ useEffect(() => {
                         />
                       </th>
                     )}
-                    {["Name", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    {["Name", "Platform", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map((h) => (
+                      <th key={h} className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -888,14 +1074,14 @@ useEffect(() => {
                   {loading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i} className="animate-pulse">
-                        <td colSpan={isSelectMode ? 9 : 8} className="px-4 py-4">
+                        <td colSpan={isSelectMode ? 10 : 9} className="px-4 py-4">
                           <div className="h-4 bg-gray-100 rounded w-full" />
                         </td>
                       </tr>
                     ))
                   ) : paginatedLeads.length === 0 ? (
                     <tr>
-                      <td colSpan={isSelectMode ? 9 : 8} className="text-center py-16 text-gray-400">
+                      <td colSpan={isSelectMode ? 10 : 9} className="text-center py-16 text-gray-400">
                         <FaUsers className="w-8 h-8 mx-auto mb-3 opacity-30" />
                         <p className="text-sm">No leads found</p>
                         <p className="text-xs mt-1">Adjust your filters or search query.</p>
@@ -921,11 +1107,42 @@ useEffect(() => {
                             <Avatar name={l.name || "?"} />
                             <div>
                               <p className="text-sm font-semibold text-gray-800">{l.name || "—"}</p>
-                              <p className="text-xs text-gray-400">ID #{l.id}</p>
+                              <p className="text-xs text-gray-400">{l.email || l.phone || l.platform || "Lead"}</p>
                             </div>
                           </div>
                         </td>
-                        
+
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border w-fit
+                              ${l.platform === "Instagram" ? "bg-pink-50 text-pink-600 border-pink-200" :
+                                l.platform === "LinkedIn" ? "bg-sky-50 text-sky-700 border-sky-200" :
+                                "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                              {l.platform || "Facebook"}
+                            </span>
+                            {/* {l.leadSource && (
+                              <span className="text-[9px] text-gray-400 px-1">
+                                {l.leadSource === "WebhookRealtime" ? "⚡ Webhook" :
+                                 l.leadSource === "ManualSync" ? "🔄 Synced" :
+                                 l.leadSource === "InstagramDirect" ? "IG Direct" :
+                                 l.leadSource === "FacebookLeadForm" ? "FB Lead Form" :
+                                 l.leadSource === "FacebookLeadCentre" ? "FB Lead Centre" :
+                                 l.leadSource === "LinkedInLead" ? "LinkedIn" :
+                                 l.leadSource === "ManualEntry" ? "Manual" :
+                                 l.leadSource}
+                              </span>
+                            )} */}
+                            {l.qualityScore > 0 && (
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded w-fit
+                                ${l.qualityScore >= 70 ? "bg-green-100 text-green-700" :
+                                  l.qualityScore >= 40 ? "bg-yellow-100 text-yellow-700" :
+                                  "bg-red-100 text-red-600"}`}>
+                                {l.qualityGrade || (l.qualityScore >= 70 ? "A" : l.qualityScore >= 40 ? "B" : "C")} ({l.qualityScore})
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
                         <td className="px-4 py-3">
                           {l.email && <p className="text-xs text-indigo-600 font-medium truncate max-w-[150px]">{l.email}</p>}
                           {l.phone && <p className="text-xs text-gray-500">{l.phone}</p>}
@@ -976,14 +1193,183 @@ useEffect(() => {
                         </td>
 
                         <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            placeholder="Add remark..."
-                            value={remarkMap[l.id] ?? l.remark ?? ""}
-                            onChange={e => setRemarkMap(prev => ({ ...prev, [l.id]: e.target.value }))}
-                            onBlur={() => handleSaveRemark(l)}
-                            className="w-[140px] px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white transition-colors"
-                          />
+                          <div className="relative">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                placeholder="Add remark..."
+                                value={remarkMap[l.id] ?? l.remark ?? ""}
+                                onChange={e => setRemarkMap(prev => ({ ...prev, [l.id]: e.target.value }))}
+                                onBlur={() => handleSaveRemark(l)}
+                                className="w-[120px] px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50 hover:bg-white transition-colors"
+                              />
+                              <button
+                                onClick={() => setHistoryLeadId(historyLeadId === l.id ? null : l.id)}
+                                className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${historyLeadId === l.id ? "bg-indigo-100 text-indigo-600" : "bg-gray-50 text-gray-400 hover:bg-indigo-50 hover:text-indigo-500"}`}
+                                title="Remark history"
+                              >
+                                <FaHistory className="w-3 h-3" />
+                              </button>
+                            </div>
+
+                            {/* Remarks Popover */}
+                            {historyLeadId === l.id && (() => {
+                              const remarks = remarkHistory.filter(h => h.remark);
+
+                              return (
+                              <div ref={historyPopRef} className="absolute z-50 top-full left-0 mt-1 w-80 bg-white border border-gray-200 rounded-xl shadow-xl p-3 space-y-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                                    <FaHistory className="w-3 h-3 text-indigo-400" /> Remarks
+                                  </span>
+                                  <button onClick={() => setHistoryLeadId(null)} className="text-gray-400 hover:text-gray-600">
+                                    <FaTimes className="w-3 h-3" />
+                                  </button>
+                                </div>
+
+                                {historyLoading ? (
+                                  <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                                    <FaSpinner className="w-3 h-3 animate-spin" /> Loading…
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div>
+                                      {remarks.length === 0 ? (
+                                        <p className="text-xs text-gray-400 italic">No remarks yet.</p>
+                                      ) : (
+                                        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                                          {remarks.map((h) => (
+                                            <div key={h.id} className="bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 group/remark">
+                                              <div className="flex items-center justify-between mb-0.5">
+                                                <span className="text-[10px] font-semibold text-indigo-600">
+                                                  {h.assignedToUserName || "System"}
+                                                </span>
+                                                <div className="flex items-center gap-1">
+                                                  {h.editedAt && (
+                                                    <span className="text-[9px] text-amber-500 italic">edited</span>
+                                                  )}
+                                                  <span className="text-[10px] text-gray-400">
+                                                    {new Date(h.assignedAt).toLocaleDateString()}
+                                                  </span>
+                                                </div>
+                                              </div>
+
+                                              {editingRemarkId === h.id ? (
+                                                <div className="flex gap-1 mt-1">
+                                                  <input
+                                                    type="text"
+                                                    autoFocus
+                                                    value={editingRemarkText}
+                                                    onChange={e => setEditingRemarkText(e.target.value)}
+                                                    onKeyDown={e => {
+                                                      if (e.key === "Escape") { setEditingRemarkId(null); setEditingRemarkText(""); }
+                                                      if (e.key === "Enter") document.getElementById(`save-edit-${h.id}`)?.click();
+                                                    }}
+                                                    className="flex-1 px-2 py-1 border border-indigo-300 rounded text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                                                  />
+                                                  <button
+                                                    id={`save-edit-${h.id}`}
+                                                    onClick={async () => {
+                                                      if (!editingRemarkText.trim()) return;
+                                                      try {
+                                                        await editLeadRemark(l.id, h.id, editingRemarkText.trim());
+                                                        setEditingRemarkId(null);
+                                                        setEditingRemarkText("");
+                                                        const updated = await getLeadHistory(l.id);
+                                                        setRemarkHistory(Array.isArray(updated) ? updated : []);
+                                                        Toast?.success("Remark updated");
+                                                      } catch { Toast?.error("Failed to update"); }
+                                                    }}
+                                                    className="px-2 py-1 text-[10px] font-semibold bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+                                                  >
+                                                    Save
+                                                  </button>
+                                                  <button
+                                                    onClick={() => { setEditingRemarkId(null); setEditingRemarkText(""); }}
+                                                    className="px-1.5 py-1 text-gray-400 hover:text-gray-600"
+                                                  >
+                                                    <FaTimes className="w-2.5 h-2.5" />
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <div className="flex items-start justify-between">
+                                                  <p className="text-xs text-gray-700 flex-1">{h.remark}</p>
+                                                  <div className="flex items-center gap-0.5 ml-2 opacity-0 group-hover/remark:opacity-100 transition-opacity flex-shrink-0">
+                                                    <button
+                                                      onClick={() => { setEditingRemarkId(h.id); setEditingRemarkText(h.remark); }}
+                                                      className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                      title="Edit remark"
+                                                    >
+                                                      <FaEdit className="w-2.5 h-2.5" />
+                                                    </button>
+                                                    <button
+                                                      onClick={async () => {
+                                                        if (!confirm("Delete this remark?")) return;
+                                                        try {
+                                                          await deleteLeadRemark(l.id, h.id);
+                                                          const updated = await getLeadHistory(l.id);
+                                                          setRemarkHistory(Array.isArray(updated) ? updated : []);
+                                                          Toast?.success("Remark deleted");
+                                                        } catch { Toast?.error("Failed to delete"); }
+                                                      }}
+                                                      className="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                                      title="Delete remark"
+                                                    >
+                                                      <FaTrashAlt className="w-2.5 h-2.5" />
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
+
+                                {/* Add new remark */}
+                                <div className="flex gap-1.5 pt-1 border-t border-gray-100">
+                                  <input
+                                    type="text"
+                                    placeholder="Add remark…"
+                                    value={newRemarkText}
+                                    onChange={e => setNewRemarkText(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === "Enter" && newRemarkText.trim()) {
+                                        e.target.blur();
+                                        document.getElementById(`save-remark-${l.id}`)?.click();
+                                      }
+                                    }}
+                                    className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50"
+                                  />
+                                  <button
+                                    id={`save-remark-${l.id}`}
+                                    disabled={!newRemarkText.trim() || savingRemark}
+                                    onClick={async () => {
+                                      if (!newRemarkText.trim()) return;
+                                      setSavingRemark(true);
+                                      try {
+                                        await assignLead(l.id, l.assignedToUserId ?? null, l.assignedToUserName ?? null, newRemarkText.trim());
+                                        setNewRemarkText("");
+                                        const updated = await getLeadHistory(l.id);
+                                        setRemarkHistory(Array.isArray(updated) ? updated : []);
+                                        Toast?.success("Remark saved");
+                                      } catch {
+                                        Toast?.error("Failed to save remark");
+                                      } finally {
+                                        setSavingRemark(false);
+                                      }
+                                    }}
+                                    className="px-2.5 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-95"
+                                  >
+                                    {savingRemark ? <FaSpinner className="w-3 h-3 animate-spin" /> : "Save"}
+                                  </button>
+                                </div>
+                              </div>
+                              );
+                            })()}
+                          </div>
                         </td>
                         
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
@@ -1032,9 +1418,24 @@ useEffect(() => {
                       )}
                       <div className="flex items-center gap-3 mb-3">
                          <Avatar name={l.name || "?"} />
-                         <div className={isSelectMode ? "pr-6" : ""}>
+                         <div className={`flex-1 min-w-0 ${isSelectMode ? "pr-6" : ""}`}>
                             <p className="text-sm font-semibold text-gray-800 truncate">{l.name || "—"}</p>
-                            <p className="text-xs text-gray-400">ID #{l.id}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border
+                                ${l.platform === "Instagram" ? "bg-pink-50 text-pink-600 border-pink-200" :
+                                  l.platform === "LinkedIn" ? "bg-sky-50 text-sky-700 border-sky-200" :
+                                  "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                                {l.platform || "Facebook"}
+                              </span>
+                              {l.qualityScore > 0 && (
+                                <span className={`text-[8px] font-bold px-1 py-0.5 rounded
+                                  ${l.qualityScore >= 70 ? "bg-green-100 text-green-700" :
+                                    l.qualityScore >= 40 ? "bg-yellow-100 text-yellow-700" :
+                                    "bg-red-100 text-red-600"}`}>
+                                  {l.qualityGrade || "?"} ({l.qualityScore})
+                                </span>
+                              )}
+                            </div>
                          </div>
                       </div>
                       {l.email && <p className="text-xs text-indigo-600 font-medium truncate mb-1">{l.email}</p>}
@@ -1096,63 +1497,6 @@ useEffect(() => {
               <p className="text-sm font-medium text-gray-500">No additional form data available</p>
             </div>
           )}
-
-          {/* Remark History */}
-          <div className="border-t border-gray-100 pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <FaHistory className="w-3.5 h-3.5 text-indigo-400" />
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Remark History</h3>
-            </div>
-            {historyLoading ? (
-              <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
-                <FaSpinner className="w-3.5 h-3.5 animate-spin" /> Loading history…
-              </div>
-            ) : remarkHistory.filter(h => h.remark).length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No remarks recorded yet.</p>
-            ) : (
-              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                {remarkHistory.filter(h => h.remark).map(h => (
-                  <div key={h.id} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-semibold text-indigo-600">
-                        {h.assignedToUserName || "System"}
-                      </span>
-                      <span className="text-[10px] text-gray-400">
-                        {new Date(h.assignedAt).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-700">{h.remark}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Inline remark input */}
-            <div className="mt-3 flex gap-2">
-              <input
-                type="text"
-                placeholder="Add new remark…"
-                value={selectedLead ? (remarkMap[selectedLead.id] ?? selectedLead.remark ?? "") : ""}
-                onChange={e => selectedLead && setRemarkMap(prev => ({ ...prev, [selectedLead.id]: e.target.value }))}
-                className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50"
-              />
-              <button
-                onClick={async () => {
-                  if (!selectedLead) return;
-                  const remark = remarkMap[selectedLead.id];
-                  if (!remark || remark === (selectedLead.remark ?? "")) return;
-                  await assignLead(selectedLead.id, selectedLead.assignedToUserId ?? null, selectedLead.assignedToUserName ?? null, remark);
-                  // Refresh history
-                  const updated = await getLeadHistory(selectedLead.id);
-                  setRemarkHistory(Array.isArray(updated) ? updated : []);
-                  Toast?.success("Remark saved");
-                }}
-                className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors active:scale-95"
-              >
-                Save
-              </button>
-            </div>
-          </div>
 
           <div className="flex justify-end pt-2 border-t border-gray-100">
             <button

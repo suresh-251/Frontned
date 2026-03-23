@@ -12,6 +12,7 @@ export function useInboxHub({
   onConversationUpdated,
   onMessageRead,
   onTyping,
+  onBrandSwitched,
   onConnected,
 }) {
   const connRef = useRef(null);
@@ -24,6 +25,7 @@ export function useInboxHub({
     if (onConversationUpdated) conn.on("ConversationUpdated", onConversationUpdated);
     if (onMessageRead)         conn.on("MessageRead",         onMessageRead);
     if (onTyping)              conn.on("TypingIndicator",     onTyping);
+    if (onBrandSwitched)       conn.on("BrandSwitched",       onBrandSwitched);
 
     conn
       .start()

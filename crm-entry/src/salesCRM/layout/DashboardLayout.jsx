@@ -1,21 +1,70 @@
 import { Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import { applyTheme, getStoredTheme } from "../../components/ThemeToggle";
 
 const DashboardLayout = () => {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < 1024 : false
+  );
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("sales-crm-theme") || "light";
+    document.documentElement.setAttribute("data-theme", savedTheme);
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobileViewport = window.innerWidth < 1024;
+      setIsMobile(mobileViewport);
+      if (!mobileViewport) {
+        setIsMobileSidebarOpen(false);
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = isMobile && isMobileSidebarOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobile, isMobileSidebarOpen]);
+
+  const handleToggleSidebar = () => {
+    if (isMobile) {
+      setIsMobileSidebarOpen((current) => !current);
+      return;
+    }
+
+    setSidebarCollapsed((current) => !current);
+  };
+
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      
-      {/* Navbar */}
-      <Topbar />
-
-      {/* Page Content */}
-      <main className="sales-crm-scroll flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 p-6 pt-20 overscroll-y-contain">
-        <Outlet />
-      </main>
-
+    <div className="salescrm-layout" style={{ background: "var(--bg-body)" }}>
+      <Sidebar
+        collapsed={!isMobile && sidebarCollapsed}
+        isMobile={isMobile}
+        isOpen={isMobileSidebarOpen}
+        onToggleCollapse={() => {
+          if (!isMobile) setSidebarCollapsed((current) => !current);
+        }}
+        onClose={() => setIsMobileSidebarOpen(false)}
+      />
+      <div className="salescrm-layout__content">
+        <Topbar onToggleSidebar={handleToggleSidebar} showSidebarToggle={isMobile} />
+        <main className="sales-crm-scroll salescrm-layout__main" style={{ background: "var(--bg-body)" }}>
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 };
 
 export default DashboardLayout;
-

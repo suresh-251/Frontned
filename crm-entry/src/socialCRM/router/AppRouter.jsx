@@ -5,7 +5,6 @@ import PageSelection from "../pages/PageSelection";
 import DashboardLayout from "../layout/DashboardLayout";
 import Dashboard from "../pages/Dashboard";
 import PostHistory from "../pages/PostHistory";
-import LeadForms from "../pages/LeadForms";
 import Leads from "../pages/Leads";
 import PageSubscriptions from "../pages/PageSubscriptions";
 import TestPage from "../pages/TestPage";
@@ -35,7 +34,7 @@ export default function AppRouter() {
             <Route path="brands" element={<BrandManager />} />
             <Route path="post/create" element={<Navigate to="/crm/socialmedia/post/history" replace />} />
             <Route path="post/history" element={<PostHistory />} />
-            <Route path="leads/forms" element={<LeadForms />} />
+            <Route path="leads/forms" element={<Navigate to="/crm/socialmedia/leads" replace />} />
             <Route path="leads" element={<Leads />} />
             <Route path="inbox" element={<Inbox />} />
             <Route path="analytics" element={<Analytics />} />

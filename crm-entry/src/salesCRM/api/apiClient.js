@@ -1,9 +1,9 @@
 // src/api/apiClient.js
 import axios from "axios";
-const BASE_URL = window.location.hostname === "localhost"
-  ? "http://89.116.20.215:9096/api"
-  : "https://crm.metagensoft.com/api";
-
+import { clearAccessToken, getAccessToken } from "../../utils/authStorage";
+import { appCache } from "../../socialCRM/utils/cache";
+//const BASE_URL = "http://89.116.20.215:9096/api"
+const BASE_URL = "https://crmsales.metagensoft.com/api";
 // Create Axios instance
 const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -16,7 +16,7 @@ const apiClient = axios.create({
 // Request interceptor: attach token automatically
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("accessToken"); // use the key where you store your token
+    const token = getAccessToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -33,7 +33,8 @@ apiClient.interceptors.response.use(
       const { status } = error.response;
 
       if (status === 401) {
-        localStorage.clear(); // clear token
+        clearAccessToken();
+        appCache.clearAllUserCaches();
         window.location.href = "/login"; // redirect to login
       } else if (status === 403) {
         console.error("Forbidden - You do not have permission");

@@ -9,8 +9,11 @@ import api from "./apiClient";
  * Full brand analytics summary — totals + daily breakdown + platform breakdown + top posts.
  * GET /api/analytics/brand/summary?days=7
  */
-export const getBrandSummary = async (days = 7) => {
-  const res = await api.get("/analytics/brand/summary", { params: { days } });
+export const getBrandSummary = async (days = 7, platform = null, sortBy = "engagement") => {
+  const params = { days };
+  if (platform && platform !== "all") params.platform = platform;
+  if (sortBy && sortBy !== "engagement") params.sortBy = sortBy;
+  const res = await api.get("/analytics/brand/summary", { params });
   return res.data;
 };
 
@@ -56,6 +59,34 @@ export const getChannelMetrics = async (days = 30) => {
  * POST /api/analytics/sync
  */
 export const syncAnalytics = async () => {
-  const res = await api.post("/analytics/sync");
+  try {
+    const res = await api.post("/analytics/sync");
+    return res.data;
+  } catch (err) {
+    // Re-throw with the actual backend error message preserved
+    const msg = err?.response?.data?.message || err?.response?.data?.error || err.message || "Sync failed";
+    const enriched = new Error(msg);
+    enriched.response = err.response;
+    throw enriched;
+  }
+};
+
+/**
+ * Best posting times — ranked time slots based on historical engagement + reach.
+ * GET /api/analytics/brand/best-times?days=30
+ */
+export const getBestPostingTimes = async (days = 30) => {
+  const res = await api.get("/analytics/brand/best-times", { params: { days } });
+  return res.data;
+};
+
+/**
+ * Month-over-month growth metrics for the active brand.
+ * Compares current month vs previous month for followers, leads,
+ * engagement, reach, impressions, and posts.
+ * GET /api/analytics/brand/growth
+ */
+export const getGrowthMetrics = async () => {
+  const res = await api.get("/analytics/brand/growth");
   return res.data;
 };

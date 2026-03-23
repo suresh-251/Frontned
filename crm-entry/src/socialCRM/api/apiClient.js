@@ -1,4 +1,6 @@
 import axios from "axios";
+import { getAccessToken, clearAccessToken } from "../../utils/authStorage";
+import { appCache } from "../utils/cache";
 export const BASE_URL = "https://crmsocial.metagensoft.com/api";
 // Local dev override (requires `dotnet run` in Backend folder):
 // export const BASE_URL = "https://localhost:7015/api";
@@ -12,7 +14,7 @@ const api = axios.create({
 
 // 🔐 Attach JWT + active brand automatically
 api.interceptors.request.use(config => {
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -34,8 +36,10 @@ api.interceptors.response.use(
     const { status, data } = error.response;
 
     if (status === 401) {
-      // Redirect to Social CRM login page instead of admin
-     return Promise.reject(new Error("Not connected denied"));
+      clearAccessToken();
+      appCache.clearAllUserCaches();
+      window.location.href = "/login";
+      return Promise.reject(new Error("Session expired. Redirecting to login..."));
     }
 
     if (status === 403) {

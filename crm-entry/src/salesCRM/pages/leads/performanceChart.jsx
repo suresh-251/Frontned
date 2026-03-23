@@ -7,6 +7,17 @@ export function LeadsPerformanceChart({ onClose, leads }) {
   const [tooltip, setTooltip] = useState(null);
   const [activeRange, setActiveRange] = useState("30");
   const [customRange, setCustomRange] = useState({ from: offsetDay(29), to: todayStr() });
+  const [customTouched, setCustomTouched] = useState(false);
+
+  useEffect(() => {
+    if (activeRange !== "custom") {
+      setCustomTouched(false);
+      return;
+    }
+    if (!customTouched) {
+      setCustomRange({ from: "", to: "" });
+    }
+  }, [activeRange, customTouched]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => setAnimated(true), 60);
@@ -47,9 +58,9 @@ export function LeadsPerformanceChart({ onClose, leads }) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   const avg = data.length > 0 ? Math.round(total / data.length) : 0;
   const peak = data.length > 0 ? data.reduce((best, current) => (best.value > current.value ? best : current)) : { value: 0, label: "N/A" };
-  const W = 720;
-  const H = 220;
-  const PAD = { t: 20, r: 20, b: 40, l: 48 };
+  const W = 520;
+  const H = 180;
+  const PAD = { t: 14, r: 12, b: 28, l: 36 };
   const chartW = W - PAD.l - PAD.r;
   const chartH = H - PAD.t - PAD.b;
 
@@ -97,11 +108,25 @@ export function LeadsPerformanceChart({ onClose, leads }) {
             <div className="chart-custom-range">
               <div className="chart-custom-range__field">
                 <label>From</label>
-                <input type="date" value={customRange.from} onChange={(event) => setCustomRange((current) => ({ ...current, from: event.target.value }))} />
+                <input
+                  type="date"
+                  value={customRange.from}
+                  onChange={(event) => {
+                    setCustomTouched(true);
+                    setCustomRange((current) => ({ ...current, from: event.target.value }));
+                  }}
+                />
               </div>
               <div className="chart-custom-range__field">
                 <label>To</label>
-                <input type="date" value={customRange.to} onChange={(event) => setCustomRange((current) => ({ ...current, to: event.target.value }))} />
+                <input
+                  type="date"
+                  value={customRange.to}
+                  onChange={(event) => {
+                    setCustomTouched(true);
+                    setCustomRange((current) => ({ ...current, to: event.target.value }));
+                  }}
+                />
               </div>
               <div className="chart-custom-range__summary">{rangeInfo.label}</div>
             </div>
@@ -127,8 +152,8 @@ export function LeadsPerformanceChart({ onClose, leads }) {
                 <clipPath id="chartClip"><rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} /></clipPath>
                 <filter id="lineShadow" x="-5%" y="-20%" width="110%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#4f46e5" floodOpacity="0.18" /></filter>
               </defs>
-              {yTicks.map((tick, index) => <g key={index}><line x1={PAD.l} x2={W - PAD.r} y1={tick.y} y2={tick.y} stroke="#e8edf6" strokeWidth="1" /><text x={PAD.l - 8} y={tick.y + 4} textAnchor="end" fill="#94a3b8" fontFamily="Inter,sans-serif">{tick.val}</text></g>)}
-              {points.filter((_, index) => index % xStep === 0 || index === points.length - 1).map((point, index) => <text key={index} x={point.x} y={H - 8} textAnchor="middle" fill="#94a3b8" fontFamily="Inter,sans-serif">{point.label}</text>)}
+              {yTicks.map((tick, index) => <g key={index}><line x1={PAD.l} x2={W - PAD.r} y1={tick.y} y2={tick.y} stroke="#e8edf6" strokeWidth="1" /><text x={PAD.l - 6} y={tick.y + 3} textAnchor="end" fill="#94a3b8" fontFamily="Inter,sans-serif" fontSize="10">{tick.val}</text></g>)}
+              {points.filter((_, index) => index % xStep === 0 || index === points.length - 1).map((point, index) => <text key={index} x={point.x} y={H - 6} textAnchor="middle" fill="#94a3b8" fontFamily="Inter,sans-serif" fontSize="10">{point.label}</text>)}
               {data.length > 0 && <g clipPath="url(#chartClip)"><path d={areaD} fill="url(#areaGrad)" style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease 0.2s" }} /><path d={pathD} fill="none" stroke="#4f46e5" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" filter="url(#lineShadow)" style={{ strokeDasharray: 2000, strokeDashoffset: animated ? 0 : 2000, transition: "stroke-dashoffset 1.1s cubic-bezier(0.4,0,0.2,1) 0.1s" }} /></g>}
               {points.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="14" fill="transparent" style={{ cursor: data.length > 0 ? "crosshair" : "default" }} onMouseEnter={() => data.length > 0 && setTooltip({ ...point, idx: index })} />)}
               {tooltip && data.length > 0 && <g><line x1={tooltip.x} x2={tooltip.x} y1={PAD.t} y2={PAD.t + chartH} stroke="#4f46e5" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.4" /><circle cx={tooltip.x} cy={tooltip.y} r="5" fill="#4f46e5" stroke="white" strokeWidth="2.5" /></g>}

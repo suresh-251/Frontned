@@ -2,11 +2,9 @@ import hrApi from "./hr.api";
 
 /**
  * Employee Onboarding API Handlers
- * Handles multipart/form-data for document uploads and JSON for records.
  */
 export const onboardingApi = {
   // POST: Create a new onboarding record with files
-  // Note: 'data' should be a FormData object
   createOnboarding: (formData) => {
     return hrApi.post("api/EmployeeOnboarding", formData, {
       headers: {
@@ -23,6 +21,16 @@ export const onboardingApi = {
   // GET: Fetch a specific record by ID
   getOnboardingById: (id) => {
     return hrApi.get(`api/EmployeeOnboarding/${id}`);
+  },
+
+  // DELETE: Remove a record by ID
+  deleteOnboarding: (id) => {
+    return hrApi.delete(`api/EmployeeOnboarding/${id}`);
+  },
+
+  // GET: Download all documents as ZIP
+  downloadDocuments: (id) => {
+    return hrApi.get(`api/EmployeeOnboarding/${id}/documents`, { responseType: "blob" });
   },
 };
 
