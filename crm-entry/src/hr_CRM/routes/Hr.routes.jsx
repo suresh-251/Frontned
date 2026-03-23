@@ -29,6 +29,7 @@ import BudgetChange from "../pages/dept/BudgetChange";
 import ExitInterview from "../pages/Recruitment/ExitInterview";
 import EmployeeTraining from "../pages/Recruitment/EmployeeTraining";
 import DigitalSignature from "../pages/Recruitment/DigitalSignature";
+import JobOpening from "../pages/Recruitment/JobOpening";
 import Payroll from "../pages/PayRoll";
 import Learning from "../pages/Learning";
 import Profile from "../pages/Profile";
@@ -76,6 +77,7 @@ export default function HrRoutes() {
         {isAllowed("exit-interview") && <Route path="exit-interview" element={<ExitInterview />} />}
         {isAllowed("employee-training") && <Route path="employee-training" element={<EmployeeTraining />} />}
         {isAllowed("digital-signature") && <Route path="digital-signature" element={<DigitalSignature />} />}
+        {isAllowed("job-openings") && <Route path="job-openings" element={<JobOpening />} />}
 
         {/* PAYROLL */}
         {isAllowed("payroll") && <Route path="payroll" element={<Payroll />} />}

@@ -15,6 +15,15 @@ import { createUser, getUserById, updateUserProfile } from "../../api/users/user
 import { getBranches } from "../api/api.branch";
 import { getDepartments } from "../api/hr.dept";
 
+const EMPTY_FORM = {
+  username: "", email: "", domainCode: "", temporaryPassword: "",
+  roleCodes: [],
+  profile: { firstName: "", lastName: "", mobileNumber: "" },
+  employeeId: "", gender: "", assignedBranch: "",
+  department: "", designation: "", employmentType: "", payrollAmount: "",
+  _branchId: "",
+};
+
 export default function Employees() {
   const [users, setUsers]           = useState([]);
   const [domains, setDomains]       = useState([]);
@@ -23,7 +32,7 @@ export default function Employees() {
   const [allDepts, setAllDepts]     = useState([]);
   const [loading, setLoading]       = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null); // full detail from GET /api/users/{id}
+  const [selectedUser, setSelectedUser] = useState(null);
   const [viewLoading, setViewLoading]   = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -31,19 +40,11 @@ export default function Employees() {
   const [editProfile, setEditProfile] = useState(false);
   const [editForm, setEditForm]       = useState({});
   const [editSaving, setEditSaving]   = useState(false);
+  const [viewTab, setViewTab]         = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
-  const emptyForm = {
-    username: "", email: "", domainCode: "", temporaryPassword: "",
-    roleCodes: [],
-    profile: { firstName: "", lastName: "", mobileNumber: "" },
-    employeeId: "", gender: "", assignedBranch: "",
-    department: "", designation: "", employmentType: "", payrollAmount: "",
-    // internal (not sent to API — used for branch→dept cascade)
-    _branchId: "",
-  };
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(() => ({ ...EMPTY_FORM, profile: { ...EMPTY_FORM.profile }, roleCodes: [] }));
 
   // filtered departments based on selected branch
   const depts = useMemo(() => {
@@ -110,6 +111,7 @@ export default function Employees() {
   const openView = async (u) => {
     setViewLoading(true);
     setSelectedUser(null);
+    setViewTab(0);
     try {
       const full = await getUserById(u.userId);
       setSelectedUser(full);
@@ -129,7 +131,6 @@ export default function Employees() {
       onConfirm: async () => {
         try {
           setSubmitting(true);
-          // Strip internal _branchId before sending
           const { _branchId, ...payload } = form;
           await createUser(payload);
           toast.success("Employee Created");
@@ -141,12 +142,14 @@ export default function Employees() {
     });
   };
 
+  const resetForm = () => setForm({ ...EMPTY_FORM, profile: { ...EMPTY_FORM.profile }, roleCodes: [] });
+
   const closeModal = () => {
     setCreateOpen(false);
     setSelectedUser(null);
     setEditProfile(false);
     setEditForm({});
-    setForm(emptyForm);
+    resetForm();
   };
 
   const openEditProfile = () => {
@@ -224,7 +227,7 @@ export default function Employees() {
             />
           </div>
           {canCreate && (
-            <button onClick={() => { setForm(emptyForm); setCreateOpen(true); }}
+            <button onClick={() => { resetForm(); setSelectedUser(null); setEditProfile(false); setCreateOpen(true); }}
               className="bg-indigo-600 text-white py-2 px-4 rounded-lg text-xs font-bold shadow-sm hover:bg-indigo-700 transition-all active:scale-95">
               + Add New
             </button>
@@ -240,6 +243,7 @@ export default function Employees() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-[var(--bg-body)] border-b border-[var(--border-color)]">
+                <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 text-center">#</th>
                 <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Employee Info</th>
                 <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Contact & Email</th>
                 <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Department</th>
@@ -248,39 +252,45 @@ export default function Employees() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-color)]/30">
-              {currentData.map((u) => (
-                <tr key={u.userId} className="hover:bg-indigo-500/[0.02] transition-colors">
-                  <td className="px-5 py-1.5">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 bg-indigo-500/10 rounded-lg flex items-center justify-center text-indigo-500 text-[11px] font-bold uppercase border border-indigo-500/20">
-                        {u.username?.charAt(0)}
+              {currentData.map((u, idx) => {
+                const serialNo = (currentPage - 1) * itemsPerPage + idx + 1;
+                return (
+                  <tr key={u.userId} className="hover:bg-indigo-500/[0.02] transition-colors">
+                    <td className="px-3 py-1.5 text-center">
+                      <span className="text-[10px] font-black text-slate-400">{serialNo}</span>
+                    </td>
+                    <td className="px-5 py-1.5">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 bg-indigo-500/10 rounded-lg flex items-center justify-center text-indigo-500 text-[11px] font-bold uppercase border border-indigo-500/20">
+                          {u.username?.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-[12px] font-black text-[var(--text-main)] uppercase leading-none mb-0.5">{u.username}</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase">{u.email}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-[12px] font-black text-[var(--text-main)] uppercase leading-none mb-0.5">{u.username}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">UID: {u.userId}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-1.5 text-center">
-                    <p className="text-[11px] font-bold text-[var(--text-main)] opacity-80">{u.email}</p>
-                  </td>
-                  <td className="px-5 py-1.5 text-center">
-                    <span className="px-2.5 py-1 text-[9px] font-black uppercase rounded-md border bg-[var(--bg-body)] text-slate-400 border-[var(--border-color)]">
-                      {u.department || "Unassigned"}
-                    </span>
-                  </td>
-                  <td className="px-5 py-1.5 text-center">
-                    <span className={`px-2.5 py-1 text-[9px] font-black uppercase rounded-md border ${
-                      u.accountStatus === "Active" ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-slate-500/10 text-slate-400 border-slate-500/20"
-                    }`}>{u.accountStatus || "Active"}</span>
-                  </td>
-                  <td className="px-5 py-1.5 text-right">
-                    <button onClick={() => openView(u)} className="p-2 hover:bg-indigo-500/10 rounded-lg text-slate-400 hover:text-indigo-500 transition-all">
-                      <Eye size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-5 py-1.5 text-center">
+                      <p className="text-[11px] font-bold text-[var(--text-main)] opacity-80">{u.email}</p>
+                    </td>
+                    <td className="px-5 py-1.5 text-center">
+                      <span className="px-2.5 py-1 text-[9px] font-black uppercase rounded-md border bg-[var(--bg-body)] text-slate-400 border-[var(--border-color)]">
+                        {u.department || "Unassigned"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-1.5 text-center">
+                      <span className={`px-2.5 py-1 text-[9px] font-black uppercase rounded-md border ${
+                        u.accountStatus === "Active" ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                      }`}>{u.accountStatus || "Active"}</span>
+                    </td>
+                    <td className="px-5 py-1.5 text-right">
+                      <button onClick={() => openView(u)} className="p-2 hover:bg-indigo-500/10 rounded-lg text-slate-400 hover:text-indigo-500 transition-all">
+                        <Eye size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
@@ -305,16 +315,40 @@ export default function Employees() {
         {(createOpen || selectedUser || viewLoading) && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-[var(--bg-card)] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border border-[var(--border-color)] flex flex-col max-h-[90vh]">
+              className={`bg-[var(--bg-card)] w-full rounded-2xl shadow-2xl overflow-hidden border border-[var(--border-color)] flex flex-col max-h-[85vh] ${createOpen ? "max-w-lg" : "max-w-xl"}`}>
 
-              <div className="px-5 py-4 bg-[var(--bg-body)] border-b border-[var(--border-color)] flex justify-between items-center shrink-0">
-                <h3 className="text-[11px] font-black text-[var(--text-main)] uppercase tracking-widest">
-                  {createOpen ? "New Employee" : "Personnel Record"}
-                </h3>
+              <div className="px-4 py-3 bg-[var(--bg-body)] border-b border-[var(--border-color)] flex justify-between items-center shrink-0">
+                {!createOpen && selectedUser ? (
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm">{selectedUser.username?.charAt(0)?.toUpperCase()}</div>
+                    <div>
+                      <p className="text-[11px] font-black uppercase text-[var(--text-main)] leading-none">{selectedUser.username}</p>
+                      <p className="text-[8px] font-bold text-indigo-400 uppercase tracking-widest mt-0.5">{selectedUser.organization?.designation || selectedUser.organization?.department || "Employee"}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <h3 className="text-[11px] font-black text-[var(--text-main)] uppercase tracking-widest">New Employee</h3>
+                )}
                 <button type="button" onClick={closeModal} className="p-1.5 hover:bg-[var(--bg-card)] rounded-full text-slate-400 hover:text-red-500 transition-colors"><X size={16} /></button>
               </div>
 
-              <div className="p-4 overflow-y-auto custom-scrollbar">
+              {/* View Tabs — only shown in detail view */}
+              {!createOpen && selectedUser && !editProfile && (
+                <div className="flex bg-[var(--bg-body)] border-b border-[var(--border-color)] px-2 shrink-0">
+                  {[
+                    { label: "Personal",     icon: <User size={10} /> },
+                    { label: "Organisation", icon: <Building size={10} /> },
+                    { label: "Roles",        icon: <Shield size={10} /> },
+                  ].map((tab, i) => (
+                    <button key={i} onClick={() => setViewTab(i)}
+                      className={`flex items-center gap-1.5 px-3 py-2.5 text-[9px] font-black uppercase tracking-wider border-b-2 transition-all whitespace-nowrap ${viewTab === i ? "border-indigo-500 text-indigo-500" : "border-transparent text-slate-400 hover:text-[var(--text-main)]"}`}>
+                      {tab.icon} {tab.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="p-3 overflow-y-auto custom-scrollbar">
 
                 {/* VIEW LOADING */}
                 {viewLoading && !selectedUser && (
@@ -411,7 +445,7 @@ export default function Employees() {
                     </div>
 
                     <div className="col-span-2 mt-0.5">
-                      <InputField label="Temp Password" type="password" required value={form.temporaryPassword} onChange={e => setForm({ ...form, temporaryPassword: e.target.value })} icon={<Lock size={12} />} />
+                      <InputField label="Temp Password" type="password" autoComplete="new-password" required value={form.temporaryPassword} onChange={e => setForm({ ...form, temporaryPassword: e.target.value })} icon={<Lock size={12} />} />
                     </div>
 
                     <div className="col-span-2 pt-2 flex justify-end gap-2 mt-1 border-t border-[var(--border-color)]/30">
@@ -423,68 +457,57 @@ export default function Employees() {
                   </form>
                 )}
 
-                {/* DETAIL VIEW — from GET /api/users/{userId} */}
+                {/* DETAIL VIEW */}
                 {!createOpen && selectedUser && !editProfile && (
-                  <div className="space-y-3">
-                    {/* Identity */}
-                    <SectionTitle>Identity</SectionTitle>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <DetailCard label="System ID"    value={selectedUser.userId}                   icon={<Fingerprint size={12} />} />
-                      <DetailCard label="Username"     value={selectedUser.username}                 icon={<User size={12} />} />
-                      <DetailCard label="Email"        value={selectedUser.email}                    icon={<Mail size={12} />} />
-                      <DetailCard label="Status"       value={selectedUser.accountStatus}            />
-                      <DetailCard label="First Name"   value={selectedUser.profile?.firstName}       />
-                      <DetailCard label="Last Name"    value={selectedUser.profile?.lastName}        />
-                      <DetailCard label="Mobile"       value={selectedUser.profile?.mobileNumber}    icon={<Phone size={12} />} />
-                      <DetailCard label="Gender"       value={selectedUser.profile?.gender || selectedUser.organization?.gender} />
-                      <DetailCard label="Address"      value={selectedUser.profile?.addressLine1}    />
-                      <DetailCard label="City"         value={selectedUser.profile?.city}            />
-                      <DetailCard label="State"        value={selectedUser.profile?.state}           />
-                      <DetailCard label="Country"      value={selectedUser.profile?.country}         />
-                      <DetailCard label="Postal Code"  value={selectedUser.profile?.postalCode}      />
-                      <DetailCard label="Language"     value={selectedUser.profile?.languagePreference} />
-                      <DetailCard label="Timezone"     value={selectedUser.profile?.timezone}        />
-                      <DetailCard label="Member Since" value={selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : null} />
-                    </div>
-
-                    {/* Organisation */}
-                    <SectionTitle>Organisation</SectionTitle>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <DetailCard label="Employee ID"     value={selectedUser.organization?.employeeId}     />
-                      <DetailCard label="Domain"          value={selectedUser.organization?.domainName}     icon={<Globe size={12} />} />
-                      <DetailCard label="Department"      value={selectedUser.organization?.department}     icon={<Building size={12} />} />
-                      <DetailCard label="Designation"     value={selectedUser.organization?.designation}    icon={<Briefcase size={12} />} />
-                      <DetailCard label="Assigned Branch" value={selectedUser.organization?.assignedBranch} icon={<MapPin size={12} />} />
-                      <DetailCard label="Assigned Region" value={selectedUser.organization?.assignedRegion} />
-                      <DetailCard label="Employment Type" value={selectedUser.organization?.employmentType} />
-                      <DetailCard label="Work Shift"      value={selectedUser.organization?.workShift}      />
-                      <DetailCard label="Manager"         value={selectedUser.organization?.managerName}    />
-                      <DetailCard label="Payroll Amount"  value={selectedUser.organization?.payrollAmount != null ? `₹${selectedUser.organization.payrollAmount}` : null} />
-                      <DetailCard label="Remarks"         value={selectedUser.organization?.remarks}        />
-                    </div>
-
-                    {/* Roles */}
-                    {selectedUser.roles?.length > 0 && (
-                      <>
-                        <SectionTitle>Roles</SectionTitle>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedUser.roles.map((r, i) => (
-                            <span key={i} className="px-2.5 py-1 bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-lg text-[9px] font-black uppercase">{r}</span>
-                          ))}
-                        </div>
-                      </>
+                  <div>
+                    {viewTab === 0 && (
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <ViewField label="System ID"    value={selectedUser.userId} />
+                        <ViewField label="Username"     value={selectedUser.username} />
+                        <ViewField label="Status"       value={selectedUser.accountStatus} />
+                        <ViewField label="First Name"   value={selectedUser.profile?.firstName} />
+                        <ViewField label="Last Name"    value={selectedUser.profile?.lastName} />
+                        <ViewField label="Mobile"       value={selectedUser.profile?.mobileNumber} />
+                        <ViewField label="Email"        value={selectedUser.email} />
+                        <ViewField label="Gender"       value={selectedUser.profile?.gender || selectedUser.organization?.gender} />
+                        <ViewField label="Member Since" value={selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : null} />
+                        <ViewField label="City"         value={selectedUser.profile?.city} />
+                        <ViewField label="State"        value={selectedUser.profile?.state} />
+                        <ViewField label="Country"      value={selectedUser.profile?.country} />
+                        <ViewField label="Postal Code"  value={selectedUser.profile?.postalCode} />
+                        <ViewField label="Language"     value={selectedUser.profile?.languagePreference} />
+                        <ViewField label="Timezone"     value={selectedUser.profile?.timezone} />
+                        <div className="col-span-3"><ViewField label="Address" value={selectedUser.profile?.addressLine1} /></div>
+                      </div>
                     )}
-
-                    <div className="pt-2 flex justify-between mt-1 border-t border-[var(--border-color)]/30">
-                      <button type="button" onClick={openEditProfile}
-                        className="px-5 py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-md hover:bg-indigo-700 transition-all tracking-widest active:scale-95">
-                        Update Profile
-                      </button>
-                      <button type="button" onClick={closeModal}
-                        className="px-5 py-1.5 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 rounded-xl transition-all">
-                        Close
-                      </button>
-                    </div>
+                    {viewTab === 1 && (
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <ViewField label="Employee ID"     value={selectedUser.organization?.employeeId} />
+                        <ViewField label="Department"      value={selectedUser.organization?.department} />
+                        <ViewField label="Designation"     value={selectedUser.organization?.designation} />
+                        <ViewField label="Domain"          value={selectedUser.organization?.domainName} />
+                        <ViewField label="Branch"          value={selectedUser.organization?.assignedBranch} />
+                        <ViewField label="Region"          value={selectedUser.organization?.assignedRegion} />
+                        <ViewField label="Employment Type" value={selectedUser.organization?.employmentType} />
+                        <ViewField label="Work Shift"      value={selectedUser.organization?.workShift} />
+                        <ViewField label="Manager"         value={selectedUser.organization?.managerName} />
+                        <ViewField label="Payroll Amount"  value={selectedUser.organization?.payrollAmount != null ? `₹${selectedUser.organization.payrollAmount}` : null} />
+                        <div className="col-span-2"><ViewField label="Remarks" value={selectedUser.organization?.remarks} /></div>
+                      </div>
+                    )}
+                    {viewTab === 2 && (
+                      <div>
+                        {selectedUser.roles?.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedUser.roles.map((r, i) => (
+                              <span key={i} className="px-2.5 py-1 bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-lg text-[9px] font-black uppercase">{r}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 font-bold uppercase text-center py-6">No roles assigned</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -517,19 +540,38 @@ export default function Employees() {
                       <InputField label="Language Preference"  value={editForm.languagePreference} onChange={e => setEditForm(p => ({ ...p, languagePreference: e.target.value }))} />
                       <InputField label="Timezone"             value={editForm.timezone}           onChange={e => setEditForm(p => ({ ...p, timezone: e.target.value }))} />
                     </div>
-                    <div className="pt-2 flex justify-between mt-1 border-t border-[var(--border-color)]/30">
-                      <button type="button" onClick={submitEditProfile} disabled={editSaving}
-                        className="px-5 py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-md hover:bg-indigo-700 transition-all tracking-widest active:scale-95 disabled:opacity-50">
-                        {editSaving ? "Saving..." : "Save Changes"}
-                      </button>
-                      <button type="button" onClick={() => setEditProfile(false)}
-                        className="px-5 py-1.5 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 rounded-xl transition-all">
-                        Back
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>
+
+              {/* Sticky footer for view/edit modes */}
+              {!createOpen && selectedUser && (
+                <div className="px-4 py-2.5 border-t border-[var(--border-color)] bg-[var(--bg-body)] flex justify-between items-center shrink-0">
+                  {!editProfile ? (
+                    <>
+                      <button type="button" onClick={openEditProfile}
+                        className="px-4 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-lg shadow-md hover:bg-indigo-700 transition-all active:scale-95">
+                        Update Profile
+                      </button>
+                      <button type="button" onClick={closeModal}
+                        className="px-4 py-1.5 text-[9px] font-black uppercase text-slate-400 hover:text-slate-600 rounded-lg transition-all">
+                        Close
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" onClick={submitEditProfile} disabled={editSaving}
+                        className="px-4 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-lg shadow-md hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50">
+                        {editSaving ? "Saving..." : "Save Changes"}
+                      </button>
+                      <button type="button" onClick={() => setEditProfile(false)}
+                        className="px-4 py-1.5 text-[9px] font-black uppercase text-slate-400 hover:text-slate-600 rounded-lg transition-all">
+                        Back
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </motion.div>
           </div>
         )}
@@ -559,12 +601,19 @@ const SectionTitle = ({ children }) => (
   <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest border-b border-[var(--border-color)]/50 pb-1 mt-1">{children}</p>
 );
 
+const ViewField = ({ label, value }) => (
+  <div className="px-2 py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)]/50 rounded-lg">
+    <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{label}</p>
+    <p className="text-[10px] font-bold text-[var(--text-main)] truncate">{value ?? <span className="text-slate-400 italic">—</span>}</p>
+  </div>
+);
+
 const InputField = ({ label, icon, ...props }) => (
   <div className="space-y-0.5">
     <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">{label}</label>
     <div className="relative">
       {icon && <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>}
-      <input {...props} className={`w-full ${icon ? "pl-8" : "px-2.5"} py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-bold outline-none focus:ring-1 focus:ring-indigo-500/30 text-[var(--text-main)] transition-all`} />
+      <input autoComplete="off" {...props} className={`w-full ${icon ? "pl-8" : "px-2.5"} py-1.5 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-xl text-[10px] font-bold outline-none focus:ring-1 focus:ring-indigo-500/30 text-[var(--text-main)] transition-all`} />
     </div>
   </div>
 );

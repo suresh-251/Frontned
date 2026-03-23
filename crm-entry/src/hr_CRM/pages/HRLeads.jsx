@@ -8,7 +8,7 @@ import { jwtDecode } from "jwt-decode";
 import * as XLSX from "xlsx";
 import {
   Users, Eye, X, Search, ChevronLeft, ChevronRight,
-  Loader2, UserPlus, Check, RefreshCw, Download, MessageSquare
+  Loader2, UserPlus, Check, RefreshCw, Download, MessageSquare, ChevronDown, Filter
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
@@ -67,6 +67,7 @@ export default function HRLeads() {
   const { leads, loading, reload, assignLead, changeStatus, saveRemark } = useAssignedLeads();
 
   const [employees, setEmployees]   = useState([]);
+  const [hrOnlyUsers, setHrOnlyUsers] = useState([]);
   const [hrDeptId, setHrDeptId]     = useState(null);
 
   // Table state
@@ -75,6 +76,18 @@ export default function HRLeads() {
   const [currentPage, setCurrentPage] = useState(1);
   const [remarkMap, setRemarkMap]     = useState({});
   const [savingLeads, setSavingLeads] = useState(new Set());
+
+  // Filters
+  const [statusFilter, setStatusFilter]     = useState("");
+  const [dateFrom, setDateFrom]             = useState("");
+  const [dateTo, setDateTo]                 = useState("");
+  const [assignedToFilter, setAssignedToFilter] = useState("");
+
+  // Row selection & export
+  const [selectedRows, setSelectedRows]     = useState(new Set());
+  const [selectionMode, setSelectionMode]   = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef(null);
 
   // View lead detail
   const [viewLead, setViewLead] = useState(null);
@@ -101,9 +114,15 @@ export default function HRLeads() {
     try {
       const [depts, emps] = await Promise.all([
         getDepartments(),
-        getAdminUsers({ page: 1, pageSize: 200 })
+        getAdminUsers({ page: 1, pageSize: 200 }),
       ]);
-      setEmployees(emps?.users || emps || []);
+      const allEmps = emps?.users || emps || [];
+      setEmployees(allEmps);
+      // Client-side filter: only users whose roles array has at least one role starting with "HR"
+      const hrFiltered = allEmps.filter(emp =>
+        Array.isArray(emp.roles) && emp.roles.some(r => r.toUpperCase().startsWith("HR"))
+      );
+      setHrOnlyUsers(hrFiltered.length > 0 ? hrFiltered : allEmps);
 
       if (isManager) {
         const hrDept = depts.find(d =>
@@ -133,31 +152,66 @@ export default function HRLeads() {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  // Click-outside for export menu
+  useEffect(() => {
+    const h = (e) => { if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) setShowExportMenu(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
   // Filtered + paginated leads
   const filteredLeads = useMemo(() => {
     const q = searchTerm.toLowerCase();
-    return leads.filter(l =>
-      (l.name  || "").toLowerCase().includes(q) ||
-      (l.email || "").toLowerCase().includes(q) ||
-      (l.phone || "").includes(q)
-    );
-  }, [leads, searchTerm]);
+    return leads.filter(l => {
+      // Search
+      const matchSearch =
+        (l.name  || "").toLowerCase().includes(q) ||
+        (l.email || "").toLowerCase().includes(q) ||
+        (l.phone || "").includes(q);
+      if (!matchSearch) return false;
+
+      // Status filter
+      if (statusFilter && l.status !== statusFilter) return false;
+
+      // AssignedTo filter
+      if (assignedToFilter && String(l.assignedToUserId) !== String(assignedToFilter)) return false;
+
+      // Date range filter (based on metaCreatedAt or syncedAt)
+      const rawDate = l.metaCreatedAt || l.syncedAt;
+      if (dateFrom && rawDate) {
+        if (new Date(rawDate) < new Date(dateFrom)) return false;
+      }
+      if (dateTo && rawDate) {
+        // include the full "to" day
+        const toEnd = new Date(dateTo);
+        toEnd.setHours(23, 59, 59, 999);
+        if (new Date(rawDate) > toEnd) return false;
+      }
+
+      return true;
+    });
+  }, [leads, searchTerm, statusFilter, assignedToFilter, dateFrom, dateTo]);
 
   const totalPages    = Math.max(1, Math.ceil(filteredLeads.length / pageSize));
   const paginatedLeads = filteredLeads.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Reset page on search change
-  useEffect(() => { setCurrentPage(1); }, [searchTerm]);
+  // Reset page on filter/search change
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, statusFilter, assignedToFilter, dateFrom, dateTo]);
 
-  // Employee search for assign modal
+  // Employee search for assign modal — restricted to HR_USER only (server-filtered)
   const searchableEmployees = useMemo(() => {
+    if (targetUserId) return [];
     const q = empSearchQuery.toLowerCase().trim();
-    if (!q || targetUserId) return [];
-    return employees.filter(emp =>
+    if (!q) return hrOnlyUsers;
+    return hrOnlyUsers.filter(emp =>
       (emp.username || "").toLowerCase().includes(q) ||
       String(emp.userId || "").includes(q)
-    ).slice(0, 5);
-  }, [employees, empSearchQuery, targetUserId]);
+    );
+  }, [hrOnlyUsers, empSearchQuery, targetUserId]);
+
+  const isInvalidAssignQuery = useMemo(() =>
+    empSearchQuery.trim().length > 0 && !targetUserId && searchableEmployees.length === 0,
+  [empSearchQuery, targetUserId, searchableEmployees]);
 
   // Inline status change
   const handleStatusChange = async (leadId, newStatus) => {
@@ -199,18 +253,55 @@ export default function HRLeads() {
     }
   };
 
-  // Export
+  // Shared row-to-export-object mapper
+  const toExportRow = (l) => ({
+    ID: l.id, Name: l.name || "", Email: l.email || "", Phone: l.phone || "",
+    Status: l.status || "", "Assigned To": l.assignedToUserName || "",
+    Department: l.departmentName || "", Remark: l.remark || "",
+    "Created At": l.metaCreatedAt ? new Date(l.metaCreatedAt).toLocaleString() : "",
+  });
+
+  // Export all (filtered)
   const exportToExcel = () => {
     if (!filteredLeads.length) return;
-    const rows = filteredLeads.map(l => ({
-      ID: l.id, Name: l.name || "", Email: l.email || "", Phone: l.phone || "",
-      Status: l.status || "", "Assigned To": l.assignedToUserName || "",
-      Department: l.departmentName || "", Remark: l.remark || "",
-      "Created At": l.metaCreatedAt ? new Date(l.metaCreatedAt).toLocaleString() : "",
-    }));
+    const rows = filteredLeads.map(toExportRow);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "HR Leads");
     XLSX.writeFile(wb, `hr-leads-${new Date().toISOString().slice(0,10)}.xlsx`);
+    setShowExportMenu(false);
+  };
+
+  // Export selected rows only
+  const exportSelected = () => {
+    if (!selectedRows.size) return toast.error("No rows selected");
+    const rows = filteredLeads.filter(l => selectedRows.has(l.id)).map(toExportRow);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "HR Leads");
+    XLSX.writeFile(wb, `hr-leads-selected-${new Date().toISOString().slice(0,10)}.xlsx`);
+    setSelectionMode(false);
+    setSelectedRows(new Set());
+  };
+
+  // Cancel selection mode
+  const cancelSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedRows(new Set());
+  };
+
+  // Row selection helpers
+  const toggleRow = (id) => setSelectedRows(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+  const toggleAllPage = () => {
+    const pageIds = paginatedLeads.map(l => l.id);
+    const allSelected = pageIds.every(id => selectedRows.has(id));
+    setSelectedRows(prev => {
+      const n = new Set(prev);
+      pageIds.forEach(id => allSelected ? n.delete(id) : n.add(id));
+      return n;
+    });
   };
 
   return (
@@ -236,10 +327,25 @@ export default function HRLeads() {
               {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n} rows</option>)}
             </select>
 
-            <button onClick={exportToExcel}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
-              <Download className="w-3.5 h-3.5" /> Export
-            </button>
+            {/* Export dropdown */}
+            <div className="relative" ref={exportMenuRef}>
+              <button onClick={() => setShowExportMenu(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
+                <Download className="w-3.5 h-3.5" /> Export <ChevronDown className="w-3 h-3" />
+              </button>
+              {showExportMenu && (
+                <div className="absolute left-0 mt-1 z-50 w-48 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                  <button onClick={exportToExcel}
+                    className="w-full px-4 py-2.5 text-left text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-2">
+                    <Download className="w-3.5 h-3.5" /> Export All
+                  </button>
+                  <button onClick={() => { setSelectionMode(true); setShowExportMenu(false); }}
+                    className="w-full px-4 py-2.5 text-left text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-2 border-t border-gray-100">
+                    <Check className="w-3.5 h-3.5" /> Select &amp; Export
+                  </button>
+                </div>
+              )}
+            </div>
 
             <button onClick={() => isManager ? reload({ departmentId: hrDeptId }) : reload({})}
               className="p-1.5 text-gray-400 hover:text-indigo-600 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all" title="Refresh">
@@ -258,12 +364,80 @@ export default function HRLeads() {
           </div>
         </div>
 
+        {/* Filter Row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+
+          {/* Status filter */}
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600">
+            <option value="">All Statuses</option>
+            <option value="New">New</option>
+            <option value="Contacted">Contacted</option>
+            <option value="Qualified">Qualified</option>
+            <option value="Lost">Lost</option>
+          </select>
+
+          {/* AssignedTo filter (manager only) */}
+          {isManager && (
+            <select value={assignedToFilter} onChange={e => setAssignedToFilter(e.target.value)}
+              className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600 max-w-[160px]">
+              <option value="">All Assignees</option>
+              {hrOnlyUsers.map(emp => (
+                <option key={emp.userId} value={emp.userId}>{emp.username}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Date range */}
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600" />
+          <span className="text-xs text-gray-400">to</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600" />
+
+          {/* Clear filters */}
+          {(statusFilter || assignedToFilter || dateFrom || dateTo) && (
+            <button onClick={() => { setStatusFilter(""); setAssignedToFilter(""); setDateFrom(""); setDateTo(""); }}
+              className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+              <X className="w-3 h-3" /> Clear
+            </button>
+          )}
+        </div>
+
+        {/* Selection mode banner */}
+        {selectionMode && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-indigo-600 rounded-xl text-white">
+            <p className="text-sm font-medium">
+              {selectedRows.size === 0 ? "Check rows to select for export" : `${selectedRows.size} lead${selectedRows.size > 1 ? "s" : ""} selected`}
+            </p>
+            <div className="flex items-center gap-2">
+              <button onClick={exportSelected} disabled={!selectedRows.size}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white text-indigo-600 rounded-lg hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                <Download className="w-3.5 h-3.5" /> Export {selectedRows.size > 0 ? selectedRows.size : ""} Selected
+              </button>
+              <button onClick={cancelSelectionMode}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-indigo-500 hover:bg-indigo-400 rounded-lg transition-colors">
+                <X className="w-3.5 h-3.5" /> Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
+                  {selectionMode && (
+                    <th className="px-4 py-3 w-8">
+                      <input type="checkbox"
+                        checked={paginatedLeads.length > 0 && paginatedLeads.every(l => selectedRows.has(l.id))}
+                        onChange={toggleAllPage}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300 cursor-pointer" />
+                    </th>
+                  )}
                   {["Name", "Contact", "Status", "Assigned To", "Remark", "Created At", "Actions"].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
@@ -273,14 +447,14 @@ export default function HRLeads() {
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      <td colSpan={7} className="px-4 py-4">
+                      <td colSpan={selectionMode ? 8 : 7} className="px-4 py-4">
                         <div className="h-4 bg-gray-100 rounded w-full" />
                       </td>
                     </tr>
                   ))
                 ) : paginatedLeads.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-16 text-gray-400">
+                    <td colSpan={selectionMode ? 8 : 7} className="text-center py-16 text-gray-400">
                       <Users className="w-8 h-8 mx-auto mb-3 opacity-30" />
                       <p className="text-sm">No leads found</p>
                       <p className="text-xs mt-1">Adjust your search or check back later.</p>
@@ -288,7 +462,15 @@ export default function HRLeads() {
                   </tr>
                 ) : (
                   paginatedLeads.map(l => (
-                    <tr key={l.id} className="group hover:bg-gray-50/50 transition-colors">
+                    <tr key={l.id} className={`group hover:bg-gray-50/50 transition-colors ${selectionMode && selectedRows.has(l.id) ? "bg-indigo-50/40" : ""}`}>
+
+                      {/* Checkbox — only visible in selection mode */}
+                      {selectionMode && (
+                        <td className="px-4 py-3 w-8">
+                          <input type="checkbox" checked={selectedRows.has(l.id)} onChange={() => toggleRow(l.id)}
+                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300 cursor-pointer" />
+                        </td>
+                      )}
 
                       {/* Name */}
                       <td className="px-4 py-3">
@@ -296,7 +478,6 @@ export default function HRLeads() {
                           <Avatar name={l.name} />
                           <div>
                             <p className="text-sm font-semibold text-gray-800">{l.name || "—"}</p>
-                            <p className="text-xs text-gray-400">ID #{l.id}</p>
                           </div>
                         </div>
                       </td>
@@ -485,6 +666,9 @@ export default function HRLeads() {
                       />
                       <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
                     </div>
+                    {isInvalidAssignQuery && (
+                      <p className="text-xs text-rose-500 mt-1 px-1">Assign a valid HR User</p>
+                    )}
 
                     <AnimatePresence>
                       {showDropdown && searchableEmployees.length > 0 && (
