@@ -76,6 +76,7 @@ export const CONTACT_ROLE_OPTIONS = [
 
 export const card = { border: "1px solid #b8c7da", borderRadius: 14, background: "#fff", boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.28), 0 1px 2px rgba(15, 23, 42, 0.03)" };
 export const input = { width: "100%", minHeight: 36, padding: "8px 11px", border: "1px solid #b8c7da", borderRadius: 12, outline: "none", fontSize: 12, color: "#334155", background: "#fff", boxSizing: "border-box", boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 1px 2px rgba(15, 23, 42, 0.02)" };
+export const centeredComposerFieldStyle = { width: "80%", margin: "0 auto" };
 export const floatingWrap = { position: "relative", width: "100%", paddingTop: 10 };
 export const floatingInput = { ...input, minHeight: 44, padding: "12px 11px 7px" };
 export const floatingLabel = { position: "absolute", top: -7, left: 12, padding: "0 5px 0 0", fontSize: 9.5, fontWeight: 700, color: "#475569", background: "#ffffff", pointerEvents: "none", letterSpacing: "0.01em", lineHeight: 1.1 };

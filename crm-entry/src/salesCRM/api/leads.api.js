@@ -56,10 +56,14 @@ const leadsAPI = {
     return unwrapArrayPayload(response.data);
   },
 
-  getCommunications: async (leadId, type) => {
-    let url = `/Leads/${leadId}/communications`;
-    if (type) url += `?type=${type}`;
-    const response = await apiClient.get(url);
+  getCommunications: async ({ leadId, dealId, type } = {}) => {
+    const response = await apiClient.get("/Leads/communications", {
+      params: {
+        ...(leadId ? { leadId } : {}),
+        ...(dealId ? { dealId } : {}),
+        ...(type ? { type } : {}),
+      },
+    });
     return unwrapArrayPayload(response.data);
   },
 

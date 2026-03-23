@@ -1,71 +1,99 @@
 import "../styles/Leads.css";
 import "react-datepicker/dist/react-datepicker.css";
-import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DatePicker from "react-datepicker";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import dealsAPI from "../api/deals.api";
 import DealDetailsModal from "../components/DealDetailsModal.jsx";
+import DealFilterModal from "./deals/DealFilterModal";
+import { DealsKanban, DealsKanbanBoard } from "./deals/DealsKanbanViews";
+import {
+  DEFAULT_DEAL_FILTERS,
+  fmtCurrency,
+  fmtDate,
+  fmtDateTime,
+  formatStageLabel,
+  GET_ALL_DEALS_CLOSING_DATE,
+  getAccountName,
+  getContactName,
+  getCreatedTime,
+  getDealId,
+  getDealTitle,
+  getDealType,
+  normalizeAmount,
+  normalizeClosingDate,
+  normalizeFilterText,
+  normalizeStage,
+  SEARCH_FIELD_OPTIONS,
+  STAGE_META,
+  STAGE_ORDER,
+} from "./deals/shared";
 import Toast from "../utils/toast";
-import { IFilter, IKanban, IRows, ISearch, IX } from "./leads/shared";
-import { getInitials } from "./leads/utils";
+import { IChevR, IFilter, IKanban, IRows, ISearch, ISettings, IUpload, IX } from "./leads/shared";
+import { getInitials, parseCSV } from "./leads/utils";
 
-const STAGE_ORDER = [
-  "New",
-  "Prospect",
-  "Qualification",
-  "Qualified",
-  "Proposal",
-  "ProposalSent",
-  "Negotiation",
-  "ClosedWon",
-  "ClosedLost",
+const VISIBLE_DEAL_COLUMNS_STORAGE_KEY = "crm_visible_deal_columns";
+const DEAL_TABLE_COLUMNS = [
+  { key: "dealName", label: "Deal Name", always: true },
+  { key: "stage", label: "Stage", always: true },
+  { key: "type", label: "Type" },
+  { key: "probability", label: "Probability" },
+  { key: "expectedRevenue", label: "Expected Revenue" },
+  { key: "account", label: "Account" },
+  { key: "contact", label: "Contact" },
+  { key: "owner", label: "Owner" },
+  { key: "nextStep", label: "Next Step" },
+  { key: "leadSource", label: "Lead Source" },
+  { key: "campaignSource", label: "Campaign Source" },
+  { key: "closingDate", label: "Closing Date" },
+  { key: "createdTime", label: "Created Time" },
+  { key: "description", label: "Description" },
 ];
-
-const STAGE_META = {
-  New: { color: "#2563eb", bg: "#dbeafe" },
-  Prospect: { color: "#0284c7", bg: "#e0f2fe" },
-  Qualification: { color: "#7c3aed", bg: "#ede9fe" },
-  Qualified: { color: "#0f766e", bg: "#ccfbf1" },
-  Proposal: { color: "#b45309", bg: "#fef3c7" },
-  ProposalSent: { color: "#c2410c", bg: "#ffedd5" },
-  Negotiation: { color: "#ea580c", bg: "#fed7aa" },
-  ClosedWon: { color: "#166534", bg: "#dcfce7" },
-  ClosedLost: { color: "#b91c1c", bg: "#fee2e2" },
+const EMPTY_DEAL_FORM = {
+  dealName: "",
+  amount: "",
+  closingDate: null,
+  stage: "New",
+  type: "",
+  probability: 10,
+  nextStep: "",
+  leadSource: "",
+  campaignSource: "",
+  description: "",
 };
 
-const fmtCurrency = (value) => {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return "Rs. 0.00";
-  return `Rs. ${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const guessDealImportField = (header = "") => {
+  const normalized = String(header).toLowerCase().trim();
+  if (!normalized) return "";
+  if (normalized.includes("deal") && normalized.includes("name")) return "dealName";
+  if (normalized === "name" || normalized.includes("title")) return "dealName";
+  if (normalized.includes("amount") || normalized.includes("value")) return "amount";
+  if (normalized.includes("closing")) return "closingDate";
+  if (normalized.includes("close date")) return "closingDate";
+  if (normalized.includes("stage") || normalized.includes("status")) return "stage";
+  if (normalized.includes("type")) return "type";
+  if (normalized.includes("probability")) return "probability";
+  if (normalized.includes("next step")) return "nextStep";
+  if (normalized.includes("lead source")) return "leadSource";
+  if (normalized.includes("campaign source") || normalized.includes("campaign")) return "campaignSource";
+  if (normalized.includes("description") || normalized.includes("notes")) return "description";
+  return "";
 };
 
-const fmtDate = (value) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("en-GB");
-};
-const fmtDateTime = (value) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("en-GB");
+const normalizeImportedStage = (value = "") => {
+  const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+  const match = STAGE_ORDER.find((stage) => stage.toLowerCase() === normalized);
+  return match || "New";
 };
 
-const normalizeStage = (deal) => {
-  const raw = deal?.stage || deal?.dealStage || deal?.status || "New";
-  return STAGE_ORDER.includes(raw) ? raw : "New";
+const parseImportedDate = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
-const normalizeAmount = (deal) => Number(deal?.amount ?? deal?.dealValue ?? deal?.value ?? 0) || 0;
-const normalizeClosingDate = (deal) => deal?.closingDate || deal?.expectedCloseDate || deal?.closeDate || null;
-const getDealTitle = (deal) => deal?.dealName || deal?.title || deal?.subject || deal?.name || `Deal #${deal?.dealId ?? deal?.id ?? ""}`;
-const getDealId = (deal) => Number(deal?.dealId ?? deal?.id ?? 0);
-const getDealType = (deal) => deal?.type || deal?.dealType || "-";
-const formatStageLabel = (value = "") => String(value).replace(/([a-z])([A-Z])/g, "$1 $2").trim();
-const getAccountName = (deal) => deal?.accountName || deal?.account?.accountName || "-";
-const getContactName = (deal) => deal?.contactName || deal?.contact?.contactName || "-";
-const getCreatedTime = (deal) => deal?.createdTime || deal?.createdAt || null;
+
 const getStageSelectStyle = (stage) => {
   const meta = STAGE_META[stage] || { color: "#475569", bg: "#e2e8f0" };
   return {
@@ -83,395 +111,193 @@ const getStageSelectStyle = (stage) => {
   };
 };
 
-const SEARCH_FIELD_OPTIONS = [
-  { value: "all", label: "All Details" },
-  { value: "dealName", label: "Deal Name" },
-  { value: "accountName", label: "Account" },
-  { value: "contactName", label: "Contact" },
-  { value: "dealOwner", label: "Owner" },
-  { value: "stage", label: "Stage" },
-  { value: "nextStep", label: "Next Step" },
-  { value: "nextActivity", label: "Next Activity" },
-  { value: "leadSource", label: "Lead Source" },
-  { value: "campaignSource", label: "Campaign Source" },
-  { value: "tags", label: "Tags" },
-];
+function StageCell({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const menuRef = useRef(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0, maxHeight: 260 });
+  const meta = STAGE_META[value] || { color: "#475569", bg: "#e2e8f0" };
 
-const DEFAULT_DEAL_FILTERS = {
-  stage: "All",
-  owner: "",
-  priority: "All",
-  leadSource: "",
-  campaignSource: "",
-  minAmount: "",
-  maxAmount: "",
-  minExpectedRevenue: "",
-  maxExpectedRevenue: "",
-  closingDateFrom: "",
-  closingDateTo: "",
-};
-
-const RANGE_FILTER_SECTIONS = [
-  {
-    minKey: "minAmount",
-    maxKey: "maxAmount",
-    title: "Deal value",
-    helper: "Total value of the opportunity",
-    minPlaceholder: "Min amount",
-    maxPlaceholder: "Max amount",
-  },
-  {
-    minKey: "minExpectedRevenue",
-    maxKey: "maxExpectedRevenue",
-    title: "Expected revenue",
-    helper: "Forecasted earnings",
-    minPlaceholder: "Min expected revenue",
-    maxPlaceholder: "Max expected revenue",
-  },
-];
-
-const normalizeFilterText = (value) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-
-function DealFilterModal({ filters, onApply, onClose, activeFilterCount }) {
-  const [localFilters, setLocalFilters] = useState(filters);
+  const getMenuPos = (rect) => {
+    const preferredHeight = 260;
+    const gap = 8;
+    const viewportPadding = 12;
+    const minWidth = Math.max(132, rect.width);
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const availableAbove = rect.top - viewportPadding;
+    const openBelow = availableBelow >= 180 || availableBelow >= availableAbove;
+    const maxHeight = Math.max(160, Math.min(preferredHeight, openBelow ? availableBelow - gap : availableAbove - gap));
+    const top = openBelow ? Math.max(viewportPadding, rect.bottom + gap) : Math.max(viewportPadding, rect.top - maxHeight - gap);
+    const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - minWidth - viewportPadding);
+    return { top, left, width: minWidth, maxHeight };
+  };
 
   useEffect(() => {
-    setLocalFilters(filters);
-  }, [filters]);
+    if (!open || !ref.current) return;
+    setMenuPos(getMenuPos(ref.current.getBoundingClientRect()));
+  }, [open]);
 
-  const updateFilter = (key, value) => setLocalFilters((prev) => ({ ...prev, [key]: value }));
-
-  const handleApply = () => {
-    onApply(localFilters);
-    onClose();
-  };
-
-  const handleClear = () => setLocalFilters(DEFAULT_DEAL_FILTERS);
-  const panelBg = "var(--bg-card)";
-  const panelBorder = "var(--border-color)";
-  const primaryText = "var(--text-main)";
-  const mutedText = "color-mix(in srgb, var(--text-main) 70%, #94a3b8)";
-  const subtleText = "color-mix(in srgb, var(--text-main) 56%, #94a3b8)";
-  const fieldStyle = {
-    width: "100%",
-    padding: "8px 12px",
-    border: `1.5px solid ${panelBorder}`,
-    borderRadius: "6px",
-    fontSize: "13px",
-    background: panelBg,
-    color: primaryText,
-  };
-  const pairRow = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 };
-  const dateInputs = [
-    { key: "closingDateFrom", label: "From", placeholder: "From date" },
-    { key: "closingDateTo", label: "To", placeholder: "To date" },
-  ];
+  useEffect(() => {
+    if (!open) return;
+    const close = (event) => {
+      if (ref.current?.contains(event.target) || menuRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const reposition = () => {
+      if (!ref.current) return;
+      setMenuPos(getMenuPos(ref.current.getBoundingClientRect()));
+    };
+    document.addEventListener("mousedown", close);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]);
 
   return (
-    <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.35)", zIndex: 500 }} />
-      <div style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: "340px", background: panelBg, boxShadow: "4px 0 20px rgba(0,0,0,0.15)", zIndex: 501, display: "flex", flexDirection: "column", animation: "slideIn 0.25s ease-out", borderRight: `1px solid ${panelBorder}` }}>
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${panelBorder}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <IFilter s={16} c="#4f46e5" />
-            <span style={{ fontSize: "15px", fontWeight: 600, color: primaryText }}>Filter Deals</span>
-            {activeFilterCount > 0 && <span style={{ background: "#4f46e5", color: "#fff", fontSize: "11px", fontWeight: 700, padding: "2px 6px", borderRadius: "12px" }}>{activeFilterCount}</span>}
-          </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", borderRadius: 4 }}><IX s={16} c="#6b7280" /></button>
-        </div>
-
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
-          <div style={{ marginBottom: 20 }}>
-            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Deal Filters</h4>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Stage</label>
-              <select value={localFilters.stage} onChange={(event) => updateFilter("stage", event.target.value)} style={{ ...fieldStyle, cursor: "pointer" }}>
-                <option value="All">All Stages</option>
-                {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
-              </select>
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Priority</label>
-              <select value={localFilters.priority} onChange={(event) => updateFilter("priority", event.target.value)} style={{ ...fieldStyle, cursor: "pointer" }}>
-                <option value="All">All Priorities</option>
-                {["Low", "Medium", "High"].map((priority) => <option key={priority} value={priority}>{priority}</option>)}
-              </select>
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Owner</label>
-              <input type="text" value={localFilters.owner} onChange={(event) => updateFilter("owner", event.target.value)} placeholder="Owner name" style={fieldStyle} />
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Source</h4>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Lead Source</label>
-              <input type="text" value={localFilters.leadSource} onChange={(event) => updateFilter("leadSource", event.target.value)} placeholder="Lead source" style={fieldStyle} />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: mutedText, display: "block", marginBottom: 4 }}>Campaign Source</label>
-              <input type="text" value={localFilters.campaignSource} onChange={(event) => updateFilter("campaignSource", event.target.value)} placeholder="Campaign source" style={fieldStyle} />
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Amount Range</h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {RANGE_FILTER_SECTIONS.map((section) => (
-                <div key={section.minKey} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: primaryText }}>{section.title}</span>
-                    <span style={{ fontSize: 11, color: subtleText }}>{section.helper}</span>
-                  </div>
-                  <div style={pairRow}>
-                    <input
-                      type="number"
-                      value={localFilters[section.minKey]}
-                      onChange={(event) => updateFilter(section.minKey, event.target.value)}
-                      placeholder={section.minPlaceholder}
-                      style={fieldStyle}
-                    />
-                    <input
-                      type="number"
-                      value={localFilters[section.maxKey]}
-                      onChange={(event) => updateFilter(section.maxKey, event.target.value)}
-                      placeholder={section.maxPlaceholder}
-                      style={fieldStyle}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <h4 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: subtleText, margin: "0 0 12px 0" }}>Closing Date</h4>
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={pairRow}>
-                {dateInputs.map((input) => (
-                  <div key={input.key} style={{ display: "grid", gap: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: subtleText }}>{input.label}</span>
-                    <DatePicker
-                      selected={localFilters[input.key] ? new Date(localFilters[input.key]) : null}
-                      onChange={(date) => updateFilter(input.key, date ? date.toISOString() : "")}
-                      dateFormat="MMM d, yyyy"
-                      className="deal-datepicker"
-                      customInput={<input style={fieldStyle} placeholder={input.placeholder} />}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ padding: "16px 20px", borderTop: `1px solid ${panelBorder}`, display: "flex", gap: 8, background: "color-mix(in srgb, var(--bg-card) 78%, var(--bg-body))" }}>
-          <button onClick={handleClear} style={{ flex: 1, padding: "8px 12px", background: panelBg, border: `1.5px solid ${panelBorder}`, borderRadius: "6px", fontSize: "13px", fontWeight: 500, color: primaryText, cursor: "pointer" }}>Clear All</button>
-          <button onClick={handleApply} style={{ flex: 1, padding: "8px 12px", background: "#4f46e5", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#fff", cursor: "pointer" }}>Apply {activeFilterCount > 0 && `(${activeFilterCount})`}</button>
-        </div>
-      </div>
-
-      <style>{`
-        @keyframes slideIn {
-          from { transform: translateX(-100%); }
-          to { transform: translateX(0); }
-        }
-      `}</style>
-    </>
-  );
-}
-
-function DealsKanban({ deals, onOpenDeal, onDeleteDeal }) {
-  const grouped = useMemo(() => STAGE_ORDER.reduce((acc, stage) => {
-    acc[stage] = deals.filter((deal) => normalizeStage(deal) === stage);
-    return acc;
-  }, {}), [deals]);
-
-  return (
-    <>
-      <div className="kanban-board">
-        {STAGE_ORDER.map((stage) => {
-          const items = grouped[stage] || [];
-          const totalAmount = items.reduce((sum, deal) => sum + normalizeAmount(deal), 0);
-          const meta = STAGE_META[stage] || { color: "#334155", bg: "#e2e8f0" };
-          return (
-            <div key={stage} className="kanban-column" style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}>
-              <div className="kanban-column__header" style={{ alignItems: "flex-start" }}>
-                <div>
-                  <div className="kanban-column__label">{formatStageLabel(stage)}</div>
-                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "color-mix(in srgb, var(--text-main) 84%, #94a3b8)" }}>{fmtCurrency(totalAmount)}</div>
-                </div>
-                <span className="kanban-column__count">{items.length}</span>
-              </div>
-              <div className="kanban-column__list">
-                {!items.length ? (
-                  <div className="kanban-card" style={{ borderStyle: "dashed", color: "color-mix(in srgb, var(--text-main) 60%, #94a3b8)" }}>
-                    No deals in this stage
-                  </div>
-                ) : items.map((deal) => (
-                  <div key={deal.dealId || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} className="kanban-card" style={{ position: "relative", paddingRight: 36 }}>
-                    <button
-                      type="button"
-                      aria-label="Delete deal"
-                      onClick={(event) => { event.stopPropagation(); onDeleteDeal(deal); }}
-                      style={{ position: "absolute", top: 8, right: 8, border: "none", background: "color-mix(in srgb, var(--bg-card) 92%, #ffffff)", color: "#ef4444", cursor: "pointer", padding: 2, borderRadius: 6, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.08)" }}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                    <div style={{ display: "grid", gap: 8 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", alignItems: "center", gap: 8 }}>
-                        <button
-                          type="button"
-                          onClick={() => onOpenDeal(deal)}
-                          style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}
-                        >
-                          <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--text-main)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {getDealTitle(deal)}
-                          </div>
-                        </button>
-                      </div>
-
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "rgba(79,70,229,0.12)", color: "#4f46e5" }}>
-                          {formatStageLabel(stage)}
-                        </span>
-                        {deal.priority ? <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "color-mix(in srgb, var(--bg-card) 78%, #ffffff)", color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>{deal.priority}</span> : null}
-                      </div>
-
-                      <div style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Account</span> · {deal.accountName || "-"}</div>
-                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Contact</span> · {deal.contactName || "-"}</div>
-                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Owner</span> · {deal.dealOwner || "-"}</div>
-                      </div>
-
-                      <div style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Next Step</span> · {deal.nextStep || "-"}</div>
-                        <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}><span style={{ color: "color-mix(in srgb, var(--text-main) 56%, #94a3b8)" }}>Next Activity</span> · {deal.nextActivity || "-"}</div>
-                      </div>
-
-                      <div style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontSize: 12, color: "color-mix(in srgb, var(--text-main) 68%, #94a3b8)", whiteSpace: "nowrap" }}>
-                          Amount: <strong style={{ color: "var(--text-main)" }}>{fmtCurrency(normalizeAmount(deal))}</strong>
-                        </div>
-                        <div style={{ fontSize: 12, color: "color-mix(in srgb, var(--text-main) 68%, #94a3b8)", whiteSpace: "nowrap" }}>
-                          Expected: <strong style={{ color: "var(--text-main)" }}>{fmtCurrency(deal.expectedRevenue || 0)}</strong>
-                        </div>
-                        <div style={{ fontSize: 12, color: "#ef4444", whiteSpace: "nowrap" }}>{fmtDate(normalizeClosingDate(deal))}</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </>
-  );
-}
-
-function DealsKanbanBoard({ deals, onOpenDeal, onDeleteDeal, onStageDrop }) {
-  const grouped = useMemo(() => STAGE_ORDER.reduce((acc, stage) => {
-    acc[stage] = deals.filter((deal) => normalizeStage(deal) === stage);
-    return acc;
-  }, {}), [deals]);
-
-  return (
-    <div className="kanban-board">
-      {STAGE_ORDER.map((stage) => {
-        const items = grouped[stage] || [];
-        const totalExpected = items.reduce((sum, deal) => sum + Number(deal.expectedRevenue || 0), 0);
-        const meta = STAGE_META[stage] || { color: "#334155", bg: "#e2e8f0" };
-
-        return (
-          <div
-            key={stage}
-            className="kanban-column"
-            style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              const dealId = Number(event.dataTransfer.getData("text/plain") || 0);
-              if (dealId) onStageDrop?.(dealId, stage);
-            }}
-          >
-            <div className="kanban-column__header" style={{ alignItems: "flex-start" }}>
-              <div>
-                <div className="kanban-column__label">{formatStageLabel(stage)}</div>
-                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "color-mix(in srgb, var(--text-main) 84%, #94a3b8)" }}>{fmtCurrency(totalExpected)}</div>
-              </div>
-              <span className="kanban-column__count">{items.length}</span>
-            </div>
-            <div className="kanban-column__list">
-              {!items.length ? (
-                <div className="kanban-card" style={{ borderStyle: "dashed", color: "color-mix(in srgb, var(--text-main) 60%, #94a3b8)" }}>
-                  No deals in this stage
-                </div>
-              ) : items.map((deal) => (
-                <div
-                  key={getDealId(deal) || `${getDealTitle(deal)}-${getCreatedTime(deal) || "none"}`}
-                  className="kanban-card"
-                  style={{ position: "relative", paddingRight: 36 }}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData("text/plain", String(getDealId(deal)));
-                    event.dataTransfer.effectAllowed = "move";
-                  }}
-                >
-                  <button
-                    type="button"
-                    aria-label="Delete deal"
-                    onClick={(event) => { event.stopPropagation(); onDeleteDeal(deal); }}
-                    style={{ position: "absolute", top: 8, right: 8, border: "none", background: "color-mix(in srgb, var(--bg-card) 92%, #ffffff)", color: "#ef4444", cursor: "pointer", padding: 2, borderRadius: 6, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.08)" }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <button
-                      type="button"
-                      onClick={() => onOpenDeal(deal)}
-                      style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}
-                    >
-                      <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--text-main)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {getDealTitle(deal)}
-                      </div>
-                    </button>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "rgba(79,70,229,0.12)", color: "#4f46e5" }}>
-                        {formatStageLabel(stage)}
-                      </span>
-                      {getDealType(deal) !== "-" ? <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "color-mix(in srgb, var(--bg-card) 78%, #ffffff)", color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>{getDealType(deal)}</span> : null}
-                    </div>
-
-                    <div style={{ display: "grid", gap: 4 }}>
-                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Account · {getAccountName(deal)}</div>
-                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Contact · {getContactName(deal)}</div>
-                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Owner · {deal.dealOwner || "-"}</div>
-                    </div>
-
-                    <div style={{ display: "grid", gap: 4 }}>
-                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Next Step · {deal.nextStep || "-"}</div>
-                      <div style={{ fontSize: 12.5, color: "color-mix(in srgb, var(--text-main) 82%, #94a3b8)" }}>Source · {deal.leadSource || "-"}</div>
-                    </div>
-
-                    <div style={{ display: "grid", gap: 4 }}>
-                      <div style={{ fontSize: 12, color: "color-mix(in srgb, var(--text-main) 68%, #94a3b8)", whiteSpace: "nowrap" }}>
-                        Expected: <strong style={{ color: "var(--text-main)" }}>{fmtCurrency(deal.expectedRevenue || 0)}</strong>
-                      </div>
-                      <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>Created: {fmtDate(getCreatedTime(deal))}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+    <div className="status-cell" ref={ref} style={{ "--sales-stage-color": meta.color, "--sales-stage-bg": meta.bg }}>
+      <button className="status-pill sales-deals-stage-trigger" style={{ color: meta.color }} onClick={() => setOpen((current) => !current)}>
+        <span className="status-pill-label">{formatStageLabel(value)}</span>
+        <span className="status-pill-caret">
+          <svg width="10" height="10" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M6 8L10 12L14 8" stroke={meta.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
+      {open && createPortal(
+        <div className="status-menu" ref={menuRef} style={{ position: "fixed", top: menuPos.top, left: menuPos.left, minWidth: menuPos.width, maxHeight: menuPos.maxHeight, overflowY: "auto", zIndex: 5000, display: "grid", gap: 2, background: "var(--bg-card)", border: "1.5px solid var(--border-color)", borderRadius: 12, boxShadow: "0 18px 30px rgba(15, 23, 42, 0.14)", padding: 4, overscrollBehavior: "contain" }}>
+          {STAGE_ORDER.map((stage) => {
+            const optionMeta = STAGE_META[stage] || meta;
+            return (
+              <button key={stage} className={`status-opt ${value === stage ? "status-opt--on" : ""}`} onClick={() => { onChange(stage); setOpen(false); }}>
+                <span style={{ color: optionMeta.color }}>{formatStageLabel(stage)}</span>
+              </button>
+            );
+          })}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
+
+function DealManageColumnsPanel({ visibleCols, setVisibleCols, rowsPerPage, setRowsPerPage, wrapText, setWrapText, onClose }) {
+  const toggleColumn = (key, always) => {
+    if (always) return;
+    setVisibleCols((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{ width: 420 }} onClick={(event) => event.stopPropagation()}>
+        <div className="modal-hdr">
+          <div>
+            <div className="modal-title">Manage Columns</div>
+            <div className="modal-sub">Choose what appears in the deals table</div>
+          </div>
+          <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
+        </div>
+        <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gap: 14 }}>
+          <div style={{ display: "grid", gap: 10 }}>
+            {DEAL_TABLE_COLUMNS.map((column) => (
+              <label key={column.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#374151" }}>
+                <input type="checkbox" checked={column.always || visibleCols.includes(column.key)} disabled={column.always} onChange={() => toggleColumn(column.key, column.always)} />
+                {column.label}
+              </label>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Rows Per Page</label>
+              <select value={rowsPerPage} onChange={(event) => setRowsPerPage(Number(event.target.value))} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, background: "white" }}>
+                {[10, 20, 30, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#374151", marginTop: 24 }}>
+              <input type="checkbox" checked={wrapText} onChange={(event) => setWrapText(event.target.checked)} />
+              Wrap table text
+            </label>
+          </div>
+        </div>
+        <div className="modal-footer"><button className="btn-primary" onClick={onClose}>Done</button></div>
+      </div>
+    </div>
+  );
+}
+
+function DealImportModal({ onClose, onImport }) {
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState("");
+  const [importing, setImporting] = useState(false);
+
+  const handleFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setError("");
+    try {
+      setImporting(true);
+      const text = await file.text();
+      const { headers, rows } = parseCSV(text);
+      const dataRows = rows.filter((row) => Object.values(row || {}).some(Boolean));
+      const imported = dataRows.map((row) => {
+        const mapped = { ...EMPTY_DEAL_FORM };
+        headers.forEach((header) => {
+          const field = guessDealImportField(header);
+          if (!field) return;
+          mapped[field] = row[header] || "";
+        });
+        return {
+          ...mapped,
+          stage: normalizeImportedStage(mapped.stage),
+          probability: Number(mapped.probability || 0) || 0,
+          amount: Number(mapped.amount || 0) || 0,
+          closingDate: parseImportedDate(mapped.closingDate),
+        };
+      }).filter((item) => String(item.dealName || "").trim());
+
+      if (!imported.length) {
+        throw new Error("No valid deals found in the CSV.");
+      }
+
+      await onImport(imported);
+      onClose();
+    } catch (importError) {
+      setError(importError.message || "Failed to import file");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{ width: 520 }} onClick={(event) => event.stopPropagation()}>
+        <div className="modal-hdr">
+          <div>
+            <div className="modal-title">Import Deals</div>
+            <div className="modal-sub">Upload a CSV file to add deals in bulk</div>
+          </div>
+          <button className="icon-btn modal-close" onClick={onClose}><IX s={15} /></button>
+        </div>
+        <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gap: 14 }}>
+          <label style={{ display: "grid", gap: 10, padding: 18, border: "1.5px dashed #cbd5e1", borderRadius: 12, background: "#f8fafc", cursor: "pointer", textAlign: "center" }}>
+            <IUpload s={16} c="#4f46e5" />
+            <span>{fileName || "Choose CSV file"}</span>
+            <span className="drop-hint">deal name, amount, closing date, stage, type, probability, next step, lead source, campaign source</span>
+            <input type="file" accept=".csv" onChange={handleFile} style={{ display: "none" }} disabled={importing} />
+          </label>
+          {importing && <div style={{ fontSize: 12, color: "#475569" }}>Importing deals...</div>}
+          {error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
+        </div>
+        <div className="modal-footer"><button className="btn-ghost" onClick={onClose} disabled={importing}>Cancel</button></div>
+      </div>
+    </div>
+  );
+}
+
 
 export default function Deals() {
   const [deals, setDeals] = useState([]);
@@ -489,20 +315,28 @@ export default function Deals() {
   const [editForm, setEditForm] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [bulkStage, setBulkStage] = useState("New");
-  const [createForm, setCreateForm] = useState({
-    dealName: "",
-    amount: "",
-    closingDate: null,
-    stage: "New",
-    type: "",
-    probability: 10,
-    nextStep: "",
-    leadSource: "",
-    campaignSource: "",
-    description: "",
+  const [showBulkStagePicker, setShowBulkStagePicker] = useState(false);
+  const [createForm, setCreateForm] = useState(EMPTY_DEAL_FORM);
+  const [visibleCols, setVisibleCols] = useState(() => {
+    try {
+      const raw = localStorage.getItem(VISIBLE_DEAL_COLUMNS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      const allowed = new Set(DEAL_TABLE_COLUMNS.map((column) => column.key));
+      if (Array.isArray(parsed) && parsed.length) {
+        return parsed.filter((key) => allowed.has(key));
+      }
+    } catch {
+      return DEAL_TABLE_COLUMNS.filter((column) => !column.always || column.key).map((column) => column.key);
+    }
+    return DEAL_TABLE_COLUMNS.map((column) => column.key);
   });
+  const [rowsPerPage, setRowsPerPage] = useState(30);
+  const [page, setPage] = useState(1);
+  const [wrapText, setWrapText] = useState(false);
+  const [showColPanel, setShowColPanel] = useState(false);
 
   const loadDeals = async () => {
     setLoading(true);
@@ -512,6 +346,7 @@ export default function Deals() {
         owner: filters.owner || undefined,
         dateRangeFrom: filters.closingDateFrom || undefined,
         dateRangeTo: filters.closingDateTo || undefined,
+        closingDate: GET_ALL_DEALS_CLOSING_DATE,
       });
       setDeals(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -533,6 +368,10 @@ export default function Deals() {
       return next.size === current.size ? current : next;
     });
   }, [deals]);
+
+  useEffect(() => {
+    localStorage.setItem(VISIBLE_DEAL_COLUMNS_STORAGE_KEY, JSON.stringify(visibleCols));
+  }, [visibleCols]);
 
   const totalValue = useMemo(() => deals.reduce((sum, deal) => sum + normalizeAmount(deal), 0), [deals]);
   const convertedCount = deals.filter((deal) => normalizeStage(deal) === "ClosedWon").length;
@@ -610,7 +449,24 @@ export default function Deals() {
     () => filteredDeals.filter((deal) => selected.has(getDealId(deal))),
     [filteredDeals, selected]
   );
+  const activeCols = useMemo(
+    () => DEAL_TABLE_COLUMNS.filter((column) => column.always || visibleCols.includes(column.key)),
+    [visibleCols]
+  );
+  const paginatedDeals = useMemo(() => {
+    const start = (page - 1) * rowsPerPage;
+    return filteredDeals.slice(start, start + rowsPerPage);
+  }, [filteredDeals, page, rowsPerPage]);
   const allFilteredSelected = filteredDeals.length > 0 && filteredDeals.every((deal) => selected.has(getDealId(deal)));
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, searchField, filters, rowsPerPage, viewMode]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredDeals.length / rowsPerPage));
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredDeals.length, rowsPerPage, page]);
 
   const toggleAllFiltered = () => {
     setSelected((current) => {
@@ -636,7 +492,10 @@ export default function Deals() {
     });
   };
 
-  const clearSelection = () => setSelected(new Set());
+  const clearSelection = () => {
+    setSelected(new Set());
+    setShowBulkStagePicker(false);
+  };
 
   const handleOpenDeal = async (deal) => {
     const dealId = deal?.dealId || deal?.id;
@@ -781,7 +640,7 @@ export default function Deals() {
     const ids = selectedDeals.map((deal) => getDealId(deal)).filter(Boolean);
     if (!ids.length || !bulkStage) return;
     try {
-      await Promise.all(ids.map((id) => dealsAPI.updateStage(id, bulkStage)));
+      await dealsAPI.bulkUpdateStage(ids, bulkStage);
       setDeals((current) => current.map((deal) => (
         ids.includes(getDealId(deal)) ? { ...deal, stage: bulkStage, dealStage: bulkStage, status: bulkStage } : deal
       )));
@@ -799,7 +658,7 @@ export default function Deals() {
     const ok = window.confirm(`Delete ${ids.length} selected deal${ids.length > 1 ? "s" : ""}? This cannot be undone.`);
     if (!ok) return;
     try {
-      await Promise.all(ids.map((id) => dealsAPI.delete(id)));
+      await dealsAPI.bulkDelete(ids);
       setDeals((current) => current.filter((deal) => !ids.includes(getDealId(deal))));
       Toast.success(`Deleted ${ids.length} deal${ids.length > 1 ? "s" : ""}`);
       clearSelection();
@@ -830,23 +689,41 @@ export default function Deals() {
       });
       Toast.success("Deal created");
       setCreateOpen(false);
-      setCreateForm({
-        dealName: "",
-        amount: "",
-        closingDate: null,
-        stage: "New",
-        type: "",
-        probability: 10,
-        nextStep: "",
-        leadSource: "",
-        campaignSource: "",
-        description: "",
-      });
+      setCreateForm(EMPTY_DEAL_FORM);
       loadDeals();
     } catch (error) {
       Toast.error(error?.response?.data?.message || "Failed to create deal");
     } finally {
       setCreateSaving(false);
+    }
+  };
+
+  const handleImportDeals = async (importedDeals) => {
+    const results = await Promise.allSettled(importedDeals.map((deal) => dealsAPI.create({
+      dealName: deal.dealName,
+      amount: Number(deal.amount || 0),
+      closingDate: deal.closingDate ? deal.closingDate.toISOString() : null,
+      stage: deal.stage || "New",
+      type: deal.type || "",
+      probability: Number(deal.probability || 0),
+      nextStep: deal.nextStep || "",
+      leadSource: deal.leadSource || "",
+      campaignSource: deal.campaignSource || "",
+      description: deal.description || "",
+    })));
+
+    const succeeded = results.filter((result) => result.status === "fulfilled").length;
+    const failed = results.length - succeeded;
+
+    if (succeeded) {
+      Toast.success(`Imported ${succeeded} deal${succeeded > 1 ? "s" : ""}`);
+      await loadDeals();
+    }
+    if (failed) {
+      Toast.error(`${failed} deal${failed > 1 ? "s" : ""} failed to import`);
+    }
+    if (!succeeded && failed) {
+      throw new Error("No deals were imported.");
     }
   };
 
@@ -877,6 +754,12 @@ export default function Deals() {
             </div>
           </div>
           <div className="toolbar-divider" />
+          {viewMode === "list" ? <button className={`icon-btn-outline ${showColPanel ? "icon-btn-outline--on" : ""}`} onClick={() => setShowColPanel(true)}><ISettings s={13} /></button> : null}
+          {viewMode === "list" ? <div className="toolbar-divider" /> : null}
+          <button className="btn-ghost" onClick={() => setShowImport(true)} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <IUpload s={12} />Import
+          </button>
+          <div className="toolbar-divider" />
           <button className="btn-primary" onClick={() => setCreateOpen(true)} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Plus size={14} />Add Deal
           </button>
@@ -886,14 +769,23 @@ export default function Deals() {
       {viewMode === "list" && selectedDeals.length ? (
         <div className="table-card-shell" style={{ marginBottom: 16 }}>
           <div className="table-card" style={{ padding: "12px 14px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-main)" }}>{selectedDeals.length} deal{selectedDeals.length > 1 ? "s" : ""} selected</div>
-            <button className="btn-ghost" onClick={handleExportSelected}>Export</button>
-            <select value={bulkStage} onChange={(event) => setBulkStage(event.target.value)} style={{ minWidth: 150, padding: "8px 10px", border: "1.5px solid var(--cborder)", borderRadius: 10, background: "var(--cs)", color: "var(--text-main)" }}>
-              {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
-            </select>
-            <button className="btn-ghost" onClick={handleBulkStageUpdate}>Change stage</button>
-            <button className="btn-ghost" onClick={handleBulkDelete} style={{ color: "#dc2626", borderColor: "color-mix(in srgb, #dc2626 18%, var(--cborder))" }}>Delete</button>
-            <button className="btn-ghost" onClick={clearSelection}>Clear</button>
+            <div className="bulk-cnt sales-leads-bulk-count" style={{ fontSize: 13, fontWeight: 800, color: "var(--text-main)" }}>{selectedDeals.length} deal{selectedDeals.length > 1 ? "s" : ""} selected</div>
+            {showBulkStagePicker ? (
+              <>
+                <div style={{ display: "inline-flex", alignItems: "stretch", border: "1.5px solid var(--cborder)", borderRadius: 10, overflow: "hidden", background: "var(--cs)" }}>
+                  <select className="bulk-select sales-leads-bulk-select" value={bulkStage} onChange={(event) => setBulkStage(event.target.value)} style={{ border: "none", borderRight: "1.5px solid var(--cborder)", borderRadius: 0, minWidth: 170, background: "transparent" }}>
+                    {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
+                  </select>
+                  <button className="bulk-btn sales-leads-bulk-button" onClick={handleBulkStageUpdate} style={{ border: "none", borderRadius: 0, boxShadow: "none" }}>Change stage</button>
+                </div>
+                <button className="bulk-btn sales-leads-bulk-button" onClick={() => setShowBulkStagePicker(false)}>Cancel</button>
+              </>
+            ) : (
+              <button className="bulk-btn sales-leads-bulk-button" onClick={() => setShowBulkStagePicker(true)}>Change stage</button>
+            )}
+            <button className="bulk-btn sales-leads-bulk-button" onClick={handleExportSelected}>Export</button>
+            <button className="bulk-btn bulk-btn--danger sales-leads-bulk-button" onClick={handleBulkDelete}>Delete</button>
+            <button className="bulk-btn sales-leads-bulk-button" onClick={clearSelection}>Clear</button>
           </div>
         </div>
       ) : null}
@@ -902,100 +794,90 @@ export default function Deals() {
         <div className="table-card-shell sales-deals-table-shell">
           <div className="table-card sales-deals-table-card">
             <div className="table-scroll sales-deals-table-scroll">
-              <table className="table sales-deals-table">
+              <table className={`table sales-deals-table ${wrapText ? "table--wrap" : ""}`}>
                 <thead>
                   <tr className="thead-row">
                     <th className="th th-check"><input type="checkbox" className="cb" checked={allFilteredSelected} onChange={toggleAllFiltered} /></th>
-                    <th className="th sales-deals-table-head-cell">Deal Name</th>
-                    <th className="th sales-deals-table-head-cell">Stage</th>
-                    <th className="th sales-deals-table-head-cell">Type</th>
-                    <th className="th sales-deals-table-head-cell">Probability</th>
-                    <th className="th sales-deals-table-head-cell">Expected Revenue</th>
-                    <th className="th sales-deals-table-head-cell">Account</th>
-                    <th className="th sales-deals-table-head-cell">Contact</th>
-                    <th className="th sales-deals-table-head-cell">Owner</th>
-                    <th className="th sales-deals-table-head-cell th-wrap-limit">Next Step</th>
-                    <th className="th sales-deals-table-head-cell">Lead Source</th>
-                    <th className="th sales-deals-table-head-cell">Campaign Source</th>
-                    <th className="th sales-deals-table-head-cell">Created Time</th>
-                    <th className="th sales-deals-table-head-cell th-wrap-limit">Description</th>
+                    {activeCols.map((col) => <th key={col.key} className={`th sales-deals-table-head-cell ${col.key === "nextStep" ? "th-next-step" : ""} ${col.key === "description" ? "th-wrap-limit" : ""}`}>{col.label}</th>)}
                     <th className="th th-actions sales-deals-table-head-cell">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? <tr><td className="td" colSpan={17}><span className="cell-txt">Loading deals...</span></td></tr> : null}
-                  {!loading && !deals.length ? <tr><td className="td" colSpan={17}><span className="cell-txt">No deals available yet. Convert a lead to see it here.</span></td></tr> : null}
-                  {!loading && filteredDeals.map((deal) => {
+                  {loading ? <tr><td className="td" colSpan={activeCols.length + 2}><span className="cell-txt">Loading deals...</span></td></tr> : null}
+                  {!loading && !deals.length ? <tr><td className="td" colSpan={activeCols.length + 2}><span className="cell-txt">No deals available yet. Convert a lead to see it here.</span></td></tr> : null}
+                  {!loading && paginatedDeals.map((deal) => {
                     const dealStage = normalizeStage(deal);
                     const dealStageMeta = STAGE_META[dealStage] || { color: "#475569", bg: "#e2e8f0" };
                     const dealInitials = getInitials(getDealTitle(deal));
                     const dealId = getDealId(deal);
                     return (
-                    <tr key={dealId || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} className="row sales-deals-table-row">
+                    <tr key={dealId || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} className={`row sales-deals-table-row ${selected.has(dealId) ? "row--sel" : ""}`}>
                       <td className="td td-check"><input type="checkbox" className="cb" checked={selected.has(dealId)} onChange={() => toggleOne(dealId)} /></td>
-                      <td className="td td-name">
-                        <div className="name-cell sales-deals-name-cell">
-                          <div className="avatar sales-deals-avatar" style={{ background: dealStageMeta.color }}>{dealInitials}</div>
-                          <div className="name-block sales-deals-name-block">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDeal(deal)}
-                              className="name-link sales-deals-name-link"
-                              style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer" }}
-                            >
-                              {getDealTitle(deal)}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDeal(deal)}
-                              className="name-link sales-deals-name-link"
-                              style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", marginTop: 4 }}
-                              title={`Open ${getDealTitle(deal)} details`}
-                              aria-label={`Open ${getDealTitle(deal)} details`}
-                            >
-                              <span className="sales-leads-name-link__meta">View</span>
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="td td-status">
-                        <select
-                          value={dealStage}
-                          onChange={(event) => handleStageUpdate(dealId, event.target.value)}
-                          style={getStageSelectStyle(dealStage)}
-                        >
-                          {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
-                        </select>
-                      </td>
-                      <td className="td"><span className="cell-txt">{getDealType(deal)}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.probability ?? "-"}</span></td>
-                      <td className="td"><span className="cell-txt">{fmtCurrency(deal.expectedRevenue || 0)}</span></td>
-                      <td className="td"><span className="cell-txt">{getAccountName(deal)}</span></td>
-                      <td className="td"><span className="cell-txt">{getContactName(deal)}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.dealOwner || "-"}</span></td>
-                      <td className="td td-wrap-limit"><span className="cell-txt">{deal.nextStep || "-"}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.leadSource || "-"}</span></td>
-                      <td className="td"><span className="cell-txt">{deal.campaignSource || "-"}</span></td>
-                      <td className="td"><span className="date-txt">{fmtDateTime(getCreatedTime(deal))}</span></td>
-                      <td className="td td-wrap-limit"><span className="cell-txt">{deal.description || "-"}</span></td>
+                      {activeCols.map((col) => {
+                        switch (col.key) {
+                          case "dealName":
+                            return (
+                              <td key="dealName" className="td td-name">
+                                <div className="name-cell sales-deals-name-cell">
+                                  <div className="avatar sales-deals-avatar" style={{ background: dealStageMeta.color }}>{dealInitials}</div>
+                                  <div className="name-block sales-deals-name-block">
+                                    <button type="button" onClick={() => handleOpenDeal(deal)} className="name-link sales-deals-name-link" style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer" }}>
+                                      {getDealTitle(deal)}
+                                    </button>
+                                    <button type="button" onClick={() => handleOpenDeal(deal)} className="name-link sales-deals-name-link" style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", marginTop: 4 }} title={`Open ${getDealTitle(deal)} details`} aria-label={`Open ${getDealTitle(deal)} details`}>
+                                      <span className="sales-leads-name-link__meta">View <IChevR s={11} /></span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            );
+                          case "stage":
+                            return <td key="stage" className="td td-status"><StageCell value={dealStage} onChange={(stage) => handleStageUpdate(dealId, stage)} /></td>;
+                          case "type":
+                            return <td key="type" className="td"><span className="cell-txt">{getDealType(deal)}</span></td>;
+                          case "probability":
+                            return <td key="probability" className="td"><span className="cell-txt">{deal.probability ?? "-"}</span></td>;
+                          case "expectedRevenue":
+                            return <td key="expectedRevenue" className="td"><span className="cell-txt">{fmtCurrency(deal.expectedRevenue || 0)}</span></td>;
+                          case "account":
+                            return <td key="account" className="td"><span className="cell-txt">{getAccountName(deal)}</span></td>;
+                          case "contact":
+                            return <td key="contact" className="td"><span className="cell-txt">{getContactName(deal)}</span></td>;
+                          case "owner":
+                            return <td key="owner" className="td"><span className="cell-txt">{deal.dealOwner || "-"}</span></td>;
+                          case "nextStep":
+                            return <td key="nextStep" className="td td-next-step"><span className="cell-txt">{deal.nextStep || "-"}</span></td>;
+                          case "leadSource":
+                            return <td key="leadSource" className="td"><span className="cell-txt">{deal.leadSource || "-"}</span></td>;
+                          case "campaignSource":
+                            return <td key="campaignSource" className="td"><span className="cell-txt">{deal.campaignSource || "-"}</span></td>;
+                          case "closingDate":
+                            return <td key="closingDate" className="td"><span className="date-txt">{fmtDate(normalizeClosingDate(deal))}</span></td>;
+                          case "createdTime":
+                            return <td key="createdTime" className="td"><span className="date-txt">{fmtDateTime(getCreatedTime(deal))}</span></td>;
+                          case "description":
+                            return <td key="description" className="td td-wrap-limit"><span className="cell-txt">{deal.description || "-"}</span></td>;
+                          default:
+                            return null;
+                        }
+                      })}
                       <td className="td td-actions">
                         <button
                           type="button"
                           aria-label="Edit deal"
                           onClick={() => handleOpenEdit(deal)}
-                          className="act-btn act-btn--edit"
-                          style={{ border: "none", background: "transparent", color: "#2563eb", cursor: "pointer", marginRight: 8 }}
+                          className="act-btn act-btn--edit sales-deals-action-button"
+                          style={{ marginRight: 8 }}
                         >
-                          <Pencil size={16} />
+                          <Pencil size={15} strokeWidth={1.9} />
                         </button>
                         <button
                           type="button"
                           aria-label="Delete deal"
                           onClick={() => handleDeleteDeal(deal)}
-                          className="act-btn act-btn--edit sales-deals-delete-button"
-                          style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer" }}
+                          className="act-btn act-btn--edit sales-deals-action-button sales-deals-delete-button"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={15} strokeWidth={1.9} />
                         </button>
                       </td>
                     </tr>
@@ -1003,9 +885,24 @@ export default function Deals() {
                 </tbody>
               </table>
             </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 14px", borderTop: "1px solid #eef2f7" }}>
+              <div style={{ fontSize: 12, color: "#64748b" }}>
+                Showing {filteredDeals.length ? (page - 1) * rowsPerPage + 1 : 0}-{Math.min(page * rowsPerPage, filteredDeals.length)} of {filteredDeals.length} deals
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button className="btn-ghost" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>Prev</button>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-main)" }}>
+                  Page {page} of {Math.max(1, Math.ceil(filteredDeals.length / rowsPerPage))}
+                </div>
+                <button className="btn-ghost" onClick={() => setPage((current) => Math.min(Math.max(1, Math.ceil(filteredDeals.length / rowsPerPage)), current + 1))} disabled={page >= Math.max(1, Math.ceil(filteredDeals.length / rowsPerPage))}>Next</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
+
+      {showColPanel ? <DealManageColumnsPanel visibleCols={visibleCols} setVisibleCols={setVisibleCols} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} wrapText={wrapText} setWrapText={setWrapText} onClose={() => setShowColPanel(false)} /> : null}
+      {showImport ? <DealImportModal onClose={() => setShowImport(false)} onImport={handleImportDeals} /> : null}
 
       {detailOpen ? <DealDetailsModal deal={detailDeal} loading={detailLoading} onClose={() => setDetailOpen(false)} /> : null}
 
@@ -1021,7 +918,9 @@ export default function Deals() {
             <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "14px", overflowY: "auto" }}>
               {[
                 { key: "dealName", label: "Deal Name *" },
+                { key: "stage", label: "Stage", as: "select" },
                 { key: "amount", label: "Amount", type: "number" },
+                { key: "closingDate", label: "Closing Date", as: "datetime" },
                 { key: "type", label: "Type" },
                 { key: "probability", label: "Probability", type: "number" },
                 { key: "nextStep", label: "Next Step", span: 2 },
@@ -1032,33 +931,31 @@ export default function Deals() {
               ].map((field) => (
                 <div key={field.key} style={{ gridColumn: field.span === 2 ? "1 / -1" : "auto" }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>{field.label}</label>
-                  <input
-                    type={field.type || "text"}
-                    value={editForm[field.key]}
-                    onChange={(event) => setEditForm((current) => ({ ...current, [field.key]: event.target.value }))}
-                    style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }}
-                  />
+                  {field.as === "select" ? (
+                    <select value={editForm.stage} onChange={(event) => setEditForm((current) => ({ ...current, stage: event.target.value }))} style={dealModalSelectStyle}>
+                      {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
+                    </select>
+                  ) : field.as === "datetime" ? (
+                    <DatePicker
+                      selected={editForm.closingDate}
+                      onChange={(date) => setEditForm((current) => ({ ...current, closingDate: date }))}
+                      showTimeSelect
+                      timeIntervals={15}
+                      dateFormat="MMM d, yyyy h:mm aa"
+                      className="deal-datepicker"
+                      wrapperClassName="deal-datepicker-wrapper"
+                      customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
+                    />
+                  ) : (
+                    <input
+                      type={field.type || "text"}
+                      value={editForm[field.key]}
+                      onChange={(event) => setEditForm((current) => ({ ...current, [field.key]: event.target.value }))}
+                      style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }}
+                    />
+                  )}
                 </div>
               ))}
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Stage</label>
-                <select value={editForm.stage} onChange={(event) => setEditForm((current) => ({ ...current, stage: event.target.value }))} style={{ ...getStageSelectStyle(editForm.stage), width: "100%" }}>
-                  {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
-                </select>
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Closing Date</label>
-                <DatePicker
-                  selected={editForm.closingDate}
-                  onChange={(date) => setEditForm((current) => ({ ...current, closingDate: date }))}
-                  showTimeSelect
-                  timeIntervals={15}
-                  dateFormat="MMM d, yyyy h:mm aa"
-                  className="deal-datepicker"
-                  wrapperClassName="deal-datepicker-wrapper"
-                  customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
-                />
-              </div>
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Description</label>
                 <textarea
@@ -1079,63 +976,67 @@ export default function Deals() {
 
       {createOpen ? (
         <div className="overlay" onClick={() => setCreateOpen(false)}>
-          <div className="modal" style={{ width: 620, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(event) => event.stopPropagation()}>
+          <div className="modal" style={{ width: 680, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(event) => event.stopPropagation()}>
             <div className="modal-hdr">
               <div>
                 <div className="modal-title">Add Deal</div>
-                <div className="modal-sub">Create a new deal using the API fields</div>
               </div>
               <button className="icon-btn modal-close" onClick={() => setCreateOpen(false)}><IX s={15} /></button>
             </div>
             <div className="modal-body" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "14px", overflowY: "auto" }}>
               {[
-                { key: "dealName", label: "Deal Name *", span: 2 },
+                { key: "dealName", label: "Deal Name *" },
+                { key: "stage", label: "Stage", as: "select" },
                 { key: "amount", label: "Amount", type: "number" },
+                { key: "closingDate", label: "Closing Date", as: "datetime" },
                 { key: "type", label: "Type" },
                 { key: "probability", label: "Probability", type: "number" },
-                { key: "nextStep", label: "Next Step", span: 2 },
+                { key: "nextStep", label: "Next Step", as: "textarea", span: 2 },
                 { key: "leadSource", label: "Lead Source" },
                 { key: "campaignSource", label: "Campaign Source" },
               ].map((field) => (
                 <div key={field.key} style={{ gridColumn: field.span === 2 ? "1 / -1" : "auto" }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>{field.label}</label>
-                  <input
-                    type={field.type || "text"}
-                    value={createForm[field.key]}
-                    onChange={(event) => setCreateForm((current) => ({ ...current, [field.key]: event.target.value }))}
-                    style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }}
-                  />
+                  {field.as === "textarea" ? (
+                    <textarea
+                      rows={3}
+                      value={createForm[field.key]}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, [field.key]: event.target.value }))}
+                      style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none", resize: "vertical", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+                    />
+                  ) : field.as === "select" ? (
+                    <select
+                      value={createForm.stage}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, stage: event.target.value }))}
+                      style={dealModalSelectStyle}
+                    >
+                      {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
+                    </select>
+                  ) : field.as === "datetime" ? (
+                    <DatePicker
+                      selected={createForm.closingDate}
+                      onChange={(date) => setCreateForm((current) => ({ ...current, closingDate: date }))}
+                      showTimeSelect
+                      timeIntervals={15}
+                      dateFormat="MMM d, yyyy h:mm aa"
+                      className="deal-datepicker"
+                      wrapperClassName="deal-datepicker-wrapper"
+                      customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
+                    />
+                  ) : (
+                    <input
+                      type={field.type || "text"}
+                      value={createForm[field.key]}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, [field.key]: event.target.value }))}
+                      style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }}
+                    />
+                  )}
                 </div>
               ))}
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Stage</label>
-                <select
-                  value={createForm.stage}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, stage: event.target.value }))}
-                  style={{ ...getStageSelectStyle(createForm.stage), width: "100%" }}
-                >
-                  {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{formatStageLabel(stage)}</option>)}
-                </select>
-              </div>
-              <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", gap: 14, alignItems: "start" }}>
-                <div style={{ minWidth: 0 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Closing Date</label>
-                  <DatePicker
-                    selected={createForm.closingDate}
-                    onChange={(date) => setCreateForm((current) => ({ ...current, closingDate: date }))}
-                    showTimeSelect
-                    timeIntervals={15}
-                    dateFormat="MMM d, yyyy h:mm aa"
-                    className="deal-datepicker"
-                    wrapperClassName="deal-datepicker-wrapper"
-                    customInput={<input style={{ width: "100%", minWidth: 0, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none" }} />}
-                  />
-                </div>
-              </div>
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>Description</label>
                 <textarea
-                  rows={3}
+                  rows={4}
                   value={createForm.description}
                   onChange={(event) => setCreateForm((current) => ({ ...current, description: event.target.value }))}
                   style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 13, outline: "none", resize: "vertical" }}
@@ -1170,3 +1071,261 @@ export default function Deals() {
     </div>
   );
 }
+
+const dealFormSectionStyle = {
+  display: "grid",
+  gap: 14,
+  padding: "18px 18px 16px",
+  borderRadius: 18,
+  border: "1px solid #e2e8f0",
+  background: "#ffffff",
+  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.04)",
+};
+
+const dealCreateHeroStyle = {
+  position: "relative",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 18,
+  alignItems: "end",
+  padding: "28px 28px 24px",
+  background: "radial-gradient(circle at top left, rgba(96, 165, 250, 0.36) 0%, rgba(37, 99, 235, 0.18) 26%, transparent 54%), linear-gradient(135deg, #0f172a 0%, #123a63 54%, #1d4ed8 100%)",
+};
+
+const dealCreateHeroEyebrowStyle = {
+  display: "inline-flex",
+  width: "fit-content",
+  padding: "6px 10px",
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.12)",
+  border: "1px solid rgba(255,255,255,0.14)",
+  color: "#dbeafe",
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+
+const dealCreateHeroMetaWrapStyle = {
+  display: "flex",
+  gap: 10,
+  alignItems: "stretch",
+  marginRight: 52,
+};
+
+const dealCreateHeroMetaCardStyle = {
+  minWidth: 120,
+  padding: "12px 14px",
+  borderRadius: 16,
+  background: "rgba(255,255,255,0.1)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+};
+
+const dealCreateHeroMetaLabelStyle = {
+  fontSize: 10.5,
+  fontWeight: 700,
+  letterSpacing: "0.05em",
+  textTransform: "uppercase",
+  color: "rgba(219, 234, 254, 0.82)",
+};
+
+const dealCreateHeroMetaValueStyle = {
+  marginTop: 6,
+  fontSize: 16,
+  fontWeight: 800,
+  color: "#ffffff",
+};
+
+const dealCreateLayoutStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.6fr) minmax(250px, 0.9fr)",
+  gap: 20,
+  alignItems: "start",
+};
+
+const dealCreateSectionStyle = {
+  ...dealFormSectionStyle,
+  padding: "20px 20px 18px",
+  borderRadius: 22,
+};
+
+const dealCreateSectionHeaderStyle = {
+  display: "grid",
+  gap: 2,
+  paddingBottom: 2,
+};
+
+const dealCreateMainGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 16,
+  alignItems: "start",
+};
+
+const dealCreateAsideStyle = {
+  position: "sticky",
+  top: 0,
+  display: "grid",
+  gap: 16,
+};
+
+const dealCreateAsideCardStyle = {
+  display: "grid",
+  gap: 14,
+  padding: "20px 18px",
+  borderRadius: 22,
+  background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+  border: "1px solid #dbe4f0",
+  boxShadow: "0 14px 30px rgba(15, 23, 42, 0.08)",
+};
+
+const dealCreateAsideEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#2563eb",
+};
+
+const dealCreateAsideTitleStyle = {
+  fontSize: 20,
+  fontWeight: 800,
+  color: "#0f172a",
+  lineHeight: 1.1,
+};
+
+const dealCreateAsideBlurbStyle = {
+  fontSize: 13,
+  lineHeight: 1.55,
+  color: "#64748b",
+};
+
+const dealCreateSummaryStackStyle = {
+  display: "grid",
+  gap: 10,
+  paddingTop: 6,
+};
+
+const dealCreateSummaryRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "10px 12px",
+  borderRadius: 14,
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+};
+
+const dealCreateSummaryLabelStyle = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#64748b",
+};
+
+const dealCreateSummaryValueStyle = {
+  fontSize: 12.5,
+  fontWeight: 800,
+  color: "#0f172a",
+  textAlign: "right",
+};
+
+const dealCreateSummaryStagePillStyle = (stage) => {
+  const meta = STAGE_META[stage] || { color: "#475569", bg: "#e2e8f0" };
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: meta.bg,
+    color: meta.color,
+    fontSize: 11.5,
+    fontWeight: 800,
+    border: `1px solid color-mix(in srgb, ${meta.color} 18%, #dbe4f0)`,
+  };
+};
+
+const dealCreateAsideTipsStyle = {
+  display: "grid",
+  gap: 10,
+  padding: "18px",
+  borderRadius: 20,
+  background: "#ffffff",
+  border: "1px solid #dbe4f0",
+  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.05)",
+};
+
+const dealCreateAsideTipsTitleStyle = {
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#0f172a",
+};
+
+const dealCreateAsideTipItemStyle = {
+  position: "relative",
+  paddingLeft: 16,
+  fontSize: 12.5,
+  lineHeight: 1.55,
+  color: "#64748b",
+};
+
+const dealFormSectionHeaderStyle = {
+  display: "grid",
+  gap: 2,
+};
+
+const dealFormSectionEyebrowStyle = {
+  fontSize: 10.5,
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#94a3b8",
+};
+
+const dealFormSectionTitleStyle = {
+  fontSize: 15,
+  fontWeight: 800,
+  color: "#0f172a",
+};
+
+const dealFormGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 14,
+  alignItems: "start",
+};
+
+const dealFieldLabelStyle = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#374151",
+  display: "block",
+  marginBottom: 6,
+};
+
+const dealFieldInputStyle = {
+  width: "100%",
+  minWidth: 0,
+  padding: "10px 12px",
+  border: "1.5px solid #e5e7eb",
+  borderRadius: 10,
+  fontSize: 13,
+  outline: "none",
+  background: "#ffffff",
+};
+
+const dealModalSelectStyle = {
+  width: "100%",
+  minWidth: 0,
+  padding: "8px 32px 8px 10px",
+  border: "1.5px solid #e5e7eb",
+  borderRadius: 6,
+  fontSize: 13,
+  color: "#111827",
+  background: `#ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 10px center / 14px 14px`,
+  outline: "none",
+  appearance: "none",
+};
+

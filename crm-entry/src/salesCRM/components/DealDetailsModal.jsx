@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { flip } from "@floating-ui/react";
-import { Activity, ChevronLeft, ChevronRight, FileText, Mail, MapPin, Phone, UserCheck, Wallet, X } from "lucide-react";
+import { Activity, FileText, Mail, MapPin, Phone, UserCheck, Wallet, X } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import activitiesAPI from "../api/activities.api";
 import dealsAPI from "../api/deals.api";
 import notesAPI from "../api/notes.api";
 import Toast from "../utils/toast";
+import DetailTabsRail from "./detailMiddle/DetailTabsRail";
 import { FloatingDateTimePicker, FloatingInput, InfoRow } from "./leadDetails/fields";
 import {
   CALL_PURPOSE_OPTIONS,
   CALL_STATUS_OPTIONS,
+  centeredComposerFieldStyle,
+  CONTACT_SHORTCUTS,
+  EMAIL_TEMPLATES,
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
+  WHATSAPP_TEMPLATES,
   card,
   fmtDate,
   formatDisplayText,
@@ -21,12 +26,19 @@ import {
   mapActivity,
   mapCallActivity,
   mapComm,
+  sanitizePhoneNumber,
   selectFieldStyle,
   timelineIcon,
   toIsoString,
   useViewportWidth,
 } from "./leadDetails/shared";
 import { Timeline } from "./leadDetails/sections";
+
+const softOuterCardStyle = {
+  ...card,
+  border: "1px solid rgba(148, 163, 184, 0.18)",
+  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.02)",
+};
 
 const DEAL_TABS = [
   ["activity", "Activity", Activity],
@@ -45,8 +57,34 @@ const getAccountName = (deal) => deal?.accountName || deal?.account?.accountName
 const getContactName = (deal) => deal?.contactName || deal?.contact?.contactName || "";
 const getContactPhone = (deal) => deal?.contactPhone || deal?.contact?.phone || deal?.contact?.mobile || deal?.phone || "";
 const getContactEmail = (deal) => deal?.contactEmail || deal?.contact?.email || deal?.email || "";
-const getWhatsappNumber = (deal) => String(getContactPhone(deal) || "").replace(/[^\d+]/g, "");
+const getWhatsappNumber = (deal) => sanitizePhoneNumber(getContactPhone(deal));
 const formatStageLabel = (value = "") => String(value).replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+const getDealContactSnapshot = (deal) => ({
+  callableNumber: String(getContactPhone(deal) || "").trim(),
+  whatsappNumber: getWhatsappNumber(deal),
+  emailAddress: String(getContactEmail(deal) || "").trim(),
+});
+const runShortcutAction = ({ id, callableNumber, whatsappNumber, emailAddress, onOpenTab }) => {
+  if (id === "calls") {
+    if (!callableNumber) return;
+    window.location.href = `tel:${callableNumber}`;
+    return;
+  }
+  if (id === "whatsapp") {
+    if (!whatsappNumber) return;
+    const popup = window.open(`https://wa.me/${encodeURIComponent(whatsappNumber)}`, "_blank", "noopener,noreferrer");
+    if (!popup) {
+      Toast.error("Allow pop-ups to open WhatsApp in a new tab.");
+    }
+    return;
+  }
+  if (id === "emails") {
+    if (!emailAddress) return;
+    window.location.href = `mailto:${encodeURIComponent(emailAddress)}`;
+    return;
+  }
+  onOpenTab?.(id);
+};
 
 function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
   const initials = (getDealName(deal).match(/\b\w/g) || []).join("").slice(0, 2).toUpperCase();
@@ -55,11 +93,12 @@ function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
     ? `Rs. ${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : "";
   const location = [deal?.account?.billingCity, deal?.account?.billingState, deal?.account?.billingCountry].filter(Boolean).join(", ");
-  const shortcuts = [
-    { id: "calls", label: "Call", icon: Phone, enabled: hasValue(getContactPhone(deal)) },
-    { id: "whatsapp", label: "WhatsApp", icon: FaWhatsapp, enabled: hasValue(getWhatsappNumber(deal)) },
-    { id: "emails", label: "Email", icon: Mail, enabled: hasValue(getContactEmail(deal)) },
-  ];
+  const { callableNumber, whatsappNumber, emailAddress } = getDealContactSnapshot(deal);
+  const shortcutEnabled = {
+    calls: hasValue(callableNumber),
+    whatsapp: hasValue(whatsappNumber),
+    emails: hasValue(emailAddress),
+  };
 
   return (
     <aside style={{ height: mobile ? "auto" : "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderRight: stacked ? "none" : "1px solid #e5e7eb", borderBottom: stacked ? "1px solid #e5e7eb" : "none", background: "#fff" }}>
@@ -74,12 +113,65 @@ function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 18 }}>
-          {shortcuts.map(({ id, label, icon: Icon, enabled }) => (
-            <button key={id} type="button" onClick={() => enabled && onOpenTab?.(id)} disabled={!enabled} title={label} aria-label={label} style={{ width: 30, height: 30, border: enabled ? "1px solid #aebfd4" : "1px solid #c7d4e3", borderRadius: "50%", background: "#ffffff", color: enabled ? "#2563eb" : "#94a3b8", cursor: enabled ? "pointer" : "not-allowed", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
-              <Icon size={13} color={enabled ? "#64748b" : "#94a3b8"} />
-            </button>
-          ))}
+          {CONTACT_SHORTCUTS.map(({ id, label, icon: Icon }) => {
+            const enabled = shortcutEnabled[id];
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => enabled && runShortcutAction({ id, callableNumber, whatsappNumber, emailAddress, onOpenTab })}
+                disabled={!enabled}
+                title={label}
+                aria-label={label}
+                style={{
+                  width: 30,
+                  height: 30,
+                  border: enabled ? "1px solid #aebfd4" : "1px solid #c7d4e3",
+                  borderRadius: "50%",
+                  background: "#ffffff",
+                  color: enabled ? "#2563eb" : "#94a3b8",
+                  cursor: enabled ? "pointer" : "not-allowed",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                  outline: "none",
+                  boxShadow: "none",
+                  transition: "transform 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease",
+                  animation: enabled ? "leadShortcutPop 320ms ease" : "none",
+                }}
+                onMouseEnter={(event) => {
+                  if (!enabled) return;
+                  event.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
+                  event.currentTarget.style.backgroundColor = "#f8fafc";
+                  event.currentTarget.style.borderColor = "#aebfd4";
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.transform = "translateY(0) scale(1)";
+                  event.currentTarget.style.backgroundColor = "#ffffff";
+                  event.currentTarget.style.borderColor = enabled ? "#aebfd4" : "#c7d4e3";
+                }}
+                onMouseDown={(event) => {
+                  if (!enabled) return;
+                  event.currentTarget.style.transform = "scale(0.96)";
+                }}
+                onMouseUp={(event) => {
+                  if (!enabled) return;
+                  event.currentTarget.style.transform = "translateY(-2px) scale(1.04)";
+                }}
+              >
+                <Icon size={13} color={enabled ? "#64748b" : "#94a3b8"} />
+              </button>
+            );
+          })}
         </div>
+        <style>{`
+          @keyframes leadShortcutPop {
+            0% { transform: scale(0.88); opacity: 0; }
+            70% { transform: scale(1.06); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+        `}</style>
       </div>
 
       <div style={{ flex: mobile ? "0 0 auto" : 1, minHeight: 0, overflowY: mobile ? "visible" : "auto", padding: "0 18px 16px" }}>
@@ -237,14 +329,14 @@ function NotesPanel({ deal, onSaved }) {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ ...card, padding: 16 }}>
+      <div style={{ ...softOuterCardStyle, padding: 16 }}>
         <textarea style={{ ...input, minHeight: 120, resize: "vertical" }} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Add a note for this deal" />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
           {editingId ? <button type="button" className="btn-ghost" onClick={reset} disabled={saving}>Cancel</button> : null}
           <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : editingId ? "Update Note" : "Save Note"}</button>
         </div>
       </div>
-      <div style={{ ...card, padding: 16, display: "grid", gap: 12 }}>
+      <div style={{ ...softOuterCardStyle, padding: 16, display: "grid", gap: 12 }}>
         {loading ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading notes...</div> : null}
         {!loading && !notes.length ? <div style={{ border: "1px dashed #dbe4f0", borderRadius: 16, background: "#fbfdff", color: "#94a3b8", fontSize: 13, textAlign: "center", padding: "28px 18px" }}>No notes saved yet.</div> : null}
         {!loading && notes.map((note) => (
@@ -272,7 +364,7 @@ function NotesPanel({ deal, onSaved }) {
 
 function HistoryTimeline({ items, emptyLabel, icon: Icon }) {
   return (
-    <div style={{ ...card, padding: 16, display: "grid", gap: 12 }}>
+    <div style={{ ...softOuterCardStyle, padding: 16, display: "grid", gap: 12 }}>
       {!items.length ? <div style={{ border: "1px dashed #dbe4f0", borderRadius: 16, background: "#fbfdff", color: "#94a3b8", fontSize: 13, textAlign: "center", padding: "28px 18px" }}>No {emptyLabel} history yet.</div> : null}
       {items.map((item, index) => {
         const EventIcon = timelineIcon(item) || Icon;
@@ -297,6 +389,7 @@ function HistoryTimeline({ items, emptyLabel, icon: Icon }) {
 }
 
 function Composer({ tab, deal, onSaved }) {
+  const [templateId, setTemplateId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [showCallDetails, setShowCallDetails] = useState(false);
@@ -337,6 +430,31 @@ function Composer({ tab, deal, onSaved }) {
       delete next[key];
       return next;
     });
+  };
+
+  const applyTemplate = (id) => {
+    setTemplateId(id);
+    if (tab === "emails") {
+      const template = EMAIL_TEMPLATES.find((item) => item.id === id);
+      if (template) {
+        const name = getContactName(deal) || getDealName(deal);
+        setV((current) => ({
+          ...current,
+          emailSubject: template.subject.replaceAll("{{name}}", name),
+          emailBody: template.body.replaceAll("{{name}}", name),
+        }));
+      }
+    }
+    if (tab === "whatsapp") {
+      const template = WHATSAPP_TEMPLATES.find((item) => item.id === id);
+      if (template) {
+        const name = getContactName(deal) || getDealName(deal);
+        setV((current) => ({
+          ...current,
+          whatsappMessage: template.message.replaceAll("{{name}}", name),
+        }));
+      }
+    }
   };
 
   const submit = async () => {
@@ -452,10 +570,20 @@ function Composer({ tab, deal, onSaved }) {
     }
   };
 
+  const handleCallNow = () => {
+    if (!callableNumber) {
+      Toast.error("No phone number available for this deal");
+      return;
+    }
+    window.location.href = `tel:${String(callableNumber).trim()}`;
+  };
+
+  const showCallExtraFields = v.callMode === "log" && showCallDetails;
+
   if (tab === "activity" || tab === "notes") return null;
 
   return (
-    <div style={{ ...card, padding: 16 }}>
+    <div style={{ ...softOuterCardStyle, padding: 16 }}>
       {tab === "tasks" ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
           <FloatingInput label="Task Title" value={v.taskSubject} error={errors.taskSubject} onChange={(event) => setField("taskSubject", event.target.value)} />
@@ -473,57 +601,92 @@ function Composer({ tab, deal, onSaved }) {
       ) : null}
 
       {tab === "emails" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-          <FloatingInput label="To" value={v.toEmail} onChange={(event) => setField("toEmail", event.target.value)} />
-          <div />
-          <FloatingInput label="Subject" value={v.emailSubject} onChange={(event) => setField("emailSubject", event.target.value)} style={{ gridColumn: "1 / -1" }} />
-          <FloatingInput as="textarea" autoGrow label="Body" style={{ gridColumn: "1 / -1", minHeight: 140, width: "100%" }} value={v.emailBody} onChange={(event) => setField("emailBody", event.target.value)} />
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 0.9fr) minmax(0, 1.1fr)", gap: 12, alignItems: "start" }}>
+          <select style={input} value={templateId} onChange={(event) => applyTemplate(event.target.value)}><option value="">Select template</option>{EMAIL_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
+          <input style={input} value={v.toEmail} onChange={(event) => setField("toEmail", event.target.value)} placeholder="recipient@email.com" />
+          <input style={{ ...input, ...centeredComposerFieldStyle, gridColumn: "1 / -1" }} value={v.emailSubject} onChange={(event) => setField("emailSubject", event.target.value)} placeholder="Email subject" />
+          <textarea style={{ ...input, ...centeredComposerFieldStyle, minHeight: 140, resize: "vertical", gridColumn: "1 / -1" }} value={v.emailBody} onChange={(event) => setField("emailBody", event.target.value)} placeholder="Compose your email" />
         </div>
       ) : null}
 
       {tab === "whatsapp" ? (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ fontSize: 12, color: "#64748b" }}>WhatsApp number: {whatsappNumber || "-"}</div>
-          <FloatingInput as="textarea" autoGrow label="Message" style={{ minHeight: 140, width: "100%" }} value={v.whatsappMessage} onChange={(event) => setField("whatsappMessage", event.target.value)} />
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12 }}>
+          <select style={{ ...input, ...centeredComposerFieldStyle }} value={templateId} onChange={(event) => applyTemplate(event.target.value)}><option value="">Select template</option>{WHATSAPP_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
+          <textarea style={{ ...input, ...centeredComposerFieldStyle, minHeight: 110, resize: "vertical" }} value={v.whatsappMessage} onChange={(event) => setField("whatsappMessage", event.target.value)} placeholder="Write the WhatsApp message" />
         </div>
       ) : null}
 
       {tab === "calls" ? (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1.5px solid #9fb3ca", alignSelf: "flex-start" }}>
-            {[["log", "Log Call"], ["schedule", "Schedule Call"]].map(([id, label]) => (
-              <button key={id} type="button" onClick={() => setField("callMode", id)} style={{ border: "none", borderRadius: 10, padding: "9px 14px", background: v.callMode === id ? "#ffffff" : "transparent", color: v.callMode === id ? "#0f172a" : "#64748b", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>{label}</button>
-            ))}
+        <>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
+            <div style={{ display: "inline-flex", padding: 4, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+              {[["log", "Log Call"], ["schedule", "Schedule Call"]].map(([mode, label]) => (
+                <button key={mode} type="button" onClick={() => setField("callMode", mode)} style={{ border: "none", borderRadius: 10, padding: "7px 12px", background: v.callMode === mode ? "#ffffff" : "transparent", color: v.callMode === mode ? "#5b7fa6" : "#64748b", fontSize: 13, fontWeight: 800, cursor: "pointer", boxShadow: v.callMode === mode ? "0 6px 16px rgba(191, 219, 254, 0.22)" : "none" }}>{label}</button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={handleCallNow}
+              disabled={!callableNumber}
+              style={{
+                minHeight: 40,
+                padding: "10px 14px",
+                border: "1px solid #bbf7d0",
+                borderRadius: 12,
+                background: callableNumber ? "#f0fdf4" : "#f8fafc",
+                color: callableNumber ? "#166534" : "#94a3b8",
+                fontSize: 13,
+                fontWeight: 800,
+                lineHeight: 1.1,
+                opacity: callableNumber ? 1 : 0.7,
+                cursor: callableNumber ? "pointer" : "not-allowed",
+                flexShrink: 0,
+              }}
+            >
+              Call Now
+            </button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-            <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(event) => setField("callType", event.target.value)} style={selectFieldStyle}>
-              {["Incoming", "Outgoing"].map((option) => <option key={option} value={option}>{option}</option>)}
-            </FloatingInput>
-            <FloatingInput as="select" label="Status" value={v.callStatus} onChange={(event) => setField("callStatus", event.target.value)} style={selectFieldStyle}>
-              {CALL_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-            </FloatingInput>
-            <FloatingInput as="select" label="Purpose" value={v.callPurpose} error={errors.callPurpose} onChange={(event) => setField("callPurpose", event.target.value)} style={selectFieldStyle}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, alignItems: "start" }}>
+            <FloatingInput as="select" label="Call Purpose" value={v.callPurpose} error={errors.callPurpose} onChange={(event) => setField("callPurpose", event.target.value)} style={selectFieldStyle}>
               <option value="">Select purpose</option>
               {CALL_PURPOSE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
             </FloatingInput>
-            <FloatingDateTimePicker label="Call Start Time" selected={v.callStartTime} onChange={(date) => setField("callStartTime", date)} error={errors.callStartTime} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
+            <FloatingDateTimePicker label={v.callMode === "schedule" ? "Scheduled Time" : "Call Time"} selected={v.callStartTime} onChange={(date) => setField("callStartTime", date)} error={errors.callStartTime} popperPlacement="bottom-start" popperOffset={8} popperModifiers={[flip({ fallbackPlacements: [] })]} />
+            <FloatingInput as="select" label="Call Status" value={v.callStatus} onChange={(event) => setField("callStatus", event.target.value)} style={selectFieldStyle}>
+              <option value="">Select status</option>
+              {CALL_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+            </FloatingInput>
+            <FloatingInput as="select" label="Call Type" value={v.callType} onChange={(event) => setField("callType", event.target.value)} style={selectFieldStyle}>
+              <option value="Outgoing">Outgoing</option>
+              <option value="Incoming">Incoming</option>
+            </FloatingInput>
+            <FloatingInput as="textarea" autoGrow label={v.callMode === "schedule" ? "Call Agenda / Notes" : "Call Notes"} style={{ gridColumn: "1 / -1", width: "100%", minHeight: 74, padding: "10px 12px 6px" }} value={v.callDescription} onChange={(event) => setField("callDescription", event.target.value)} />
+            {v.callMode === "log" ? <div style={{ gridColumn: "1 / -1", marginTop: 2 }}>
+              <button
+                type="button"
+                onClick={() => setShowCallDetails((current) => !current)}
+                style={{
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 12,
+                  padding: "9px 12px",
+                  background: "#f8fbff",
+                  color: "#475569",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {showCallExtraFields ? "Hide extra details" : "Add more details"}
+              </button>
+            </div> : null}
+            {showCallExtraFields ? <FloatingInput label="Call Result" value={v.callResult} onChange={(event) => setField("callResult", event.target.value)} /> : null}
+            {showCallExtraFields ? <FloatingInput type="number" min="0" label="Duration (Minutes)" value={v.callDurationMinutes} onChange={(event) => setField("callDurationMinutes", event.target.value)} /> : null}
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <button type="button" className="btn-ghost" onClick={() => setShowCallDetails((current) => !current)}>{showCallDetails ? "Hide details" : "Show details"}</button>
-            {callableNumber ? <button type="button" className="btn-ghost" onClick={() => { window.location.href = `tel:${String(callableNumber).trim()}`; }}>Call contact</button> : null}
-          </div>
-          {showCallDetails ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-              <FloatingInput label="Result" value={v.callResult} onChange={(event) => setField("callResult", event.target.value)} />
-              <FloatingInput type="number" min="0" label="Duration (min)" value={v.callDurationMinutes} onChange={(event) => setField("callDurationMinutes", event.target.value)} />
-              <FloatingInput as="textarea" autoGrow label="Notes" style={{ gridColumn: "1 / -1", minHeight: 100, width: "100%" }} value={v.callDescription} onChange={(event) => setField("callDescription", event.target.value)} />
-            </div>
-          ) : null}
-        </div>
+        </>
       ) : null}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-        <button type="button" className="btn-primary" onClick={submit} disabled={submitting}>{submitting ? "Saving..." : tab === "whatsapp" ? "Open WhatsApp" : "Save"}</button>
+        <button type="button" className="btn-primary" onClick={submit} disabled={submitting} style={{ border: "1px solid #93c5fd", background: "#dbeafe", color: "#315c85", boxShadow: "none" }}>{submitting ? "Saving..." : tab === "emails" ? "Send Email" : tab === "whatsapp" ? "Open WhatsApp" : tab === "calls" ? "Save Call" : "Save Task"}</button>
       </div>
     </div>
   );
@@ -571,33 +734,24 @@ function DealMiddle({ deal, activeTab, onTabChange, onActivitySaved, compact = f
 
   return (
     <section style={{ height: mobile ? "auto" : "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: mobile ? "flex-start" : "center", gap: compact ? 4 : 6, padding: mobile ? "10px 10px 8px" : "10px 0 0", flexWrap: "wrap", flexShrink: 0, background: mobile ? "linear-gradient(180deg, #fbfdff 0%, #ffffff 100%)" : "#ffffff", borderBottom: "1px solid #eef2f7" }}>
-        {mobile ? (
-          <div style={{ width: "100%", minWidth: 0 }}>
-            <div style={{ fontSize: 9.5, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em" }}>Deal Activity</div>
-            <div style={{ marginTop: 3, fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{DEAL_TABS.find(([id]) => id === activeTab)?.[1] || "Activity"}</div>
-            <div style={{ position: "relative", marginTop: 8, padding: "0 28px" }}>
-              <button type="button" onClick={() => document.getElementById("deal-mobile-tabs")?.scrollBy({ left: -140, behavior: "smooth" })} style={{ position: "absolute", left: 0, top: 0, bottom: 1, width: 24, border: "1px solid #d7e2ee", borderRadius: 10, background: "#ffffff", color: "#94a3b8", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><ChevronLeft size={13} /></button>
-              <div id="deal-mobile-tabs" className="salescrm-scroll-hidden" style={{ display: "flex", gap: 6, overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", paddingBottom: 1 }}>
-                {DEAL_TABS.map(([id, label, Icon]) => (
-                  <button key={id} type="button" onClick={() => onTabChange?.(id)} style={{ border: "1.5px solid", borderColor: activeTab === id ? "#8db6e8" : "#d7e2ee", borderRadius: 12, background: activeTab === id ? "linear-gradient(180deg, #eff6ff 0%, #e0efff 100%)" : "#ffffff", color: activeTab === id ? "#1d4ed8" : "#475569", padding: "7px 10px", display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, fontWeight: 800, cursor: "pointer", flex: "0 0 auto", minWidth: "max-content" }}>
-                    {id === "whatsapp" ? <FaWhatsapp size={15} /> : <Icon size={15} />}
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <button type="button" onClick={() => document.getElementById("deal-mobile-tabs")?.scrollBy({ left: 140, behavior: "smooth" })} style={{ position: "absolute", right: 0, top: 0, bottom: 1, width: 24, border: "1px solid #d7e2ee", borderRadius: 10, background: "#ffffff", color: "#94a3b8", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><ChevronRight size={13} /></button>
-            </div>
-          </div>
-        ) : DEAL_TABS.map(([id, label, Icon]) => (
-          <button key={id} onClick={() => onTabChange?.(id)} style={{ border: "none", borderBottom: activeTab === id ? "2px solid #93c5fd" : "2px solid transparent", background: "transparent", color: activeTab === id ? "#5b7fa6" : "#64748b", padding: compact ? "10px 2px 9px" : "10px 4px 9px", display: "inline-flex", alignItems: "center", gap: compact ? 5 : 6, fontSize: compact ? 12.5 : 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-            {id === "whatsapp" ? <FaWhatsapp size={15} /> : <Icon size={15} />}
-            {label}
-          </button>
-        ))}
-      </div>
+      <DetailTabsRail tabs={DEAL_TABS} activeTab={activeTab} onTabChange={onTabChange} mobile={mobile} compact={compact} eyebrow="Deal Activity" />
 
       <div style={{ flex: mobile ? "0 0 auto" : 1, minHeight: 0, overflowY: mobile ? "visible" : "auto", overflowX: "hidden", padding: mobile ? 10 : compact ? 14 : 18, display: "flex", flexDirection: "column", gap: mobile ? 10 : 16 }}>
+        <style>{`
+          .lead-details-datepicker-popper {
+            z-index: 900 !important;
+          }
+
+          .lead-details-datepicker-wrapper {
+            display: block;
+            width: 100%;
+          }
+
+          .lead-details-datepicker-wrapper .react-datepicker__input-container {
+            display: block;
+            width: 100%;
+          }
+        `}</style>
         {loading ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading deal workspace...</div> : null}
 
         {activeTab === "activity" ? (

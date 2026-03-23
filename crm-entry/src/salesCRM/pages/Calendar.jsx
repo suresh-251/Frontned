@@ -8,11 +8,12 @@ import { getAccessToken } from "../../utils/authStorage";
 
 const HOUR_START = 7;
 const HOUR_END = 21;
-const HOUR_HEIGHT = 84;
+const HOUR_HEIGHT = 92;
 const RANGE_OPTIONS = [
   { value: "day", label: "Day", days: 1 },
   { value: "workweek", label: "Work week", days: 5 },
   { value: "week", label: "Week", days: 7 },
+  { value: "month", label: "Month" },
 ];
 
 const pad = (value) => String(value).padStart(2, "0");
@@ -227,43 +228,39 @@ const getPresetDates = (mode, customStart, customEnd) => {
 function EventCard({ item, onOpen }) {
   const meta = activityTypeMeta(item?.type);
   const title = item?.subject || item?.title || meta.label;
-  const description = (item?.description || "").trim();
+  const showTitle = !!(item.showTitle && title && title !== meta.label);
   return (
     <div
-      title={`${title}\n${fmtTime(item?.date)}${description ? `\n${description}` : ""}`}
+      title={`${title}\n${fmtTime(item?.date)}`}
       onClick={(event) => {
         event.stopPropagation();
         onOpen(item);
       }}
       style={{
         position: "absolute",
-        left: `${8 + ((item.column || 0) * item.eventWidth)}px`,
-        width: `${Math.max(108, item.eventWidth - 14)}px`,
-        minHeight: 58,
-        padding: "9px 10px 9px 12px",
-        borderRadius: 14,
-        background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96))",
-        color: meta.color,
-        border: "1px solid rgba(148, 163, 184, 0.18)",
-        boxShadow: "0 10px 18px rgba(15, 23, 42, 0.08)",
+        left: item.leftCss,
+        width: item.widthCss,
+        minHeight: 38,
+        padding: "7px 8px 7px 10px",
+        borderRadius: 12,
+        background: "linear-gradient(180deg, rgba(255,255,255,0.99) 0%, rgba(248,250,252,0.98) 100%)",
+        color: "#0f172a",
+        border: "1px solid rgba(203, 213, 225, 0.9)",
+        boxShadow: "0 6px 16px rgba(15, 23, 42, 0.07)",
         overflow: "hidden",
         cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
       }}
     >
-      <div style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 4, borderRadius: 999, background: meta.color, opacity: 0.9 }} />
-      <div style={{ display: "grid", gap: 7 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 7px", borderRadius: 999, background: meta.background, color: meta.color, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em" }}>
-            {meta.label}
-          </span>
-          <span style={{ fontSize: 10.5, fontWeight: 800, color: "#334155", whiteSpace: "nowrap" }}>{fmtTime(item?.date)}</span>
+      <div style={{ position: "absolute", left: 0, top: 7, bottom: 7, width: 4, borderRadius: 999, background: meta.color, opacity: 0.95 }} />
+      <div style={{ display: "grid", gap: showTitle ? 4 : 0, width: "100%", minWidth: 0 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, color: meta.color, whiteSpace: "nowrap", letterSpacing: "0.01em", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {meta.label}
         </div>
-        <div style={{ fontSize: 11.5, fontWeight: 800, color: "#0f172a", lineHeight: 1.32, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-          {title}
-        </div>
-        {description ? (
-          <div style={{ fontSize: 10, color: "#64748b", lineHeight: 1.35, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" }}>
-            {description}
+        {showTitle ? (
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {title}
           </div>
         ) : null}
       </div>
@@ -272,13 +269,8 @@ function EventCard({ item, onOpen }) {
 }
 
 function EventClusterCard({ items, height, columnWidth, onOpen }) {
-  const previewItems = items.slice(0, 3);
-  const hiddenCount = Math.max(0, items.length - previewItems.length);
-  const firstDate = parseActivityDate(items[0]);
-  const lastDate = parseActivityDate(items[items.length - 1]);
-  const timeSummary = firstDate
-    ? `${fmtTime(firstDate)}${lastDate && lastDate.getTime() !== firstDate.getTime() ? ` - ${fmtTime(lastDate)}` : ""}`
-    : "All day";
+  const firstMeta = activityTypeMeta(items[0]?.type);
+  const cardHeight = Math.max(62, Math.min(76, height));
   return (
     <div
       onClick={(event) => {
@@ -287,74 +279,250 @@ function EventClusterCard({ items, height, columnWidth, onOpen }) {
       }}
       style={{
         position: "absolute",
-        left: 8,
-        width: Math.max(132, columnWidth - 16),
-        minHeight: 82,
-        height,
-        padding: "10px 10px 9px",
-        borderRadius: 14,
-        background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(239,246,255,0.96))",
-        border: "1px solid rgba(148, 163, 184, 0.24)",
-        boxShadow: "0 12px 24px rgba(15, 23, 42, 0.08)",
+        left: "8px",
+        width: "calc(100% - 16px)",
+        minHeight: 48,
+        height: Math.max(48, Math.min(58, cardHeight)),
+        padding: "8px 10px",
+        borderRadius: 12,
+        background: "linear-gradient(180deg, rgba(255,255,255,0.99) 0%, rgba(248,250,252,0.98) 100%)",
+        border: "1px solid rgba(203, 213, 225, 0.9)",
+        boxShadow: "0 6px 16px rgba(15, 23, 42, 0.08)",
         overflow: "hidden",
         cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
       }}
     >
-      <div style={{ display: "grid", gap: 8, height: "100%" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 24, padding: "0 7px", borderRadius: 999, background: "#2563eb", color: "#fff", fontSize: 10.5, fontWeight: 800 }}>
-              {items.length}
-            </span>
-            <div style={{ fontSize: 11.5, fontWeight: 800, color: "#1e3a8a" }}>Events in this slot</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", minWidth: 0 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 24, padding: "0 7px", borderRadius: 999, background: "#e0ecff", color: "#1d4ed8", fontSize: 10, fontWeight: 800 }}>
+          {items.length}
+        </span>
+        <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: firstMeta.color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            Multiple events
           </div>
-          <div style={{ fontSize: 10.5, fontWeight: 800, color: "#475569", whiteSpace: "nowrap" }}>{timeSummary}</div>
-        </div>
-
-        <div style={{ display: "grid", gap: 6, overflow: "hidden" }}>
-          {previewItems.map((item) => {
-            const itemMeta = activityTypeMeta(item?.type);
-            const title = item?.subject || item?.title || itemMeta.label;
-            return (
-              <div
-                key={item.id ?? `${title}-${item.date}`}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "62px minmax(0, 1fr)",
-                  alignItems: "center",
-                  gap: 8,
-                  width: "100%",
-                  borderRadius: 10,
-                  background: "rgba(255,255,255,0.88)",
-                  border: "1px solid rgba(219, 234, 254, 0.92)",
-                  padding: "7px 8px",
-                  textAlign: "left",
-                }}
-              >
-                <span style={{ fontSize: 10.5, fontWeight: 800, color: "#1d4ed8" }}>{fmtTime(parseActivityDate(item))}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
-              </div>
-            );
-          })}
-          {hiddenCount > 0 ? (
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#475569", paddingLeft: 2 }}>
-              +{hiddenCount} more event{hiddenCount > 1 ? "s" : ""}
-            </div>
-          ) : null}
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            Open to view this time slot
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function DayColumn({ day, items, columnWidth, onCreateEvent, onOpenEvent, onOpenCluster }) {
+function MonthEventChip({ item, onOpen }) {
+  const meta = activityTypeMeta(item?.type);
+  const title = item?.subject || item?.title || meta.label;
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen(item);
+      }}
+      style={{
+        width: "100%",
+        display: "grid",
+        gridTemplateColumns: "44px minmax(0, 1fr)",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 8px",
+        borderRadius: 10,
+        border: "1px solid rgba(148, 163, 184, 0.16)",
+        background: meta.background,
+        color: meta.color,
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <span style={{ fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>{fmtTime(parseActivityDate(item))}</span>
+      <span
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          color: "#0f172a",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {title}
+      </span>
+    </button>
+  );
+}
+
+function MonthGrid({
+  anchorDate,
+  monthMatrix,
+  today,
+  itemsByDay,
+  onSelectDay,
+  onCreateEvent,
+  onOpenEvent,
+  onOpenCluster,
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateRows: "auto 1fr", minHeight: "calc(100vh - 220px)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", borderBottom: "1px solid var(--border-color)", background: "var(--bg-card)", position: "sticky", top: 0, zIndex: 2 }}>
+        {WEEKDAY_LABELS.map((label) => (
+          <div
+            key={label}
+            style={{
+              padding: "10px 12px",
+              borderRight: "1px solid var(--border-color)",
+              fontSize: 10.5,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+              color: "color-mix(in srgb, var(--text-main) 55%, #64748b)",
+              textTransform: "uppercase",
+            }}
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gridAutoRows: "minmax(144px, 1fr)" }}>
+        {monthMatrix.flat().map((day) => {
+          const inMonth = day.getMonth() === anchorDate.getMonth();
+          const isToday = sameDay(day, today);
+          const dayItems = itemsByDay[toInputDate(day)] || [];
+          const previewItems = dayItems.slice(0, 3);
+          const hiddenCount = Math.max(0, dayItems.length - previewItems.length);
+
+          return (
+            <div
+              key={day.toISOString()}
+              onClick={() => onSelectDay(day)}
+              style={{
+                display: "grid",
+                gridTemplateRows: "auto 1fr",
+                minHeight: 144,
+                padding: 10,
+                borderRight: "1px solid var(--border-color)",
+                borderBottom: "1px solid var(--border-color)",
+                background: isToday
+                  ? "color-mix(in srgb, var(--ci, #2563eb) 10%, var(--bg-card))"
+                  : inMonth
+                    ? "var(--bg-card)"
+                    : "color-mix(in srgb, var(--bg-body) 84%, var(--bg-card))",
+                cursor: "pointer",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span
+                    style={{
+                      minWidth: 28,
+                      height: 28,
+                      padding: "0 8px",
+                      borderRadius: 999,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: isToday ? "var(--ci, #2563eb)" : "transparent",
+                      color: isToday ? "#fff" : inMonth ? "var(--text-main)" : "color-mix(in srgb, var(--text-main) 35%, #94a3b8)",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {day.getDate()}
+                  </span>
+                  {!inMonth ? (
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: "color-mix(in srgb, var(--text-main) 34%, #94a3b8)" }}>
+                      {day.toLocaleDateString("en-US", { month: "short" })}
+                    </span>
+                  ) : null}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCreateEvent(day, HOUR_HEIGHT * 2);
+                  }}
+                  title={`Add event on ${day.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 8,
+                    border: "1px solid rgba(148, 163, 184, 0.18)",
+                    background: "color-mix(in srgb, var(--bg-card) 90%, var(--bg-body))",
+                    color: "color-mix(in srgb, var(--text-main) 55%, #64748b)",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  +
+                </button>
+              </div>
+
+              <div style={{ display: "grid", alignContent: "start", gap: 6, minHeight: 0 }}>
+                {previewItems.length ? (
+                  previewItems.map((item) => (
+                    <MonthEventChip
+                      key={item.id ?? `${item.subject || item.title || "event"}-${item.date}`}
+                      item={item}
+                      onOpen={onOpenEvent}
+                    />
+                  ))
+                ) : (
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: "color-mix(in srgb, var(--text-main) 46%, #94a3b8)", paddingTop: 2 }}>
+                    No events
+                  </div>
+                )}
+
+                {hiddenCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenCluster(dayItems);
+                    }}
+                    style={{
+                      justifySelf: "start",
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--ci, #2563eb)",
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                      padding: 0,
+                      cursor: "pointer",
+                    }}
+                  >
+                    +{hiddenCount} more
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DayColumn({ day, items, columnWidth, fillWidth = false, onCreateEvent, onOpenEvent, onOpenCluster }) {
   const totalHeight = (HOUR_END - HOUR_START) * HOUR_HEIGHT;
 
   const positionedItems = layoutDayEvents(items).map((item) => {
-    const usableWidth = Math.max(120, columnWidth - 12);
+    const columnCount = Math.max(1, item.columnCount || 1);
+    const usableWidth = Math.max(128, columnWidth - 16);
+    const numericWidth = usableWidth / columnCount;
     return {
       ...item,
-      eventWidth: usableWidth / Math.max(1, item.columnCount || 1),
+      leftCss: fillWidth
+        ? `calc(8px + (${item.column || 0} * ((100% - 16px) / ${columnCount})))`
+        : `${8 + ((item.column || 0) * numericWidth)}px`,
+      widthCss: fillWidth
+        ? `calc(((100% - 16px) / ${columnCount}) - 8px)`
+        : `${Math.max(96, numericWidth - 8)}px`,
+      showTitle: (fillWidth ? columnCount <= 2 : numericWidth >= 124) && item.height >= 38,
     };
   });
   const renderItems = [];
@@ -365,14 +533,13 @@ function DayColumn({ day, items, columnWidth, onCreateEvent, onOpenEvent, onOpen
     const clusterItems = positionedItems.filter((entry) => entry.clusterId === item.clusterId);
     handledClusters.add(item.clusterId);
 
-    if (clusterItems.length > 1) {
+    if (clusterItems.length > 2) {
       const top = Math.min(...clusterItems.map((entry) => entry.top));
-      const bottom = Math.max(...clusterItems.map((entry) => entry.top + entry.height));
       renderItems.push({
         type: "cluster",
         clusterId: item.clusterId,
         top,
-        height: Math.max(88, Math.min(132, bottom - top + 18)),
+        height: 68,
         items: clusterItems,
       });
       return;
@@ -389,7 +556,7 @@ function DayColumn({ day, items, columnWidth, onCreateEvent, onOpenEvent, onOpen
   });
 
   return (
-    <div style={{ minWidth: columnWidth, width: columnWidth, background: "var(--bg-card)", position: "relative", boxSizing: "border-box", borderRight: "1px solid var(--border-color)" }}>
+    <div style={{ minWidth: fillWidth ? 0 : columnWidth, width: fillWidth ? "100%" : columnWidth, background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.96) 100%)", position: "relative", boxSizing: "border-box", borderRight: "1px solid var(--border-color)" }}>
       <div
         style={{ position: "relative", height: totalHeight }}
         onClick={(event) => {
@@ -398,8 +565,8 @@ function DayColumn({ day, items, columnWidth, onCreateEvent, onOpenEvent, onOpen
         }}
       >
         {Array.from({ length: HOUR_END - HOUR_START }).map((_, index) => (
-          <div key={index} style={{ position: "absolute", left: 0, right: 0, top: index * HOUR_HEIGHT, height: HOUR_HEIGHT, borderBottom: "1px dashed color-mix(in srgb, var(--border-color) 72%, #cbd5e1)" }}>
-            <div style={{ position: "absolute", left: 0, right: 0, top: HOUR_HEIGHT / 2, borderBottom: "1px dashed color-mix(in srgb, var(--border-color) 52%, #cbd5e1)" }} />
+          <div key={index} style={{ position: "absolute", left: 0, right: 0, top: index * HOUR_HEIGHT, height: HOUR_HEIGHT, borderBottom: "1px dashed color-mix(in srgb, var(--border-color) 78%, #cbd5e1)" }}>
+            <div style={{ position: "absolute", left: 0, right: 0, top: HOUR_HEIGHT / 2, borderBottom: "1px dashed color-mix(in srgb, var(--border-color) 46%, #cbd5e1)" }} />
           </div>
         ))}
         {renderItems.map((entry) => (
@@ -418,7 +585,7 @@ function DayColumn({ day, items, columnWidth, onCreateEvent, onOpenEvent, onOpen
 
 export default function CalendarPage() {
   const today = startOfDay(new Date());
-  const [rangeMode, setRangeMode] = useState("workweek");
+  const [rangeMode, setRangeMode] = useState("month");
   const [anchorDate, setAnchorDate] = useState(today);
   const [customStart, setCustomStart] = useState(today);
   const [customEnd, setCustomEnd] = useState(addDays(today, 2));
@@ -445,6 +612,7 @@ export default function CalendarPage() {
   const { start, end } = useMemo(() => {
     if (rangeMode === "custom") return getPresetDates(rangeMode, customStart, customEnd);
     if (rangeMode === "day") return { start: startOfDay(anchorDate), end: endOfDay(anchorDate) };
+    if (rangeMode === "month") return { start: startOfWeek(startOfMonth(anchorDate)), end: endOfDay(endOfWeek(endOfMonth(anchorDate))) };
     if (rangeMode === "workweek") {
       const workStart = startOfWorkWeek(anchorDate);
       return { start: workStart, end: endOfDay(endOfWorkWeek(anchorDate)) };
@@ -545,15 +713,22 @@ export default function CalendarPage() {
       return;
     }
 
+    if (rangeMode === "month") {
+      setAnchorDate((current) => addMonths(current, direction));
+      return;
+    }
+
     const span = rangeMode === "day" ? 1 : (RANGE_OPTIONS.find((item) => item.value === rangeMode)?.days || 7);
     setAnchorDate((current) => addDays(current, direction * span));
   };
 
   const timeColumnWidth = 64;
-  const columnWidth = rangeMode === "workweek" ? 144 : rangeMode === "week" ? 136 : 168;
-  const gridTemplate = `${timeColumnWidth}px repeat(${dayColumns.length}, ${columnWidth}px)`;
-  const gridTotalWidth = timeColumnWidth + (dayColumns.length * columnWidth);
+  const fillColumns = rangeMode === "workweek";
+  const columnWidth = rangeMode === "workweek" ? 160 : rangeMode === "week" ? 136 : 168;
+  const gridTemplate = fillColumns ? `${timeColumnWidth}px repeat(${dayColumns.length}, minmax(0, 1fr))` : `${timeColumnWidth}px repeat(${dayColumns.length}, ${columnWidth}px)`;
+  const gridTotalWidth = fillColumns ? "100%" : timeColumnWidth + (dayColumns.length * columnWidth);
   const monthMatrix = useMemo(() => getMonthMatrix(anchorDate), [anchorDate]);
+  const headerRangeLabel = rangeMode === "month" ? fmtMonthYear(anchorDate) : fmtRangeHeaderSafe(start, end);
   const handleMiniDateClick = (day) => {
     setAnchorDate(day);
   };
@@ -611,7 +786,7 @@ export default function CalendarPage() {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "172px minmax(0, 1fr)", gap: 10, alignItems: "start", minHeight: "calc(100vh - 86px)" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(136px, 156px) minmax(0, 1fr)", gap: 10, alignItems: "start", minHeight: "calc(100vh - 86px)" }}>
       <aside style={{ border: "1px solid var(--border-color)", borderRadius: 16, background: "var(--bg-card)", padding: 8, position: "sticky", top: 92, height: "fit-content", alignSelf: "start" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-main)" }}>{fmtMonthYear(anchorDate)}</div>
@@ -654,12 +829,12 @@ export default function CalendarPage() {
 
       </aside>
 
-        <section style={{ border: "1px solid var(--border-color)", borderRadius: 16, background: "var(--bg-card)", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden", height: "calc(100vh - 86px)", minHeight: "calc(100vh - 86px)", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
+      <section style={{ border: "1px solid var(--border-color)", borderRadius: 16, background: "var(--bg-card)", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.08)", overflow: "hidden", height: "calc(100vh - 86px)", minHeight: "calc(100vh - 86px)", alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <CalendarDays size={18} />
             <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-main)" }}>Calendar</div>
-            <div style={{ fontSize: 13, color: "color-mix(in srgb, var(--text-main) 58%, #6b7280)" }}>{fmtRangeHeaderSafe(start, end)}</div>
+            <div style={{ fontSize: 13, color: "color-mix(in srgb, var(--text-main) 58%, #6b7280)" }}>{headerRangeLabel}</div>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -691,39 +866,55 @@ export default function CalendarPage() {
 
         <div style={{ borderTop: "1px solid var(--border-color)", background: "var(--bg-card)", flex: 1, minHeight: 0 }}>
           <div style={{ height: "calc(100vh - 170px)", minHeight: "calc(100vh - 170px)", overflow: "auto" }}>
-            <div style={{ display: "grid", gridTemplateColumns: gridTemplate, borderBottom: "1px solid var(--border-color)", position: "sticky", top: 0, zIndex: 2, background: "var(--bg-card)", width: gridTotalWidth }}>
-              <div style={{ padding: "12px 6px", fontSize: 10, fontWeight: 700, color: "color-mix(in srgb, var(--text-main) 42%, #9ca3af)", borderRight: "1px solid var(--border-color)", boxSizing: "border-box" }}>IST</div>
-              {dayColumns.map((day) => (
-                <div key={day.toISOString()} style={{ padding: "8px 10px", borderRight: "1px solid var(--border-color)", background: sameDay(day, today) ? "color-mix(in srgb, var(--ci, #2563eb) 16%, var(--bg-card))" : "var(--bg-card)", boxSizing: "border-box" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: sameDay(day, today) ? "var(--ci, #2563eb)" : "color-mix(in srgb, var(--text-main) 58%, #6b7280)" }}>{fmtDayName(day)}</div>
-                  <div style={{ marginTop: 2, fontSize: 18, fontWeight: 700, color: sameDay(day, today) ? "var(--ci, #2563eb)" : "var(--text-main)", lineHeight: 1 }}>{fmtDayNumber(day)}</div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: gridTemplate, width: gridTotalWidth }}>
-              <div style={{ position: "relative", borderRight: "1px solid var(--border-color)", background: "var(--bg-card)", boxSizing: "border-box" }}>
-                {Array.from({ length: HOUR_END - HOUR_START }).map((_, index) => {
-                  const hour = HOUR_START + index;
-                  return (
-                    <div key={hour} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid color-mix(in srgb, var(--border-color) 62%, transparent)", padding: "6px 6px", fontSize: 10, fontWeight: 600, color: "color-mix(in srgb, var(--text-main) 42%, #9ca3af)", boxSizing: "border-box" }}>
-                      {hour > 12 ? `${hour - 12}pm` : `${hour}am`}
+            {rangeMode === "month" ? (
+              <MonthGrid
+                anchorDate={anchorDate}
+                monthMatrix={monthMatrix}
+                today={today}
+                itemsByDay={itemsByDay}
+                onSelectDay={handleMiniDateClick}
+                onCreateEvent={handleCreateEvent}
+                onOpenEvent={handleOpenEvent}
+                onOpenCluster={handleOpenCluster}
+              />
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: gridTemplate, borderBottom: "1px solid var(--border-color)", position: "sticky", top: 0, zIndex: 2, background: "var(--bg-card)", width: gridTotalWidth }}>
+                  <div style={{ padding: "12px 6px", fontSize: 10, fontWeight: 700, color: "color-mix(in srgb, var(--text-main) 42%, #9ca3af)", borderRight: "1px solid var(--border-color)", boxSizing: "border-box" }}>IST</div>
+                  {dayColumns.map((day) => (
+                    <div key={day.toISOString()} style={{ padding: "8px 10px", borderRight: "1px solid var(--border-color)", background: sameDay(day, today) ? "color-mix(in srgb, var(--ci, #2563eb) 16%, var(--bg-card))" : "var(--bg-card)", boxSizing: "border-box" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: sameDay(day, today) ? "var(--ci, #2563eb)" : "color-mix(in srgb, var(--text-main) 58%, #6b7280)" }}>{fmtDayName(day)}</div>
+                      <div style={{ marginTop: 2, fontSize: 18, fontWeight: 700, color: sameDay(day, today) ? "var(--ci, #2563eb)" : "var(--text-main)", lineHeight: 1 }}>{fmtDayNumber(day)}</div>
                     </div>
-                  );
-                })}
-              </div>
-              {dayColumns.map((day) => (
-                <DayColumn
-                  key={day.toISOString()}
-                  day={day}
-                  items={itemsByDay[toInputDate(day)] || []}
-                  columnWidth={columnWidth}
-                  onCreateEvent={handleCreateEvent}
-                  onOpenEvent={handleOpenEvent}
-                  onOpenCluster={handleOpenCluster}
-                />
-              ))}
-            </div>
+                  ))}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: gridTemplate, width: gridTotalWidth }}>
+                  <div style={{ position: "relative", borderRight: "1px solid var(--border-color)", background: "var(--bg-card)", boxSizing: "border-box" }}>
+                    {Array.from({ length: HOUR_END - HOUR_START }).map((_, index) => {
+                      const hour = HOUR_START + index;
+                      return (
+                        <div key={hour} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid color-mix(in srgb, var(--border-color) 62%, transparent)", padding: "6px 6px", fontSize: 10, fontWeight: 600, color: "color-mix(in srgb, var(--text-main) 42%, #9ca3af)", boxSizing: "border-box" }}>
+                          {hour > 12 ? `${hour - 12}pm` : `${hour}am`}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {dayColumns.map((day) => (
+                    <DayColumn
+                      key={day.toISOString()}
+                      day={day}
+                      items={itemsByDay[toInputDate(day)] || []}
+                      columnWidth={columnWidth}
+                      fillWidth={fillColumns}
+                      onCreateEvent={handleCreateEvent}
+                      onOpenEvent={handleOpenEvent}
+                      onOpenCluster={handleOpenCluster}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </section>

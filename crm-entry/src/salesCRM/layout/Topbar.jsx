@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { CalendarDays, Bell, Menu, LogOut } from "lucide-react";
 import ThemeChange from "../components/ui/ThemeChange";
 
-export default function Topbar({ onToggleSidebar, showSidebarToggle = true }) {
+export default function Topbar({ onToggleSidebar, onOpenCalendar, showSidebarToggle = true }) {
   const navigate = useNavigate();
   const [scrolled, setScrolled] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
@@ -74,7 +74,10 @@ export default function Topbar({ onToggleSidebar, showSidebarToggle = true }) {
       <div className="salescrm-topbar__actions" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
         <button
           type="button"
-          onClick={() => navigate("/crm/sales/calendar")}
+          onClick={() => {
+            onOpenCalendar?.();
+            navigate("/crm/sales/calendar");
+          }}
           title="Calendar"
           aria-label="Open sales calendar"
           className="salescrm-topbar__action-btn"

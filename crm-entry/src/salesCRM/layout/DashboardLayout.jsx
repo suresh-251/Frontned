@@ -46,6 +46,15 @@ const DashboardLayout = () => {
     setSidebarCollapsed((current) => !current);
   };
 
+  const handleOpenCalendar = () => {
+    if (isMobile) {
+      setIsMobileSidebarOpen(false);
+      return;
+    }
+
+    setSidebarCollapsed(true);
+  };
+
   return (
     <div className="salescrm-layout" style={{ background: "var(--bg-body)" }}>
       <Sidebar
@@ -58,7 +67,11 @@ const DashboardLayout = () => {
         onClose={() => setIsMobileSidebarOpen(false)}
       />
       <div className="salescrm-layout__content">
-        <Topbar onToggleSidebar={handleToggleSidebar} showSidebarToggle={isMobile} />
+        <Topbar
+          onToggleSidebar={handleToggleSidebar}
+          onOpenCalendar={handleOpenCalendar}
+          showSidebarToggle={isMobile}
+        />
         <main className="sales-crm-scroll salescrm-layout__main" style={{ background: "var(--bg-body)" }}>
           <Outlet />
         </main>

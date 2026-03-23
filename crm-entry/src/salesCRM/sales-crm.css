@@ -321,6 +321,7 @@ button, a, input, select {
 
 .salescrm-sidebar__header {
   padding: 10px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
@@ -406,6 +407,10 @@ button, a, input, select {
   transition: all 0.15s ease;
 }
 
+.salescrm-sidebar__nav .salescrm-navlink:first-child {
+  margin-top: 6px;
+}
+
 .salescrm-navlink:hover {
   background: color-mix(in srgb, var(--bg-body) 88%, var(--bg-card));
   color: var(--text-main);
@@ -447,6 +452,7 @@ button, a, input, select {
 
 .salescrm-sidebar--collapsed .salescrm-sidebar__header {
   padding: 10px 8px;
+  padding-bottom: 14px;
 }
 
 .salescrm-sidebar--collapsed .salescrm-sidebar__brand {
@@ -464,8 +470,9 @@ button, a, input, select {
 
 .salescrm-sidebar--collapsed .salescrm-navlink {
   justify-content: center;
-  padding: 8px;
-  width: 40px;
+  padding: 7px;
+  width: 36px;
+  min-height: 36px;
 }
 
 .salescrm-topbar__title {
