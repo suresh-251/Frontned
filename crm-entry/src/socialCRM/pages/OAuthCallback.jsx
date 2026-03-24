@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { getBrands } from "../api/brand.api";
+import { syncAnalytics } from "../api/analytics.api";
 
 export default function OAuthCallback() {
   const navigate = useNavigate();
@@ -20,11 +21,20 @@ export default function OAuthCallback() {
       toast.success("Account connected successfully 🎉");
 
       getBrands()
-        .then((brands) => {
+        .then(async (brands) => {
           const hasActive = brands.some((b) => b.isActive);
           if (brands.length === 0 || !hasActive) {
             navigate("/crm/socialmedia/brand/setup", { replace: true });
           } else {
+            // Auto-sync analytics in background after successful connection (30 days backfill)
+            try {
+              syncAnalytics(30).then(() => {
+                console.log("Analytics synced in background after OAuth (30 days backfill)");
+              }).catch((err) => {
+                console.warn("Background analytics sync failed:", err.message);
+              });
+            } catch { /* ignore sync errors */ }
+            
             navigate(returnUrl || "/crm/socialmedia/dashboard", { replace: true });
           }
         })

@@ -18,8 +18,8 @@ const PLATFORMS = [
   },
   {
     id: "instagram",
-    label: "Instagram",
-    description: "Connect IG account separately",
+    label: "Instagram Business",
+    description: "IG accounts linked to FB Pages",
     color: "pink",
     icon: (
       <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">

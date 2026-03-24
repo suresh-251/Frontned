@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, useRef } from "react";
 import {
   activateBrand,
   clearActiveBrand,
@@ -7,10 +7,13 @@ import {
   getBrands,
   updateBrand as apiUpdateBrand,
 } from "../api/brand.api";
+import { syncAnalytics } from "../api/analytics.api";
 import { appCache } from "../utils/cache";
 import { secureStorage } from "../../utils/secureStorage";
 
 const BRANDS_CACHE_KEY = "sc_brands";
+const SYNC_COOLDOWN_KEY = "sc_sync_cooldown";
+const SYNC_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
 /** Read brands synchronously from localStorage (used as useState initializer) */
 function readCachedBrands() {
@@ -24,8 +27,27 @@ function readCachedBrands() {
 
 const BrandContext = createContext(null);
 
+/** Check if enough time has passed since last sync */
+function canSync() {
+  try {
+    const lastSync = secureStorage.get(SYNC_COOLDOWN_KEY);
+    if (!lastSync) return true;
+    return Date.now() - parseInt(lastSync, 10) > SYNC_COOLDOWN_MS;
+  } catch {
+    return true;
+  }
+}
+
+/** Mark sync as just completed */
+function markSynced() {
+  try {
+    secureStorage.set(SYNC_COOLDOWN_KEY, Date.now().toString());
+  } catch { /* ignore */ }
+}
+
 export function BrandProvider({ children }) {
   const cachedBrands = readCachedBrands();
+  const syncTriggeredRef = useRef(false);
 
   // Initialize synchronously from cache — no loading flash for returning users
   const [brands, setBrands]           = useState(cachedBrands ?? []);
@@ -65,6 +87,28 @@ export function BrandProvider({ children }) {
     if (appCache.isFresh(BRANDS_CACHE_KEY)) return; // nothing to do
     refresh();
   }, [refresh]);
+
+  // Auto-sync analytics when active brand is available (with cooldown to avoid spam)
+  useEffect(() => {
+    if (!activeBrand || syncTriggeredRef.current) return;
+    if (!canSync()) {
+      console.log("Analytics sync skipped (cooldown active)");
+      return;
+    }
+    
+    syncTriggeredRef.current = true;
+    console.log("Auto-syncing analytics for brand:", activeBrand.slug);
+    
+    // Backfill 30 days of data on auto-sync
+    syncAnalytics(30)
+      .then(() => {
+        console.log("Analytics auto-sync completed (30 days backfill)");
+        markSynced();
+      })
+      .catch((err) => {
+        console.warn("Analytics auto-sync failed:", err.message);
+      });
+  }, [activeBrand]);
 
   /** Flush every brand-scoped cache so the next page renders fresh data. */
   const invalidateAllBrandCaches = useCallback(() => {

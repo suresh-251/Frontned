@@ -34,6 +34,13 @@ api.interceptors.request.use(config => {
   return config;
 });
 
+/** Create an error with the backend response data preserved for callers. */
+function apiError(msg, responseData, status) {
+  const err = new Error(msg);
+  err.response = { data: responseData, status };
+  return err;
+}
+
 // GLOBAL ERROR HANDLING — show user-friendly toast, return clean error
 api.interceptors.response.use(
   (response) => response,
@@ -48,7 +55,6 @@ api.interceptors.response.use(
     // Extract user-friendly message from backend structured response
     const message = data?.message || data?.error || "";
     const action = data?.action;
-    const hint = data?.hint;
 
     if (status === 401) {
       // Social media token expired — prompt reconnect, not logout
@@ -63,7 +69,7 @@ api.interceptors.response.use(
           message || "Your social media session has expired. Please reconnect your account.",
           { duration: 6000 }
         );
-        const err = new Error(message || "Social token expired");
+        const err = apiError(message || "Social token expired", data, status);
         err.code = "social_token_expired";
         err.action = "ReconnectAccount";
         return Promise.reject(err);
@@ -74,32 +80,31 @@ api.interceptors.response.use(
       appCache.clearAllUserCaches();
       toast.error("Session expired. Please log in again.");
       window.location.href = "/login";
-      return Promise.reject(new Error("Session expired"));
+      return Promise.reject(apiError("Session expired", data, status));
     }
 
     if (status === 403) {
       toast.error(message || "You don't have permission to perform this action.");
-      return Promise.reject(new Error(message || "Permission denied"));
+      return Promise.reject(apiError(message || "Permission denied", data, status));
     }
 
     if (status === 404) {
-      // Don't toast for 404s — let calling code decide
-      return Promise.reject(new Error(message || "Resource not found"));
+      return Promise.reject(apiError(message || "Resource not found", data, status));
     }
 
     if (status === 400 || status === 409) {
       toast.error(message || "Invalid request. Please check your input.");
-      return Promise.reject(new Error(message || "Invalid request"));
+      return Promise.reject(apiError(message || "Invalid request", data, status));
     }
 
     if (status === 429) {
       toast.error("Too many requests. Please wait a moment and try again.");
-      return Promise.reject(new Error("Rate limited"));
+      return Promise.reject(apiError("Rate limited", data, status));
     }
 
     if (status >= 500) {
       toast.error("Something went wrong on our end. Please try again later.");
-      return Promise.reject(new Error("Server error"));
+      return Promise.reject(apiError("Server error", data, status));
     }
 
     return Promise.reject(error);

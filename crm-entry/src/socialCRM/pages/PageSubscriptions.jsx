@@ -17,6 +17,11 @@ export default function PageSubscriptions() {
   const [loading, setLoading]           = useState(true);
   const [processing, setProcessing]     = useState(null);
   const [notification, setNotification] = useState(null);
+  const [expiredPages, setExpiredPages] = useState(new Set()); // pages with expired tokens
+
+  const setTokenExpired = (pageId) => {
+    setExpiredPages(prev => new Set([...prev, pageId]));
+  };
 
   const notify = (type, message) => {
     setNotification({ type, message });
@@ -64,18 +69,32 @@ export default function PageSubscriptions() {
     setProcessing(pageId);
     try {
       if (isSubscribed) {
-        await unsubscribePage(pageId);
+        const res = await unsubscribePage(pageId);
+        // Backend returns { isSubscribed: boolean } after aligning with Meta
+        setPages(prev => prev.map(p =>
+          (p.pageId ?? p.pageIdentifier) === pageId ? { ...p, isSubscribed: res.data?.isSubscribed ?? false } : p
+        ));
         notify("success", "Unsubscribed — webhook leads will stop syncing for this page");
       } else {
-        await subscribePage(pageId);
+        const res = await subscribePage(pageId);
+        // Backend returns { isSubscribed: boolean } after aligning with Meta
+        setPages(prev => prev.map(p =>
+          (p.pageId ?? p.pageIdentifier) === pageId ? { ...p, isSubscribed: res.data?.isSubscribed ?? true } : p
+        ));
         notify("success", "Subscribed — leads will now sync automatically in real time");
       }
-      setPages(prev => prev.map(p =>
-        (p.pageId ?? p.pageIdentifier) === pageId ? { ...p, isSubscribed: !isSubscribed } : p
-      ));
     } catch (err) {
-      const msg = err?.response?.data?.error || err?.response?.data?.message || `Failed to ${isSubscribed ? "unsubscribe" : "subscribe"}`;
-      notify("error", msg);
+      const data = err?.response?.data;
+      const action = data?.action;
+      const msg = data?.message || data?.error || `Failed to ${isSubscribed ? "unsubscribe" : "subscribe"}`;
+      
+      // Token expired - prompt reconnect
+      if (action === "ReconnectAccount" || data?.error === "token_expired") {
+        notify("error", "Facebook token expired. Please reconnect your account.");
+        setTokenExpired(pageId);
+      } else {
+        notify("error", msg);
+      }
     } finally {
       setProcessing(null);
     }
@@ -141,6 +160,7 @@ export default function PageSubscriptions() {
                 const name         = page.name ?? page.displayName ?? pageId;
                 const isSubscribed = page.isSubscribed ?? false;
                 const isProcessing = processing === pageId;
+                const isExpired    = expiredPages.has(pageId);
 
                 return (
                   <div key={pageId} className="px-5 py-4 hover:bg-slate-50/60 transition-colors">
@@ -153,37 +173,50 @@ export default function PageSubscriptions() {
                         />
                         <div className="min-w-0">
                           <p className="font-semibold text-slate-800 text-sm truncate">{name}</p>
-                          <p className="text-xs text-slate-400 truncate">{isSubscribed ? "Webhook active" : "Not subscribed"}</p>
+                          <p className="text-xs text-slate-400 truncate">
+                            {isExpired ? "⚠️ Token expired" : isSubscribed ? "Webhook active" : "Not subscribed"}
+                          </p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg ${
-                          isSubscribed
-                            ? "bg-green-100 text-green-700 border border-green-200"
-                            : "bg-slate-100 text-slate-500 border border-slate-200"
-                        }`}>
-                          <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isSubscribed ? "bg-green-500 animate-pulse" : "bg-slate-400"}`} />
-                          {isSubscribed ? "Active" : "Inactive"}
-                        </span>
+                        {isExpired ? (
+                          <button
+                            onClick={() => connectPlatform("facebook")}
+                            className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600 transition-all"
+                          >
+                            Reconnect
+                          </button>
+                        ) : (
+                          <>
+                            <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg ${
+                              isSubscribed
+                                ? "bg-green-100 text-green-700 border border-green-200"
+                                : "bg-slate-100 text-slate-500 border border-slate-200"
+                            }`}>
+                              <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isSubscribed ? "bg-green-500 animate-pulse" : "bg-slate-400"}`} />
+                              {isSubscribed ? "Active" : "Inactive"}
+                            </span>
 
-                        <button
-                          onClick={() => toggleSubscription(pageId, isSubscribed)}
-                          disabled={isProcessing}
-                          title={isSubscribed ? "Click to unsubscribe" : "Click to enable lead gen webhook"}
-                          className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed ${
-                            isSubscribed ? "bg-green-500" : "bg-slate-300"
-                          }`}
-                        >
-                          <span className={`inline-flex items-center justify-center h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                            isSubscribed ? "translate-x-6" : "translate-x-1"
-                          }`}>
-                            {isProcessing
-                              ? <svg className="animate-spin h-3 w-3 text-blue-600" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                              : <span className="text-xs">{isSubscribed ? "✓" : ""}</span>
-                            }
-                          </span>
-                        </button>
+                            <button
+                              onClick={() => toggleSubscription(pageId, isSubscribed)}
+                              disabled={isProcessing}
+                              title={isSubscribed ? "Click to unsubscribe" : "Click to enable lead gen webhook"}
+                              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                isSubscribed ? "bg-green-500" : "bg-slate-300"
+                              }`}
+                            >
+                              <span className={`inline-flex items-center justify-center h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                                isSubscribed ? "translate-x-6" : "translate-x-1"
+                              }`}>
+                                {isProcessing
+                                  ? <svg className="animate-spin h-3 w-3 text-blue-600" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                  : <span className="text-xs">{isSubscribed ? "✓" : ""}</span>
+                                }
+                              </span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
