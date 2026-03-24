@@ -1,9 +1,11 @@
 import React, { useMemo } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import HRLayout from "../layout/HRLayout";
-import { getAuthDetails } from "../configs/auth.utils";
+import { useAuth } from "../../auth/AuthContext";
 import { USER_MENU } from "../configs/userManu";
 import { MANAGER_MENU } from "../configs/managerMenu";
+
+const ROLE_CLAIM = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
 
 // PAGE IMPORTS
 import OffBoarding from "../pages/OffBoarding";
@@ -35,12 +37,14 @@ import Learning from "../pages/Learning";
 import Profile from "../pages/Profile";
 
 export default function HrRoutes() {
-  const user = getAuthDetails();
-  
+  const { user: jwtUser, isAdmin } = useAuth();
+
+  const role = jwtUser ? (jwtUser[ROLE_CLAIM] || jwtUser.role) : null;
+
   const activeMenu = useMemo(() => {
-    if (!user) return [];
-    return (user.isAdmin || user.role === "HR_MANAGER") ? MANAGER_MENU : USER_MENU;
-  }, [user]);
+    if (!jwtUser) return [];
+    return (isAdmin || role === "HR_MANAGER") ? MANAGER_MENU : USER_MENU;
+  }, [jwtUser, isAdmin, role]);
   
   const allowedPaths = useMemo(() => {
     const paths = [];

@@ -53,9 +53,10 @@
 
 
 import { jwtDecode } from "jwt-decode";
+import { getAccessToken } from "../../utils/authStorage";
 
 export const useRole = () => {
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   if (!token) return { isManager: false, isUser: false, role: null };
   
   try {

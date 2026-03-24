@@ -1,9 +1,10 @@
 import { jwtDecode } from "jwt-decode";
+import { getAccessToken } from "../../utils/authStorage";
 
 const ROLE_CLAIM = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
 
 export const getAuthDetails = () => {
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   if (!token) return null;
 
   try {
