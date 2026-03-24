@@ -250,8 +250,8 @@ export const mapActivity = (x) => ({
   title: x?.title || x?.subject || x?.eventType || x?.type || "Activity",
   type: x?.type || x?.eventType || "Activity",
   description: x?.description || "",
-  date: x?.callStartTime || x?.activityDate || x?.dueDate || x?.createdAt,
-  dueDate: x?.dueDate || x?.activityDate || x?.callStartTime || x?.createdAt,
+  date: x?.date || x?.callStartTime || x?.activityDate || x?.dueDate || x?.createdAt,
+  dueDate: x?.dueDate || x?.date || x?.activityDate || x?.callStartTime || x?.createdAt,
   status: x?.status || x?.callStatus || "",
   priority: x?.priority || ""
 });

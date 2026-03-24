@@ -3,6 +3,7 @@ import { Bell, Search, Settings, Shield, User, LogOut, Trash2, CheckCheck, Layou
 import { useNavigate } from "react-router-dom";
 import ThemeChange from "../components/ui/ThemeChange";
 import hrApi from "../api/hr.api";
+import { clearAccessToken } from "../../utils/authStorage";
 
 const SEARCH_RESOURCES = [
   { label: "Dashboard",          path: "/crm/hr/dashboard",         category: "Main",        icon: LayoutDashboard },
@@ -343,8 +344,8 @@ export default function Topbar({ userData }) {
 
               {/* Logout Section */}
               <div className="mt-1 border-t border-[var(--border-color)]/50 pt-1">
-                <button 
-                  onClick={() => { localStorage.removeItem("accessToken"); window.location.href = "/crm/hr/login"; }}
+                <button
+                  onClick={() => { clearAccessToken(); window.location.href = "/login"; }}
                   className="w-full flex items-center gap-3 px-4 py-2 text-[10px] font-bold text-rose-500 hover:bg-rose-500/10 transition-colors text-left"
                 >
                   <div className="p-1.5 bg-rose-500/10 rounded-lg">

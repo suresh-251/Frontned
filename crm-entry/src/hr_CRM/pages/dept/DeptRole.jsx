@@ -11,6 +11,7 @@ import { ShieldCheck, Plus, Search, Trash2, Loader2, X, Star, MapPin, Edit3, Ale
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import { jwtDecode } from "jwt-decode";
+import { getAccessToken } from "../../../utils/authStorage";
 
 export default function DeptRole() {
   const [roles, setRoles] = useState([]);
@@ -32,7 +33,7 @@ export default function DeptRole() {
     departmentId: ""
   });
 
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   const auth = useMemo(() => {
     if (!token) return { perms: [], isAdmin: false };
     try {

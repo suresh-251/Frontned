@@ -9,6 +9,7 @@ import { jwtDecode } from "jwt-decode";
 
 import { getDepartments, createDepartment, updateDepartment, deleteDepartment } from "../api/hr.dept";
 import { getBranches } from "../api/api.branch";
+import { getAccessToken } from "../../utils/authStorage";
 
 export default function Departments() {
   const [departments, setDepartments] = useState([]);
@@ -24,7 +25,7 @@ export default function Departments() {
   // --- 🛑 CONFIRMATION STATE ---
   const [confirm, setConfirm] = useState({ open: false, title: "", message: "", onConfirm: null });
 
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   const auth = useMemo(() => {
     if (!token) return { perms: [], isAdmin: false };
     try {

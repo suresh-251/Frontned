@@ -7,6 +7,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import { jwtDecode } from "jwt-decode";
+import { getAccessToken } from "../../utils/authStorage";
 
 import { getAdminUsers } from "../../api/admin/users.api";
 import { getDomains } from "../../api/admin/domains.api";
@@ -53,7 +54,7 @@ export default function Employees() {
   }, [allDepts, form._branchId]);
 
   // --- AUTH ---
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   const auth = useMemo(() => {
     if (!token) return { perms: [], isAdmin: false };
     try {

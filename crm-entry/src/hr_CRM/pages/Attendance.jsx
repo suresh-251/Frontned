@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import { jwtDecode } from "jwt-decode";
+import { getAccessToken } from "../../utils/authStorage";
 
 // API IMPORTS
 import { getAdminUsers } from "../../api/admin/users.api";
@@ -86,7 +87,7 @@ export default function Attendance() {
   }, []);
 
   const auth = useMemo(() => {
-    const token = localStorage.getItem("accessToken");
+    const token = getAccessToken();
     if (!token) return { userId: null, isManager: false };
     try {
       const decoded = jwtDecode(token);

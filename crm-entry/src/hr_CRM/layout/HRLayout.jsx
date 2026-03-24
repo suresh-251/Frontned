@@ -1,45 +1,47 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { ChevronDown, Menu, Briefcase } from "lucide-react";
 import Topbar from "./Topbar";
 
 // CONFIG & AUTH IMPORTS
 import { USER_MENU } from "../configs/userManu";
 import { MANAGER_MENU } from "../configs/managerMenu";
-import { getAuthDetails, debugAuth } from "../configs/auth.utils";
+import { useAuth } from "../../auth/AuthContext";
+
+const ROLE_CLAIM = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
 
 export default function HRLayout() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [dropdowns, setDropdowns] = useState({});
-  const [user, setUser] = useState(null);
-  const navigate = useNavigate();
+
+  // Use React-state-based auth — never touches localStorage directly
+  const { user: jwtUser, permissions, isAdmin } = useAuth();
 
   useEffect(() => {
-    // 1. Initialize Theme
+    // Initialize Theme
     const savedTheme = localStorage.getItem("hr-crm-theme") || "light";
     document.documentElement.setAttribute("data-theme", savedTheme);
-    
-    // 2. Perform Centralized Auth Check
-    const userData = getAuthDetails();
-    
-    if (userData) {
-      setUser(userData);
-      // 🚀 Log permissions to console for debugging/verification
-      debugAuth(); 
-    } else {
-      // Redirect to login if token is missing or invalid
-      navigate("/crm/hr/login");
-    }
-  }, [navigate]);
+  }, []);
 
-  // 3. Determine which menu to show based on Role/Admin status
+  // Build a user object from the decoded JWT in AuthContext
+  const user = useMemo(() => {
+    if (!jwtUser) return null;
+    return {
+      userId: jwtUser.sub || jwtUser.id,
+      username: jwtUser.username || jwtUser.name || "User",
+      role: jwtUser[ROLE_CLAIM] || jwtUser.role,
+      permissions,
+      isAdmin,
+    };
+  }, [jwtUser, permissions, isAdmin]);
+
+  // Determine which menu to show based on Role/Admin status
   const activeMenu = useMemo(() => {
     if (!user) return [];
-    // If user is HR_MANAGER or has ADMIN role/CRM_FULL_ACCESS perm
     return (user.isAdmin || user.role === "HR_MANAGER") ? MANAGER_MENU : USER_MENU;
   }, [user]);
 
-  // Prevent flash of content before user is verified
+  // ProtectedRoute already guards this — if we reach here, user IS authenticated
   if (!user) return null;
 
   const toggleDropdown = (key) => {

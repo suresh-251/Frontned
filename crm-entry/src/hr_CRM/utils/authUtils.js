@@ -1,7 +1,8 @@
 import { jwtDecode } from "jwt-decode";
+import { getAccessToken } from "../../utils/authStorage";
 
 export const getHRRole = () => {
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   if (!token) return null;
   try {
     const decoded = jwtDecode(token);

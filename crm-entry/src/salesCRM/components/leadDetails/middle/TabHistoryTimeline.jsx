@@ -9,6 +9,7 @@ const truncatePreview = (value = "", limit = 110) => {
 };
 
 export default function TabHistoryTimeline({ items, emptyLabel, icon: Icon, renderItemActions = null }) {
+  const TimelineIcon = Icon;
   const groups = useMemo(() => {
     const sortedItems = [...items].sort((a, b) => {
       const aTime = a?.date ? new Date(a.date).getTime() : 0;
@@ -36,7 +37,7 @@ export default function TabHistoryTimeline({ items, emptyLabel, icon: Icon, rend
     <div style={{ border: "1px solid rgba(148, 163, 184, 0.18)", borderRadius: 22, background: "#ffffff", padding: "18px 16px 10px", overflow: "visible", boxShadow: "0 1px 2px rgba(15, 23, 42, 0.02)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <div style={{ width: 36, height: 36, borderRadius: 12, background: "#eef4ff", color: "#4f46e5", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Icon size={17} />
+          <TimelineIcon size={17} />
         </div>
       </div>
       {Object.entries(groups).map(([date, group]) => (
@@ -59,26 +60,30 @@ export default function TabHistoryTimeline({ items, emptyLabel, icon: Icon, rend
                   style={{ display: "grid", gridTemplateColumns: "82px 44px minmax(0, 1fr)", gap: 12, alignItems: "start", paddingBottom: 20 }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textAlign: "right", paddingTop: 10 }}>{fmtTime(item?.date)}</div>
-                  <div style={{ width: 44, display: "flex", justifyContent: "center" }}>
-                    <div style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #dbe4f0", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", position: "relative", zIndex: 1 }}>
-                      <Icon size={15} />
+                    <div style={{ width: 44, display: "flex", justifyContent: "center" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #dbe4f0", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", position: "relative", zIndex: 1 }}>
+                      <TimelineIcon size={15} />
+                      </div>
                     </div>
-                  </div>
                   <div style={{ position: "relative", paddingTop: 7, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b", lineHeight: 1.4, wordBreak: "break-word" }}>{item.title}</div>
                     {descriptionText ? <div title={shouldTruncateDescription ? descriptionText : undefined} style={{ marginTop: 2, fontSize: 13, lineHeight: 1.5, color: "#334155", wordBreak: "break-word", cursor: shouldTruncateDescription ? "help" : "default" }}>{previewDescription}</div> : null}
-                    {inlineLink ? (
-                      <a
-                        href={inlineLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ display: "inline-flex", marginTop: 6, fontSize: 12.5, fontWeight: 700, color: "#2563eb", textDecoration: "none", wordBreak: "break-all" }}
-                      >
-                        Join Meeting
-                      </a>
+                    {(inlineLink || renderItemActions) ? (
+                      <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        {inlineLink ? (
+                          <a
+                            href={inlineLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ display: "inline-flex", fontSize: 12.5, fontWeight: 700, color: "#2563eb", textDecoration: "none", wordBreak: "break-all" }}
+                          >
+                            Join Meeting
+                          </a>
+                        ) : null}
+                        {renderItemActions ? <div style={{ display: "flex", alignItems: "center", gap: 6 }}>{renderItemActions(item)}</div> : null}
+                      </div>
                     ) : null}
                     {item.author ? <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.4, color: "#64748b", wordBreak: "break-word" }}>{`by ${item.author}`}</div> : null}
-                    {renderItemActions ? <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>{renderItemActions(item)}</div> : null}
                   </div>
                 </div>
               );

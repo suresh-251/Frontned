@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FaWhatsapp } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import {
   Activity,
   Calendar,
+  Copy,
   Edit3,
   FileText,
   Mail,
   MapPin,
   Paperclip,
   Phone,
+  Share2,
   Trash2,
   UploadCloud,
   UserCheck,
@@ -33,7 +35,6 @@ import {
   assignee,
   attachmentUrl,
   card,
-  compactMeetingDate,
   contactShortcutButtonStyle,
   contactShortcutIconColor,
   contactShortcutKeyframes,
@@ -60,14 +61,14 @@ import {
 } from "./shared";
 
 const LEAD_TABS = [
-  ["activity", "Activity", Activity],
-  ["tasks", "Tasks", UserCheck],
-  ["notes", "Notes", FileText],
-  ["emails", "Emails", Mail],
-  ["calls", "Calls", Phone],
-  ["whatsapp", "WhatsApp", FaWhatsapp],
-  ["meetings", "Meetings", Calendar],
-  ["attachments", "Attachments", Paperclip],
+  ["activity", "Activity"],
+  ["tasks", "Tasks"],
+  ["notes", "Notes"],
+  ["emails", "Emails"],
+  ["calls", "Calls"],
+  ["whatsapp", "WhatsApp"],
+  ["meetings", "Meetings"],
+  ["attachments", "Attachments"],
 ];
 
 const mapTaskTimelineItem = (item, index) => {
@@ -111,6 +112,12 @@ const truncatePreview = (value = "", limit = 110) => {
   return `${normalized.slice(0, limit).trimEnd()}...`;
 };
 
+const buildMeetingShareMessage = (item) => [
+  item?.title ? `Meeting: ${item.title}` : "Meeting invite",
+  item?.date ? `When: ${fmtDate(item.date)}` : "",
+  item?.meta ? `Join link: ${item.meta}` : "",
+].filter(Boolean).join("\n");
+
 export function LeftPanel({ lead, onConvert, onOpenTab, stacked = false, mobile = false, hideAvatar = false }) {
   const location = [lead?.address, lead?.city, lead?.state, lead?.country, lead?.zipCode || lead?.zip].filter(Boolean).join(", ");
   const initials = (leadName(lead).match(/\b\w/g) || []).join("").slice(0, 2).toUpperCase();
@@ -139,6 +146,7 @@ export function LeftPanel({ lead, onConvert, onOpenTab, stacked = false, mobile 
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 18 }}>
           {CONTACT_SHORTCUTS.map(({ id, label, icon: Icon }) => {
+            const ShortcutIcon = Icon;
             const enabled = shortcutEnabled[id];
             return (
               <button
@@ -154,7 +162,7 @@ export function LeftPanel({ lead, onConvert, onOpenTab, stacked = false, mobile 
                 onMouseDown={(event) => handleContactShortcutMouseDown(event, enabled)}
                 onMouseUp={(event) => handleContactShortcutMouseUp(event, enabled)}
               >
-                <Icon size={13} color={contactShortcutIconColor(enabled)} />
+                <ShortcutIcon size={13} color={contactShortcutIconColor(enabled)} />
               </button>
             );
           })}
@@ -315,7 +323,7 @@ export function ConvertToDealModal({ lead, onClose, onConverted }) {
   );
 }
 
-export function Timeline({ items, loading, onRefresh, stacked = false, mobile = false, onClose = null, eyebrow = "Lead Story", description = "A clean view of status changes, communications, and lead updates." }) {
+export function Timeline({ items, loading, stacked = false, mobile = false, onClose = null, eyebrow = "Lead Story", description = "A clean view of status changes, communications, and lead updates." }) {
   const groups = useMemo(() => items.reduce((acc, item) => { const key = fmtDate(timelineDateValue(item), false); (acc[key] ||= []).push(item); return acc; }, {}), [items]);
   return (
     <aside style={{ height: mobile ? "auto" : "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderLeft: stacked ? "none" : "1px solid #e2e8f0", borderTop: stacked ? "1px solid #e2e8f0" : "none", background: "linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%)" }}>
@@ -396,7 +404,7 @@ function Attachments({ leadId }) {
     uploadedAt: item?.uploadedAt || item?.createdAt || item?.date || "",
   });
 
-  const loadAttachments = async () => {
+  const loadAttachments = useCallback(async () => {
     if (!leadId) {
       setItems([]);
       setErrorMessage("Missing lead ID for attachments.");
@@ -414,11 +422,11 @@ function Attachments({ leadId }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [leadId]);
 
   useEffect(() => {
     loadAttachments();
-  }, [leadId]);
+  }, [loadAttachments]);
 
   const handleUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -480,11 +488,13 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
   const [loading, setLoading] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [deletingTaskId, setDeletingTaskId] = useState(null);
+  const leadWhatsappNumber = sanitizePhoneNumber(lead?.mobile || lead?.phone || lead?.secondaryPhone || "");
+  const leadEmailAddress = String(lead?.email || lead?.secondaryEmail || "").trim();
   const [open, setOpen] = useState([]);
   const [closed, setClosed] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [communications, setCommunications] = useState({ emails: [], whatsapp: [] });
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!lead?.id) return;
     setLoading(true);
     try {
@@ -536,8 +546,8 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
     } finally {
       setLoading(false);
     }
-  };
-  useEffect(() => { load(); }, [lead?.id]);
+  }, [lead?.id]);
+  useEffect(() => { load(); }, [load]);
   const callHistory = useMemo(() => (
     (Array.isArray(timeline) ? timeline : [])
       .filter((item) => String(item?.type || item?.eventType || "").toLowerCase().includes("call"))
@@ -612,6 +622,78 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
     return [];
   }, [activeTab, callHistory, communications.emails, communications.whatsapp, meetings, taskHistory]);
   const activityItems = activityView === "open" ? open : closed;
+
+  const handleCopyMeetingLink = async (item) => {
+    const joinUrl = String(item?.meta || "").trim();
+    if (!joinUrl) {
+      Toast.error("No meeting link available to copy.");
+      return;
+    }
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(joinUrl);
+        Toast.success("Meeting link copied");
+        return;
+      }
+      throw new Error("Clipboard API unavailable");
+    } catch {
+      Toast.error("Unable to copy the meeting link");
+    }
+  };
+
+  const handleShareMeetingByWhatsapp = (item) => {
+    if (!leadWhatsappNumber) {
+      Toast.error("No WhatsApp number available for this lead");
+      return;
+    }
+    const popup = window.open(
+      `https://wa.me/${encodeURIComponent(leadWhatsappNumber)}?text=${encodeURIComponent(buildMeetingShareMessage(item))}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+    if (!popup) Toast.error("Allow pop-ups to open WhatsApp in a new tab.");
+  };
+
+  const handleShareMeetingByEmail = (item) => {
+    if (!leadEmailAddress) {
+      Toast.error("No email address available for this lead");
+      return;
+    }
+    const subject = encodeURIComponent(item?.title ? `Meeting Invite: ${item.title}` : "Meeting Invite");
+    const body = encodeURIComponent(buildMeetingShareMessage(item));
+    window.location.href = `mailto:${encodeURIComponent(leadEmailAddress)}?subject=${subject}&body=${body}`;
+  };
+
+  const handleShareMeeting = async (item) => {
+    const shareText = buildMeetingShareMessage(item);
+    const joinUrl = String(item?.meta || "").trim();
+
+    if (navigator?.share) {
+      try {
+        await navigator.share({
+          title: item?.title || "Meeting Invite",
+          text: shareText,
+          ...(joinUrl ? { url: joinUrl } : {}),
+        });
+        return;
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+      }
+    }
+
+    if (leadWhatsappNumber) {
+      handleShareMeetingByWhatsapp(item);
+      return;
+    }
+
+    if (leadEmailAddress) {
+      handleShareMeetingByEmail(item);
+      return;
+    }
+
+    Toast.error("No sharing option is available for this lead");
+  };
+
   return (
     <section style={{ height: mobile ? "auto" : "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
       <DetailTabsRail tabs={LEAD_TABS} activeTab={activeTab} onTabChange={onTabChange} mobile={mobile} compact={compact} eyebrow="Activity Center" />
@@ -683,7 +765,32 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
               ...item,
               description: [item.status ? `Status: ${item.status}` : "", meetingMetaValue(item), `${item.durationMinutes || 0} min`].filter(Boolean).join(" | "),
               meta: item.joinUrl || "",
-            }))} emptyLabel="meetings" icon={Calendar} /> : null}
+            }))} emptyLabel="meetings" icon={Calendar} renderItemActions={(item) => (
+              <>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => handleCopyMeetingLink(item)}
+                  disabled={!item?.meta}
+                  title="Copy meeting link"
+                  aria-label="Copy meeting link"
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 0, borderRadius: 8 }}
+                >
+                  <Copy size={13} />
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => handleShareMeeting(item)}
+                  disabled={!item?.meta}
+                  title="Share meeting link"
+                  aria-label="Share meeting link"
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 0, borderRadius: 8 }}
+                >
+                  <Share2 size={13} />
+                </button>
+              </>
+            )} /> : null}
           </> : activeTab === "notes" ? <>
             <NotesSection lead={lead} onSaved={async () => {
               await onActivitySaved?.();

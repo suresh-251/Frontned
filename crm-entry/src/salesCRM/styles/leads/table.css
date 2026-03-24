@@ -105,6 +105,16 @@
   background: color-mix(in srgb, var(--ci) 12%, var(--cs));
 }
 
+.sales-leads-bulk-button--icon {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .bulk-select {
   min-width: 170px;
   height: 34px;
@@ -375,8 +385,16 @@
 }
 
 .td-actions {
-  min-width: 56px;
+  min-width: 64px;
   text-align: center;
+}
+
+.sales-leads-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 2px;
 }
 
 /* Name cell */
@@ -541,9 +559,9 @@
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
 }
 
-.sales-accounts-delete-button {
+/* .sales-accounts-delete-button {
   color: #ef4444 !important;
-}
+} */
 
 .sales-accounts-page .table {
   font-size: 13px;
@@ -601,8 +619,8 @@
 
 .sales-leads-table .td-actions,
 .sales-leads-table .th-actions {
-  min-width: 48px;
-  width: 48px;
+  min-width: 64px;
+  width: 64px;
 }
 
 .sales-leads-table .name-cell {

@@ -5,6 +5,7 @@ import { getDepartments } from "../api/hr.dept";
 import { getAdminUsers } from "../../api/admin/users.api";
 import { useRole } from "../hooks/useRole";
 import { jwtDecode } from "jwt-decode";
+import { getAccessToken } from "../../utils/authStorage";
 import * as XLSX from "xlsx";
 import {
   Users, Eye, X, Search, ChevronLeft, ChevronRight,
@@ -102,7 +103,7 @@ export default function HRLeads() {
   // Auth Identity
   const auth = useMemo(() => {
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) return { id: null };
       const decoded = jwtDecode(token);
       return { id: Number(decoded.sub || decoded.id) };

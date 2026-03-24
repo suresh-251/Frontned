@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getAccessToken, clearAccessToken } from "../../utils/authStorage";
 
 // HR CRM Axios Instance
 const hrApi = axios.create({
@@ -8,10 +9,10 @@ const hrApi = axios.create({
   },
 });
 
-// 🔐 Attach Admin JWT token automatically
+// 🔐 Attach JWT token automatically
 hrApi.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("accessToken"); // Same token from admin login
+    const token = getAccessToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -26,7 +27,7 @@ hrApi.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       console.warn("Token expired or unauthorized. Redirecting...");
-      localStorage.clear();
+      clearAccessToken();
       window.location.href = "/login";
     }
     return Promise.reject(error);

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import { getBranches, createBranch, updateBranch, deleteBranch } from "../api/api.branch";
 import { jwtDecode } from "jwt-decode";
+import { getAccessToken } from "../../utils/authStorage";
 
 export default function Branch() {
   const [branches, setBranches] = useState([]);
@@ -23,7 +24,7 @@ export default function Branch() {
   });
 
   // --- 🔐 SUPERLOGIC AUTH PARSING ---
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   const auth = useMemo(() => {
     if (!token) return { perms: [], isAdmin: false };
     try {

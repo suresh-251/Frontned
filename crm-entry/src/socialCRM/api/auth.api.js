@@ -36,15 +36,32 @@ export const connectLinkedIn = () => {
   connect("linkedin");
 };
 
-// Instagram — uses separate Instagram OAuth (different app/account)
-export const connectInstagram = () => {
+// Instagram via Facebook — uses Facebook OAuth to get Instagram Business accounts linked to FB Pages
+// This is the recommended method for Instagram Business/Creator accounts
+export const connectInstagramViaFacebook = async () => {
+  await revokeFacebook();
   connect("instagram");
+};
+
+// Instagram Direct — uses direct Instagram Basic Display API (for personal accounts)
+// Note: This has limited API access compared to Instagram via Facebook
+export const connectInstagramDirect = () => {
+  connect("instagram-direct");
+};
+
+// Instagram — default method (via Facebook for Business accounts)
+export const connectInstagram = () => {
+  connectInstagramViaFacebook();
 };
 
 // Optional generic export
 export const connectPlatform = (platform) => {
   if (platform === "facebook") {
     connectFacebookWithRevoke();
+  } else if (platform === "instagram") {
+    connectInstagramViaFacebook();
+  } else if (platform === "instagram-direct") {
+    connectInstagramDirect();
   } else {
     connect(platform);
   }
@@ -68,8 +85,13 @@ export const connectBrandChannel = async (brandSlug, platform) => {
     try { await api.post("/auth/facebook/revoke-permissions"); } catch { /* ignore */ }
     window.location.href =
       `${BASE_URL}/auth/facebook/connect?access_token=${encodeURIComponent(token)}&returnUrl=${encodeURIComponent(returnUrl)}`;
+  } else if (platform === "instagram") {
+    // Instagram via Facebook — revoke first for fresh account selection
+    try { await api.post("/auth/facebook/revoke-permissions"); } catch { /* ignore */ }
+    window.location.href =
+      `${BASE_URL}/auth/instagram/connect?access_token=${encodeURIComponent(token)}&returnUrl=${encodeURIComponent(returnUrl)}`;
   } else {
-    // Instagram and LinkedIn use direct OAuth
+    // LinkedIn and other platforms use direct OAuth
     window.location.href =
       `${BASE_URL}/auth/${platform}/connect?access_token=${encodeURIComponent(token)}&returnUrl=${encodeURIComponent(returnUrl)}`;
   }

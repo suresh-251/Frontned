@@ -91,7 +91,7 @@ function SkeletonRow() {
           </div>
         </div>
       </td>
-      {[...Array(5)].map((_, i) => (
+      {[...Array(4)].map((_, i) => (
         <td key={i} className="px-6 py-5 text-right">
           <div className="h-3.5 bg-slate-200 rounded w-12 ml-auto" />
         </td>
@@ -333,7 +333,7 @@ export default function Dashboard() {
           ? `https://graph.facebook.com/${acc.pageIdentifier}/picture?type=large`
           : null),
       totalFollowers: ch?.totalFollowers ?? null,
-      newFollowers:   ch?.newFollowers   ?? null,
+      totalPosts:     ch?.totalPosts ?? ch?.postsCount ?? ch?.posts ?? null,
       reach:          ch?.totalReach       > 0 ? ch.totalReach      : null,
       engagement:     ch?.totalEngagement  > 0 ? ch.totalEngagement : null,
       leads:          ch?.totalLeads       ?? null,
@@ -345,6 +345,7 @@ export default function Dashboard() {
     return {
       platform:   plat,
       followers:  m?.totalFollowers || 0,
+      newFollowers: m?.newFollowers || 0,
       reach:      m?.reach          || 0,
       engagement: m?.engagement     || 0,
       leads:      m?.leads          || 0,
@@ -427,16 +428,22 @@ export default function Dashboard() {
               </div>
             </div>
  
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="w-full">
+              <table className="w-full table-fixed">
+                <colgroup>
+                  <col className="w-[38%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[18%]" />
+                </colgroup>
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr className="text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                    <th className="px-6 py-4 text-left text-[13px]">Channel</th>
-                    <th className="px-6 py-4 text-right text-[13px]">Followers</th>
-                    <th className="px-6 py-4 text-right text-[13px]">New</th>
-                    <th className="px-6 py-4 text-right text-[13px]">Reach</th>
-                    <th className="px-6 py-4 text-right text-[13px]">Engagement</th>
-                    <th className="px-6 py-4 text-right text-[13px]">Leads</th>
+                    <th className="px-4 py-4 text-left text-[13px]">Channel</th>
+                    <th className="px-4 py-4 text-right text-[13px] whitespace-nowrap">Followers</th>
+                    <th className="px-4 py-4 text-right text-[13px] whitespace-nowrap">Reach</th>
+                    <th className="px-4 py-4 text-right text-[13px] whitespace-nowrap">Total Posts</th>
+                    <th className="pl-4 pr-6 py-4 text-right text-[13px] whitespace-nowrap">Leads</th>
                   </tr>
                 </thead>
  
@@ -452,7 +459,7 @@ export default function Dashboard() {
                       if (accs.length === 0) {
                         return (
                           <tr key={plat} className="hover:bg-slate-50 transition">
-                            <td className="px-6 py-5">
+                            <td className="px-4 py-5">
                               <div className="flex items-center gap-4">
                                 <PlatformIcon platform={plat} size={22} />
                                 <div>
@@ -464,8 +471,8 @@ export default function Dashboard() {
                                 </div>
                               </div>
                             </td>
-                            {[...Array(5)].map((_, i) => (
-                              <td key={i} className="px-6 py-5 text-right text-slate-300 text-[15px]">—</td>
+                            {[...Array(4)].map((_, i) => (
+                              <td key={i} className={`${i === 3 ? "pl-4 pr-6" : "px-4"} py-5 text-right text-slate-300 text-[15px] tabular-nums whitespace-nowrap align-middle`}>—</td>
                             ))}
                           </tr>
                         );
@@ -477,7 +484,7 @@ export default function Dashboard() {
  
                       return (
                         <tr key={plat} className="hover:bg-slate-50 transition">
-                          <td className="px-6 py-5">
+                          <td className="px-4 py-5">
                             <div className="flex items-center gap-4">
                               {metrics?.profilePictureUrl ? (
                                 <img src={metrics.profilePictureUrl} alt={plat}
@@ -489,10 +496,10 @@ export default function Dashboard() {
  
                               <div className="min-w-0">
                                 {accs.length > 1 ? (
-                                  <div className="relative inline-block">
+                                  <div className="relative block max-w-full">
                                     <select value={selId ?? ""} onChange={e => handleAccountSelect(plat, e.target.value)}
                                       disabled={isActivating}
-                                      className="text-[15px] font-semibold text-slate-800 bg-transparent pr-5 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300 rounded">
+                                      className="w-full pr-5 text-[15px] font-semibold text-slate-800 bg-transparent appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300 rounded">
                                       {accs.map(a => (
                                         <option key={a.pageIdentifier} value={a.pageIdentifier}>
                                           {a.displayName || a.pageIdentifier}
@@ -503,7 +510,7 @@ export default function Dashboard() {
                                       className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                   </div>
                                 ) : (
-                                  <p className="text-[15px] font-semibold text-slate-800 truncate max-w-[200px]">
+                                  <p className="text-[15px] font-semibold text-slate-800 whitespace-normal break-words leading-snug">
                                     {selAcc?.displayName || selAcc?.pageIdentifier}
                                   </p>
                                 )}
@@ -528,19 +535,16 @@ export default function Dashboard() {
                             </div>
                           </td>
  
-                          <td className="px-6 py-5 text-right text-[15px] font-semibold text-slate-800">
+                          <td className="px-4 py-5 text-right text-[15px] font-semibold text-slate-800 tabular-nums whitespace-nowrap align-middle">
                             <StatCell value={metrics?.totalFollowers} />
                           </td>
-                          <td className="px-6 py-5 text-right text-[15px] font-semibold text-slate-800">
-                            <StatCell value={metrics?.newFollowers} />
-                          </td>
-                          <td className="px-6 py-5 text-right text-[15px] font-semibold text-slate-800">
+                          <td className="px-4 py-5 text-right text-[15px] font-semibold text-slate-800 tabular-nums whitespace-nowrap align-middle">
                             <StatCell value={metrics?.reach} />
                           </td>
-                          <td className="px-6 py-5 text-right text-[15px] font-semibold text-slate-800">
-                            <StatCell value={metrics?.engagement} />
+                          <td className="px-4 py-5 text-right text-[15px] font-semibold text-slate-800 tabular-nums whitespace-nowrap align-middle">
+                            <StatCell value={metrics?.totalPosts} />
                           </td>
-                          <td className="px-6 py-5 text-right text-[15px] font-semibold text-slate-800">
+                          <td className="pl-4 pr-6 py-5 text-right text-[15px] font-semibold text-slate-800 tabular-nums whitespace-nowrap align-middle">
                             <StatCell value={metrics?.leads} />
                           </td>
                         </tr>
@@ -573,6 +577,7 @@ export default function Dashboard() {
                     <Tooltip />
                     <Legend />
                     <Bar dataKey="followers"  name="Followers"  fill="#58C5B3" />
+                    <Bar dataKey="newFollowers" name="New Followers" fill="#6c5ce7" />
                     <Bar dataKey="reach"      name="Reach"      fill="#4cbb17" />
                     <Bar dataKey="engagement" name="Engagement" fill="#fd6c9e" />
                     <Bar dataKey="leads"      name="Leads"      fill="#ffb90f" />

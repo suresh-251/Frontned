@@ -56,11 +56,14 @@ export const getChannelMetrics = async (days = 30) => {
 /**
  * Manual analytics sync — pulls fresh metrics from platform APIs,
  * promotes to PostMetrics, and re-aggregates BrandDailyMetrics for today.
- * POST /api/analytics/sync
+ * POST /api/analytics/sync?backfillDays=7
+ * @param {number} backfillDays - Number of days to backfill (default 7, max 90)
  */
-export const syncAnalytics = async () => {
+export const syncAnalytics = async (backfillDays = 7) => {
   try {
-    const res = await api.post("/analytics/sync");
+    const res = await api.post("/analytics/sync", null, {
+      params: { backfillDays }
+    });
     return res.data;
   } catch (err) {
     // Re-throw with the actual backend error message preserved
