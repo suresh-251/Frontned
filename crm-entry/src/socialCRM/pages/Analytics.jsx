@@ -1,16 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  PieChart, Pie, Cell,
 } from "recharts";
 
 import {
-  FiRefreshCw, FiTrendingUp, FiUsers, FiEye, FiHeart,
-  FiMessageSquare, FiAward, FiDownloadCloud,
-  FiZap, FiBarChart2, FiShare2, FiStar, FiChevronLeft,
-  FiChevronRight, FiImage, FiExternalLink,
+  FiRefreshCw, FiTrendingUp, FiUsers, FiEye,
+  FiAward, FiDownloadCloud,
+  FiZap, FiBarChart2, FiShare2, FiStar, FiImage,
 } from "react-icons/fi";
 import { useBrand } from "../context/BrandContext";
 import useAnalytics from "../hooks/useAnalytics";
@@ -38,14 +36,10 @@ const DAY_OPTIONS = [
   { label: "90d", value: 90 },
 ];
 
-const TREND_METRICS = [
-  { key: "totalEngagement",  label: "Engagement",  color: "#6366f1" },
-  { key: "totalReach",       label: "Reach",       color: "#10b981" },
-  { key: "totalImpressions", label: "Impressions", color: "#8b5cf6" },
-  { key: "totalLikes",       label: "Likes",       color: "#ef4444" },
-  { key: "totalComments",    label: "Comments",    color: "#f59e0b" },
-  { key: "totalClicks",      label: "Clicks",      color: "#f97316" },
-  { key: "postsCount",       label: "Posts",       color: "#3b82f6" },
+const ENGAGEMENT_TREND_METRICS = [
+  { key: "likes", label: "Likes", color: "#ef4444" },
+  { key: "comments", label: "Comments", color: "#f59e0b" },
+  { key: "views", label: "Impressions", color: "#8b5cf6" },
 ];
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -126,26 +120,6 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-// ── Stat card (summary row under top posts) ──────────────────────────────────
-const STAT_COLORS = {
-  blue:    "bg-blue-50 text-blue-600 border-blue-200",
-  indigo:  "bg-indigo-50 text-indigo-600 border-indigo-200",
-  rose:    "bg-rose-50 text-rose-600 border-rose-200",
-  orange:  "bg-orange-50 text-orange-600 border-orange-200",
-  emerald: "bg-emerald-50 text-emerald-600 border-emerald-200",
-  violet:  "bg-violet-50 text-violet-600 border-violet-200",
-};
-function StatCard({ icon, label, value, color = "blue" }) {
-  const cls = STAT_COLORS[color] || STAT_COLORS.blue;
-  return (
-    <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold ${cls}`}>
-      {icon}
-      <span>{label}</span>
-      <span className="font-black">{fmt(value)}</span>
-    </div>
-  );
-}
-
 // ── Empty state ───────────────────────────────────────────────────────────────
 function Empty({ message }) {
   return (
@@ -156,58 +130,16 @@ function Empty({ message }) {
   );
 }
 
-// ── Post image ────────────────────────────────────────────────────────────────
-function getPostUrl(post) {
-  const p = post.platform?.toLowerCase();
-  if (p === "facebook" && post.postId?.includes("_")) {
-    const parts = post.postId.split("_");
-    return `https://www.facebook.com/${parts[0]}/posts/${parts[1]}`;
-  }
-  if (p === "instagram") return `https://www.instagram.com/p/${post.postId}/`;
-  if (p === "linkedin")  return `https://www.linkedin.com/feed/update/${post.postId}/`;
-  return null;
-}
-
-function PostImage({ post }) {
-  const [imgError, setImgError] = useState(false);
-  const postUrl = getPostUrl(post);
-
-  if (!post.mediaUrl || imgError) {
-    return (
-      <div className="w-full h-40 bg-slate-100 flex flex-col items-center justify-center gap-2">
-        <FiImage size={20} className="text-slate-300" />
-        {postUrl ? (
-          <a href={postUrl} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[11px] text-indigo-500 hover:underline">
-            <FiExternalLink size={11} /> View post
-          </a>
-        ) : (
-          <span className="text-[10px] text-slate-400">No image</span>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full h-40 overflow-hidden bg-slate-100">
-      <img src={post.mediaUrl} alt="Post" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-        loading="lazy" onError={() => setImgError(true)} />
-    </div>
-  );
-}
-
 // ============================================================================
 // MAIN PAGE
 // ============================================================================
 export default function Analytics() {
   const [days,             setDays]             = useState(7);
-  const [trendMetric,      setTrendMetric]      = useState("totalEngagement");
   const [selectedPlatform, setSelectedPlatform] = useState("all");
-  const [postSort,         setPostSort]         = useState("engagement");
 
   const { activeBrand } = useBrand();
   const { summary, loading, error, refresh, sync, syncing, syncResult } =
-    useAnalytics(days, selectedPlatform, postSort);
+    useAnalytics(days, selectedPlatform);
 
   const [channelMetrics, setChannelMetrics] = useState([]);
   const [growthData,     setGrowthData]     = useState(null);
@@ -225,8 +157,6 @@ export default function Analytics() {
     if (growthData)    console.log("[Analytics] growthData →",    growthData);
   }, [summary, channelMetrics, growthData]);
 
-  const postsScrollRef = useRef(null);
-
   if (!activeBrand) {
     return (
       <div className="w-full min-h-screen bg-slate-50 flex items-center justify-center">
@@ -237,10 +167,12 @@ export default function Analytics() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const daily       = summary?.dailyBreakdown ?? [];
-  const topPosts    = summary?.topPosts       ?? [];
-  const filteredPosts = selectedPlatform === "all"
-    ? topPosts
-    : topPosts.filter(p => p.platform === selectedPlatform);
+  const dailyWithEngagementMetrics = daily.map((d) => ({
+    ...d,
+    likes: pick(d ?? {}, "totalLikes", "likes"),
+    comments: pick(d ?? {}, "totalComments", "comments"),
+    views: pick(d ?? {}, "totalImpressions", "impressions", "views"),
+  }));
 
   const totReach         = pick(summary ?? {}, "totalReach");
   const totImpr          = pick(summary ?? {}, "totalImpressions");
@@ -331,21 +263,6 @@ export default function Analytics() {
       color: "#f97316",
     },
   ];
-
-  const activeMeta = TREND_METRICS.find(m => m.key === trendMetric) || TREND_METRICS[0];
-
-  // ── Platform breakdown pie data (derived from channelMetrics) ───────────
-  const pieData = Object.entries(
-    channelMetrics.reduce((acc, ch) => {
-      const p = (ch.platform || "unknown").toLowerCase();
-      acc[p] = (acc[p] || 0) + (Number(ch.totalEngagement) || 0);
-      return acc;
-    }, {})
-  ).map(([name, value]) => ({
-    name: name.charAt(0).toUpperCase() + name.slice(1),
-    value,
-    color: PLATFORM_COLORS[name] || "#94a3b8",
-  }));
 
   return (
     <div className="w-full min-h-screen bg-slate-50 p-6 space-y-5">
@@ -489,18 +406,11 @@ export default function Analytics() {
             <span className="text-slate-400 text-xs">· Last {days} days</span>
           </div>
 
-          {/* Metric pills */}
-          <div className="flex flex-wrap gap-1.5">
-            {TREND_METRICS.map((m) => (
-              <button key={m.key} onClick={() => setTrendMetric(m.key)}
-                className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
-                  trendMetric === m.key
-                    ? "text-white"
-                    : "text-slate-400 hover:text-white"
-                }`}
-                style={trendMetric === m.key ? { background: m.color } : {}}>
-                {m.label}
-              </button>
+          <div className="flex flex-wrap gap-2">
+            {ENGAGEMENT_TREND_METRICS.map((metric) => (
+              <div key={metric.key} className="px-3 py-1 rounded-full text-[11px] font-bold text-white" style={{ background: metric.color }}>
+                {metric.label}
+              </div>
             ))}
           </div>
         </div>
@@ -515,12 +425,14 @@ export default function Analytics() {
             <Empty message="No trend data yet. Metrics sync runs every 15 minutes." />
           ) : (
             <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <AreaChart data={dailyWithEngagementMetrics} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="gradTrend" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor={activeMeta.color} stopOpacity={0.25} />
-                    <stop offset="100%" stopColor={activeMeta.color} stopOpacity={0}   />
-                  </linearGradient>
+                  {ENGAGEMENT_TREND_METRICS.map((metric) => (
+                    <linearGradient key={metric.key} id={`grad-${metric.key}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={metric.color} stopOpacity={0.22} />
+                      <stop offset="100%" stopColor={metric.color} stopOpacity={0} />
+                    </linearGradient>
+                  ))}
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                 <XAxis dataKey="date" tickFormatter={fmtDate}
@@ -530,240 +442,18 @@ export default function Analytics() {
                   tick={{ fontSize: 11, fill: "#94a3b8" }}
                   axisLine={false} tickLine={false} width={40} />
                 <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey={trendMetric}
-                  stroke={activeMeta.color} strokeWidth={2.5}
-                  fill="url(#gradTrend)" name={activeMeta.label}
-                  dot={false} activeDot={{ r: 4, fill: activeMeta.color }} />
+                {ENGAGEMENT_TREND_METRICS.map((metric) => (
+                  <Area key={metric.key} type="monotone" dataKey={metric.key}
+                    stroke={metric.color} strokeWidth={2.5}
+                    fill={`url(#grad-${metric.key})`} name={metric.label}
+                    dot={false} activeDot={{ r: 4, fill: metric.color }} />
+                ))}
               </AreaChart>
             </ResponsiveContainer>
           )}
         </div>
       </div>
 
-      {/* ── TOP POSTS ─────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
-              <FiAward className="text-amber-500" size={15} />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">
-                {postSort === "latest" ? "Latest Posts" : "Top Performing Posts"}
-              </h3>
-              <p className="text-[10px] text-slate-400">
-                {selectedPlatform === "all" ? "All platforms" : <span className="capitalize">{selectedPlatform}</span>}
-                {" · "}Last {days} days
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-slate-400 font-semibold">Sort:</span>
-            <div className="flex bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
-              {[
-                { value: "engagement", label: "Engagement" },
-                { value: "latest",     label: "Latest"     },
-              ].map((opt) => (
-                <button key={opt.value} onClick={() => setPostSort(opt.value)}
-                  className={`px-3 py-1.5 text-xs font-bold transition-all ${
-                    postSort === opt.value
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-500 hover:text-slate-800"
-                  }`}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            {/* Scroll buttons */}
-            <button onClick={() => postsScrollRef.current?.scrollBy({ left: -310, behavior: "smooth" })}
-              className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-colors">
-              <FiChevronLeft size={16} />
-            </button>
-            <button onClick={() => postsScrollRef.current?.scrollBy({ left: 310, behavior: "smooth" })}
-              className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-colors">
-              <FiChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Posts carousel */}
-        {loading ? (
-          <div className="px-6 py-12 flex items-center justify-center">
-            <FiRefreshCw size={20} className="text-slate-300 animate-spin" />
-          </div>
-        ) : filteredPosts.length === 0 ? (
-          <Empty message="No post metrics yet. Sync to pull fresh data from your platforms." />
-        ) : (
-          <div className="px-6 py-4 flex flex-wrap gap-2">
-            <StatCard icon={<FiTrendingUp  size={14} />} label="Total Posts"      value={summary?.totalPosts}       color="blue"    />
-            <StatCard icon={<FiEye         size={14} />} label="Views"            value={summary?.totalImpressions} color="indigo"  />
-            <StatCard icon={<FiHeart       size={14} />} label="Engagement"       value={summary?.totalEngagement}  color="rose"    />
-            <StatCard icon={<FiMessageSquare size={14}/>} label="Comments"        value={summary?.totalComments}    color="orange"  />
-            <StatCard icon={<FiUsers       size={14} />} label="Total Leads"      value={summary?.totalLeads}       color="emerald" />
-            <StatCard icon={<FiTrendingUp  size={14} />} label="Clicks"           value={summary?.totalClicks}      color="violet"  />
-          </div>
-        )}
-      </div>
-
-      {/* ── PLATFORM BREAKDOWN ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-12 gap-6">
-
-        {/* Platform breakdown pie */}
-        <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiAward className="text-indigo-500" size={14} /> Platform Breakdown
-            </h3>
-          </div>
-          <div className="p-4">
-            {loading ? (
-              <div className="h-52 flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : pieData.length === 0 || pieData.every(d => d.value === 0) ? (
-              <Empty message="No platform data yet." />
-            ) : (
-              <>
-                <ResponsiveContainer width="100%" height={160}>
-                  <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
-                      {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} opacity={selectedPlatform === "all" || selectedPlatform === entry.name.toLowerCase() ? 1 : 0.25} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v) => fmt(v)} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2 mt-2">
-                  {pieData.map((p) => (
-                    <div key={p.name} className={`flex items-center justify-between text-xs transition-opacity ${
-                      selectedPlatform !== "all" && selectedPlatform !== p.name.toLowerCase() ? "opacity-30" : ""
-                    }`}>
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: p.color }} />
-                        <span className="text-slate-600 font-semibold">{p.name}</span>
-                      </div>
-                      <span className="font-bold text-slate-800">{fmt(p.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Top posts — horizontal scrollable carousel (full width) */}
-        <div className="col-span-12 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <FiAward className="text-yellow-500" size={14} />
-              {postSort === "latest" ? "Latest Posts" : "Top Posts by Engagement"}
-            </h3>
-            <div className="flex items-center gap-3">
-              <select value={postSort} onChange={(e) => setPostSort(e.target.value)}
-                className="text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-yellow-300 cursor-pointer">
-                <option value="engagement">Top Engagement</option>
-                <option value="latest">Latest Posts</option>
-              </select>
-              <span className="text-[10px] text-slate-400 font-semibold">
-                {selectedPlatform === "all" ? "All platforms" : <span className="capitalize">{selectedPlatform}</span>} · top 10 · last {days} days
-              </span>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="px-6 py-10 text-center text-slate-400 text-sm animate-pulse">Loading posts…</div>
-          ) : filteredPosts.length === 0 ? (
-            <Empty message="No post metrics yet. Metrics sync runs every 15 minutes." />
-          ) : (() => {
-            const scroll = (dir) => {
-              if (postsScrollRef.current) postsScrollRef.current.scrollBy({ left: dir * 320, behavior: "smooth" });
-            };
-            return (
-              <div className="relative group">
-                <button onClick={() => scroll(-1)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/90 border border-slate-200 shadow-lg flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-all opacity-0 group-hover:opacity-100">
-                  <FiChevronLeft size={20} />
-                </button>
-                <button onClick={() => scroll(1)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/90 border border-slate-200 shadow-lg flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-all opacity-0 group-hover:opacity-100">
-                  <FiChevronRight size={20} />
-                </button>
-
-                <div ref={postsScrollRef} className="flex overflow-x-auto gap-4 p-4 scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-                  {filteredPosts.map((post, idx) => {
-                    const platformColor = PLATFORM_COLORS[post.platform?.toLowerCase()] ?? "#94a3b8";
-                    return (
-                      <div key={post.postId} className="flex-shrink-0 w-[280px] bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col">
-                        {/* Post header */}
-                        <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-100">
-                          {post.pageProfilePictureUrl ? (
-                            <img src={post.pageProfilePictureUrl} alt={post.pageName || post.platform}
-                              className="w-8 h-8 rounded-full object-cover border-2" style={{ borderColor: platformColor }}
-                              onError={(e) => { e.target.style.display = "none"; e.target.nextElementSibling.style.display = "flex"; }} />
-                          ) : null}
-                          <span className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                            style={{ background: platformColor, display: post.pageProfilePictureUrl ? "none" : "flex" }}>
-                            {post.platform?.charAt(0).toUpperCase()}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-slate-700 truncate">{post.pageName || post.platform}</p>
-                            {(post.createdAt || post.recordedAt) && (
-                              <p className="text-[10px] text-slate-400">{new Date(post.createdAt || post.recordedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
-                            )}
-                          </div>
-                          {postSort !== "latest" && (
-                            <span className="text-[10px] font-bold text-slate-400">#{idx + 1}</span>
-                          )}
-                        </div>
-
-                        <PostImage post={post} platformColor={platformColor} />
-
-                        <div className="flex items-center gap-4 px-4 py-2.5 border-b border-slate-50">
-                          <div className="flex items-center gap-1 text-rose-500">
-                            <FiHeart size={14} />
-                            <span className="text-xs font-bold">{fmt(post.likes)}</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-blue-500">
-                            <FiMessageSquare size={14} />
-                            <span className="text-xs font-bold">{fmt(post.comments)}</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-emerald-500">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                            </svg>
-                            <span className="text-xs font-bold">{fmt(post.shares)}</span>
-                          </div>
-                          <div className="ml-auto">
-                            <span className="inline-block bg-indigo-50 text-indigo-700 font-bold text-[10px] px-2 py-0.5 rounded-full">
-                              {fmt(post.engagement)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="px-4 py-3 flex-1">
-                          <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
-                            {post.message || <span className="text-slate-400 italic">No caption</span>}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center justify-between px-4 py-2 bg-slate-50 text-[10px] font-semibold text-slate-400">
-                          <span><FiEye className="inline mr-1" size={11} />Views: {fmt(post.impressions)}</span>
-                          <span>Engagement: {fmt(post.engagement)}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-
-      </div>
     </div>
   );
 }
