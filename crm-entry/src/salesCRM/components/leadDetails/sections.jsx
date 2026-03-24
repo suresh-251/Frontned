@@ -4,12 +4,14 @@ import { useNavigate } from "react-router-dom";
 import {
   Activity,
   Calendar,
+  Copy,
   Edit3,
   FileText,
   Mail,
   MapPin,
   Paperclip,
   Phone,
+  Share2,
   Trash2,
   UploadCloud,
   UserCheck,
@@ -60,14 +62,14 @@ import {
 } from "./shared";
 
 const LEAD_TABS = [
-  ["activity", "Activity", Activity],
-  ["tasks", "Tasks", UserCheck],
-  ["notes", "Notes", FileText],
-  ["emails", "Emails", Mail],
-  ["calls", "Calls", Phone],
-  ["whatsapp", "WhatsApp", FaWhatsapp],
-  ["meetings", "Meetings", Calendar],
-  ["attachments", "Attachments", Paperclip],
+  ["activity", "Activity"],
+  ["tasks", "Tasks"],
+  ["notes", "Notes"],
+  ["emails", "Emails"],
+  ["calls", "Calls"],
+  ["whatsapp", "WhatsApp"],
+  ["meetings", "Meetings"],
+  ["attachments", "Attachments"],
 ];
 
 const mapTaskTimelineItem = (item, index) => {
@@ -110,6 +112,12 @@ const truncatePreview = (value = "", limit = 110) => {
   if (normalized.length <= limit) return normalized;
   return `${normalized.slice(0, limit).trimEnd()}...`;
 };
+
+const buildMeetingShareMessage = (item) => [
+  item?.title ? `Meeting: ${item.title}` : "Meeting invite",
+  item?.date ? `When: ${fmtDate(item.date)}` : "",
+  item?.meta ? `Join link: ${item.meta}` : "",
+].filter(Boolean).join("\n");
 
 export function LeftPanel({ lead, onConvert, onOpenTab, stacked = false, mobile = false, hideAvatar = false }) {
   const location = [lead?.address, lead?.city, lead?.state, lead?.country, lead?.zipCode || lead?.zip].filter(Boolean).join(", ");
@@ -480,6 +488,8 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
   const [loading, setLoading] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [deletingTaskId, setDeletingTaskId] = useState(null);
+  const leadWhatsappNumber = sanitizePhoneNumber(lead?.mobile || lead?.phone || lead?.secondaryPhone || "");
+  const leadEmailAddress = String(lead?.email || lead?.secondaryEmail || "").trim();
   const [open, setOpen] = useState([]);
   const [closed, setClosed] = useState([]);
   const [meetings, setMeetings] = useState([]);
@@ -612,6 +622,78 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
     return [];
   }, [activeTab, callHistory, communications.emails, communications.whatsapp, meetings, taskHistory]);
   const activityItems = activityView === "open" ? open : closed;
+
+  const handleCopyMeetingLink = async (item) => {
+    const joinUrl = String(item?.meta || "").trim();
+    if (!joinUrl) {
+      Toast.error("No meeting link available to copy.");
+      return;
+    }
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(joinUrl);
+        Toast.success("Meeting link copied");
+        return;
+      }
+      throw new Error("Clipboard API unavailable");
+    } catch (error) {
+      Toast.error("Unable to copy the meeting link");
+    }
+  };
+
+  const handleShareMeetingByWhatsapp = (item) => {
+    if (!leadWhatsappNumber) {
+      Toast.error("No WhatsApp number available for this lead");
+      return;
+    }
+    const popup = window.open(
+      `https://wa.me/${encodeURIComponent(leadWhatsappNumber)}?text=${encodeURIComponent(buildMeetingShareMessage(item))}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+    if (!popup) Toast.error("Allow pop-ups to open WhatsApp in a new tab.");
+  };
+
+  const handleShareMeetingByEmail = (item) => {
+    if (!leadEmailAddress) {
+      Toast.error("No email address available for this lead");
+      return;
+    }
+    const subject = encodeURIComponent(item?.title ? `Meeting Invite: ${item.title}` : "Meeting Invite");
+    const body = encodeURIComponent(buildMeetingShareMessage(item));
+    window.location.href = `mailto:${encodeURIComponent(leadEmailAddress)}?subject=${subject}&body=${body}`;
+  };
+
+  const handleShareMeeting = async (item) => {
+    const shareText = buildMeetingShareMessage(item);
+    const joinUrl = String(item?.meta || "").trim();
+
+    if (navigator?.share) {
+      try {
+        await navigator.share({
+          title: item?.title || "Meeting Invite",
+          text: shareText,
+          ...(joinUrl ? { url: joinUrl } : {}),
+        });
+        return;
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+      }
+    }
+
+    if (leadWhatsappNumber) {
+      handleShareMeetingByWhatsapp(item);
+      return;
+    }
+
+    if (leadEmailAddress) {
+      handleShareMeetingByEmail(item);
+      return;
+    }
+
+    Toast.error("No sharing option is available for this lead");
+  };
+
   return (
     <section style={{ height: mobile ? "auto" : "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#ffffff" }}>
       <DetailTabsRail tabs={LEAD_TABS} activeTab={activeTab} onTabChange={onTabChange} mobile={mobile} compact={compact} eyebrow="Activity Center" />
@@ -683,7 +765,32 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
               ...item,
               description: [item.status ? `Status: ${item.status}` : "", meetingMetaValue(item), `${item.durationMinutes || 0} min`].filter(Boolean).join(" | "),
               meta: item.joinUrl || "",
-            }))} emptyLabel="meetings" icon={Calendar} /> : null}
+            }))} emptyLabel="meetings" icon={Calendar} renderItemActions={(item) => (
+              <>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => handleCopyMeetingLink(item)}
+                  disabled={!item?.meta}
+                  title="Copy meeting link"
+                  aria-label="Copy meeting link"
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 0, borderRadius: 8 }}
+                >
+                  <Copy size={13} />
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => handleShareMeeting(item)}
+                  disabled={!item?.meta}
+                  title="Share meeting link"
+                  aria-label="Share meeting link"
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 0, borderRadius: 8 }}
+                >
+                  <Share2 size={13} />
+                </button>
+              </>
+            )} /> : null}
           </> : activeTab === "notes" ? <>
             <NotesSection lead={lead} onSaved={async () => {
               await onActivitySaved?.();

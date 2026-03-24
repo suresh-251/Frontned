@@ -287,9 +287,11 @@ button, a, input, select {
 }
 
 .salescrm-sidebar {
-  width: 196px;
-  min-width: 196px;
+  width: 210px;
+  min-width: 210px;
   background: var(--bg-card);
+  border-right: 1px solid var(--border-color);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -299,8 +301,8 @@ button, a, input, select {
 }
 
 .salescrm-sidebar--collapsed {
-  width: 56px;
-  min-width: 56px;
+  width: 60px;
+  min-width: 60px;
 }
 
 .salescrm-sidebar__backdrop {
@@ -320,9 +322,8 @@ button, a, input, select {
 }
 
 .salescrm-sidebar__header {
-  padding: 10px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 12px;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -332,35 +333,34 @@ button, a, input, select {
 .salescrm-sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
 .salescrm-sidebar__collapse-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  border: 1px solid var(--border-color);
-  background: color-mix(in srgb, var(--bg-card) 92%, var(--bg-body));
-  color: color-mix(in srgb, var(--text-main) 58%, #64748b);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .salescrm-sidebar__collapse-btn:hover {
-  background: color-mix(in srgb, rgba(79, 70, 229, 0.08) 85%, var(--bg-card));
-  color: #4f46e5;
-  border-color: rgba(79, 70, 229, 0.22);
+  background: color-mix(in srgb, var(--bg-body) 55%, transparent);
+  color: var(--text-main);
 }
 
 .salescrm-sidebar__logo {
   width: 32px;
   height: 32px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #4f46e5;
   display: flex;
   align-items: center;
@@ -368,7 +368,7 @@ button, a, input, select {
   color: #fff;
   font-weight: 700;
   font-size: 14px;
-  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.18);
 }
 
 .salescrm-sidebar__logo-text h2 {
@@ -388,10 +388,21 @@ button, a, input, select {
 
 .salescrm-sidebar__nav {
   flex: 1;
-  padding: 6px 8px 12px;
+  padding: 0 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
+}
+
+.salescrm-navgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.salescrm-navgroup .salescrm-navlink {
+  width: 100%;
 }
 
 .salescrm-navlink {
@@ -399,27 +410,79 @@ button, a, input, select {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 8px;
-  color: color-mix(in srgb, var(--text-main) 62%, #64748b);
+  border-radius: 12px;
+  color: #64748b;
   font-weight: 500;
   font-size: 12.5px;
+  line-height: 1.2;
   border: 1px solid transparent;
   transition: all 0.15s ease;
+  text-decoration: none;
+  background: transparent;
+  cursor: pointer;
 }
 
 .salescrm-sidebar__nav .salescrm-navlink:first-child {
-  margin-top: 6px;
+  margin-top: 2px;
 }
 
 .salescrm-navlink:hover {
-  background: color-mix(in srgb, var(--bg-body) 88%, var(--bg-card));
+  background: color-mix(in srgb, #f8fafc 10%, transparent);
   color: var(--text-main);
 }
 
 .salescrm-navlink--active {
-  background: rgba(79, 70, 229, 0.1);
+  background: rgba(79, 70, 229, 0.04);
   color: #6366f1;
-  border-color: rgba(79, 70, 229, 0.2);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.salescrm-navlink--toggle {
+  justify-content: flex-start;
+}
+
+.salescrm-navlink__chevron {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: currentColor;
+}
+
+.salescrm-sidebar__subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-color);
+}
+
+.salescrm-sublink {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-radius: 0;
+  color: #94a3b8;
+  font-size: 11.5px;
+  font-weight: 400;
+  border: none;
+  transition: color 0.15s ease;
+  text-decoration: none;
+}
+
+.salescrm-sublink:hover {
+  color: #818cf8;
+}
+
+.salescrm-sublink--active {
+  color: #6366f1;
+  font-weight: 700;
+}
+
+.salescrm-sidebar__sublabel {
+  line-height: 1;
 }
 
 [data-theme='dark'] .salescrm-navlink {
@@ -427,22 +490,44 @@ button, a, input, select {
 }
 
 [data-theme='dark'] .salescrm-navlink:hover {
-  background: color-mix(in srgb, var(--bg-card) 82%, #ffffff);
+  background: color-mix(in srgb, #ffffff 6%, transparent);
   color: #f3f4f6;
 }
 
 [data-theme='dark'] .salescrm-navlink--active {
-  background: rgba(99, 102, 241, 0.18);
+  background: rgba(99, 102, 241, 0.12);
   color: #a5b4fc;
   border-color: rgba(129, 140, 248, 0.26);
 }
 
+[data-theme='dark'] .salescrm-navlink__chevron {
+  color: currentColor;
+}
+
+[data-theme='dark'] .salescrm-sublink {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .salescrm-sublink:hover {
+  color: #a5b4fc;
+}
+
+[data-theme='dark'] .salescrm-sublink--active {
+  color: #a5b4fc;
+  font-weight: 700;
+}
+
+[data-theme='dark'] .salescrm-sidebar__subnav {
+  border-left-color: rgba(148, 163, 184, 0.18);
+}
+
 [data-theme='dark'] .salescrm-sidebar__collapse-btn {
-  color: #d1d5db;
+  color: #94a3b8;
 }
 
 .salescrm-sidebar--collapsed .salescrm-sidebar__logo-text,
-.salescrm-sidebar--collapsed .salescrm-sidebar__label {
+.salescrm-sidebar--collapsed .salescrm-sidebar__label,
+.salescrm-sidebar--collapsed .salescrm-sidebar__sublabel {
   display: none;
 }
 
@@ -451,8 +536,7 @@ button, a, input, select {
 }
 
 .salescrm-sidebar--collapsed .salescrm-sidebar__header {
-  padding: 10px 8px;
-  padding-bottom: 14px;
+  padding: 12px 8px;
 }
 
 .salescrm-sidebar--collapsed .salescrm-sidebar__brand {
@@ -464,15 +548,19 @@ button, a, input, select {
 }
 
 .salescrm-sidebar--collapsed .salescrm-sidebar__nav {
-  padding: 0 6px 12px;
+  padding: 0 8px 12px;
   align-items: center;
 }
 
 .salescrm-sidebar--collapsed .salescrm-navlink {
   justify-content: center;
-  padding: 7px;
-  width: 36px;
-  min-height: 36px;
+  padding: 8px;
+  width: 40px;
+  min-height: 40px;
+}
+
+.salescrm-sidebar--collapsed .salescrm-sidebar__subnav {
+  display: none;
 }
 
 .salescrm-topbar__title {

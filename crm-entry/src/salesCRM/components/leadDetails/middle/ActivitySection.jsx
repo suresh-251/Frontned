@@ -3,6 +3,12 @@ import { Calendar, FileText, Phone } from "lucide-react";
 import { formatStatus } from "../../../pages/leads/utils";
 import { fmtDate, hasValue } from "../shared";
 
+const hasDisplayDate = (value) => {
+  if (!value) return false;
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime());
+};
+
 function Lane({ title, Icon, items, stacked = false, mobile = false }) {
   const sortedItems = useMemo(() => [...items].sort((a, b) => {
     const aTime = a?.date ? new Date(a.date).getTime() : 0;
@@ -26,8 +32,7 @@ function Lane({ title, Icon, items, stacked = false, mobile = false }) {
         ) : sortedItems.map((item) => (
           <div key={item.id} style={{ padding: stacked ? "0 0 14px" : "0 0 12px", marginBottom: stacked ? 14 : 12, borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ fontSize: stacked ? 14 : 13.5, fontWeight: 800, color: "#334155" }}>{item.title}</div>
-            {hasValue(item.description) ? <div style={{ marginTop: 5, fontSize: stacked ? 13 : 12.5, color: "#64748b", lineHeight: 1.5 }}>{item.description}</div> : null}
-            <div style={{ marginTop: 8, fontSize: 12, color: "#475569" }}>{fmtDate(item.date)}</div>
+            {hasDisplayDate(item.date) ? <div style={{ marginTop: 8, fontSize: 12, color: "#475569" }}>{fmtDate(item.date)}</div> : null}
             {hasValue(item.status) ? <div style={{ marginTop: 5, fontSize: 11.5, color: "#94a3b8" }}>{formatStatus(item.status)}</div> : null}
           </div>
         ))}

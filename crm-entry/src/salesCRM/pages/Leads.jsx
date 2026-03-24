@@ -1,6 +1,7 @@
 import "../styles/Leads.css";
 import "react-datepicker/dist/react-datepicker.css";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import leadsAPI from "../api/leads.api";
 import activitiesAPI from "../api/activities.api";
 import { getLeads as getSocialLeads } from "../../socialCRM/api/facebook.leads.api";
@@ -45,6 +46,7 @@ import {
 } from "./leads/pageSections";
 
 export default function Leads() {
+  const navigate = useNavigate();
   const [leadDataSource, setLeadDataSource] = useState("sales");
   const [leads, setLeads] = useState([]);
   const [socialLeads, setSocialLeads] = useState([]);
@@ -590,6 +592,14 @@ export default function Leads() {
               alert={alert}
               c={c}
               delay={`${index * 0.07}s`}
+              onClick={() => {
+                const tab =
+                  key === "callsToMake" ? "calls" :
+                  key === "emailsToSend" ? "emails" :
+                  key === "meetingsToSchedule" ? "meetings" :
+                  "tasks";
+                navigate(`/crm/sales/activities?tab=${tab}`);
+              }}
             />
           ))}
         </div>
@@ -679,6 +689,7 @@ export default function Leads() {
           onUpdateLead={updateLead}
           salesUserOptions={salesUserOptions}
           onOpenEdit={handleOpenEdit}
+          onDeleteLead={handleDeleteLead}
         />
       )}
 

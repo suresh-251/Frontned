@@ -37,7 +37,7 @@ function DealKanbanCard({ deal, stage, onOpenDeal, onDeleteDeal, draggable = fal
           event.stopPropagation();
           onDeleteDeal(deal);
         }}
-        style={{ position: "absolute", top: 8, right: 8, border: "none", background: "color-mix(in srgb, var(--bg-card) 92%, #ffffff)", color: "#ef4444", cursor: "pointer", padding: 2, borderRadius: 6, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.08)" }}
+        style={{ position: "absolute", top: 8, right: 8, border: "none", background: "color-mix(in srgb, var(--bg-card) 92%, #ffffff)", cursor: "pointer", padding: 2, borderRadius: 6, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.08)" }}
       >
         <Trash2 size={15} />
       </button>
@@ -94,7 +94,7 @@ export function DealsKanban({ deals, onOpenDeal, onDeleteDeal }) {
         const totalAmount = items.reduce((sum, deal) => sum + normalizeAmount(deal), 0);
         const meta = STAGE_META[stage] || { color: "#334155", bg: "#e2e8f0" };
         return (
-          <div key={stage} className="kanban-column" style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}>
+          <div key={stage} className="kanban-column" style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg, display: "flex", flexDirection: "column", height: 560 }}>
             <div className="kanban-column__header" style={{ alignItems: "flex-start" }}>
               <div>
                 <div className="kanban-column__label">{formatStageLabel(stage)}</div>
@@ -102,7 +102,7 @@ export function DealsKanban({ deals, onOpenDeal, onDeleteDeal }) {
               </div>
               <span className="kanban-column__count">{items.length}</span>
             </div>
-            <div className="kanban-column__list">
+            <div className="kanban-column__list" style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
               {!items.length ? <div className="kanban-card" style={{ borderStyle: "dashed", color: "color-mix(in srgb, var(--text-main) 60%, #94a3b8)" }}>No deals in this stage</div> : items.map((deal) => (
                 <DealKanbanCard key={getDealId(deal) || `${getDealTitle(deal)}-${normalizeClosingDate(deal) || "none"}`} deal={deal} stage={stage} onOpenDeal={onOpenDeal} onDeleteDeal={onDeleteDeal} />
               ))}
@@ -176,7 +176,7 @@ export function DealsKanbanBoard({ deals, onOpenDeal, onDeleteDeal, onStageDrop 
           <div
             key={stage}
             className={`kanban-column ${isOver ? "kanban-column--over" : ""}`}
-            style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg }}
+            style={{ "--kanban-accent": meta.color, "--kanban-accent-bg": meta.bg, display: "flex", flexDirection: "column", height: 560 }}
             onDragOver={(event) => {
               event.preventDefault();
               setDragOverStage(stage);
@@ -198,7 +198,7 @@ export function DealsKanbanBoard({ deals, onOpenDeal, onDeleteDeal, onStageDrop 
               </div>
               <span className="kanban-column__count">{items.length}</span>
             </div>
-            <div className="kanban-column__list">
+            <div className="kanban-column__list" style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
               {!items.length ? <div className="kanban-card" style={{ borderStyle: "dashed", color: "color-mix(in srgb, var(--text-main) 60%, #94a3b8)" }}>No deals in this stage</div> : items.map((deal) => (
                 <DealKanbanCard
                   key={getDealId(deal) || `${getDealTitle(deal)}-${getCreatedTime(deal) || "none"}`}

@@ -67,18 +67,22 @@ export default function TabHistoryTimeline({ items, emptyLabel, icon: Icon, rend
                   <div style={{ position: "relative", paddingTop: 7, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 800, color: "#1e293b", lineHeight: 1.4, wordBreak: "break-word" }}>{item.title}</div>
                     {descriptionText ? <div title={shouldTruncateDescription ? descriptionText : undefined} style={{ marginTop: 2, fontSize: 13, lineHeight: 1.5, color: "#334155", wordBreak: "break-word", cursor: shouldTruncateDescription ? "help" : "default" }}>{previewDescription}</div> : null}
-                    {inlineLink ? (
-                      <a
-                        href={inlineLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ display: "inline-flex", marginTop: 6, fontSize: 12.5, fontWeight: 700, color: "#2563eb", textDecoration: "none", wordBreak: "break-all" }}
-                      >
-                        Join Meeting
-                      </a>
+                    {(inlineLink || renderItemActions) ? (
+                      <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        {inlineLink ? (
+                          <a
+                            href={inlineLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ display: "inline-flex", fontSize: 12.5, fontWeight: 700, color: "#2563eb", textDecoration: "none", wordBreak: "break-all" }}
+                          >
+                            Join Meeting
+                          </a>
+                        ) : null}
+                        {renderItemActions ? <div style={{ display: "flex", alignItems: "center", gap: 6 }}>{renderItemActions(item)}</div> : null}
+                      </div>
                     ) : null}
                     {item.author ? <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.4, color: "#64748b", wordBreak: "break-word" }}>{`by ${item.author}`}</div> : null}
-                    {renderItemActions ? <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>{renderItemActions(item)}</div> : null}
                   </div>
                 </div>
               );

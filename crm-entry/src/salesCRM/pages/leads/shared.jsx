@@ -15,6 +15,7 @@ import {
   Plus,
   Search,
   Settings,
+  Trash2,
   TrendingUp,
   Upload,
   X,
@@ -49,6 +50,7 @@ export const IFilter = mkI(Filter);
 export const IRows = mkI(List);
 export const IUpload = mkI(Upload);
 export const IKanban = mkI(LayoutGrid);
+export const ITrash = mkI(Trash2);
 
 export const parseDateTimeValue = (value) => {
   if (!value) return null;
@@ -73,8 +75,15 @@ export function useClickOutside(ref, cb) {
   }, [ref, cb]);
 }
 
-export const StatCard = memo(({ label, value, detailValue = 0, detailLabel = "due today", helper, icon, alert, c, delay }) => (
-  <div className="stat-card" style={{ "--sc-delay": delay, "--sc-card": c.card, "--sc-icon": c.icon, "--sc-ink": c.ink }}>
+export const StatCard = memo(({ label, value, detailValue = 0, detailLabel = "due today", helper, icon, alert, c, delay, onClick = null }) => {
+  const CardTag = onClick ? "button" : "div";
+  return (
+  <CardTag
+    className="stat-card"
+    style={{ "--sc-delay": delay, "--sc-card": c.card, "--sc-icon": c.icon, "--sc-ink": c.ink, ...(onClick ? { padding: 0, textAlign: "left", cursor: "pointer" } : {}) }}
+    onClick={onClick || undefined}
+    type={onClick ? "button" : undefined}
+  >
     <div className="stat-header">
       <div className="stat-icon-wrap"><Icon id={icon} size={18} color="var(--sc-ink)" /></div>
       <span className="stat-label">{label}</span>
@@ -91,5 +100,6 @@ export const StatCard = memo(({ label, value, detailValue = 0, detailLabel = "du
         </div>
       </div>
     </div>
-  </div>
-));
+  </CardTag>
+  );
+});

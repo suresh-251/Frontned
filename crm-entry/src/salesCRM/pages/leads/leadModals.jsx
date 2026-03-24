@@ -4,6 +4,12 @@ import { ALL_COLUMNS, LEAD_FIELDS, LEAD_SOURCE_OPTIONS, LEAD_TYPES } from "./con
 import { formatLeadSource, guessField, leadToUpdatePayload, parseCSV, sanitizeLeadSource, sanitizeStatus, splitFullName } from "./utils";
 import { IChevD, IPlus, IUpload, IX, parseDateTimeValue, toDateTimeValue, useClickOutside } from "./shared";
 
+const autoGrowTextarea = (event) => {
+  const textarea = event.currentTarget;
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+};
+
 export function AddLeadDropdown({ onSelectType }) {
   const [open, setOpen] = useState(false);
   const [showMore, setShowMore] = useState(false);
@@ -101,7 +107,8 @@ export function CreateLeadModal({ leadType, onClose, onSave }) {
     onClose();
   };
 
-  const inputStyle = { width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", outline: "none" };
+  const inputStyle = { width: "100%", padding: "10px 12px", border: "1.5px solid #dbe4f0", borderRadius: "12px", fontSize: "13px", outline: "none", color: "#334155", background: "#ffffff" };
+  const textareaStyle = { ...inputStyle, minHeight: 52, lineHeight: 1.5, resize: "none", overflow: "hidden" };
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -132,7 +139,13 @@ export function CreateLeadModal({ leadType, onClose, onSave }) {
             <div key={field.key} style={{ gridColumn: field.span === 2 ? "1 / -1" : "auto" }}>
               <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>{field.label}</label>
               {field.key === "comments" || field.key === "description" ? (
-                <textarea rows={field.key === "description" ? 4 : 3} value={form[field.key]} onChange={(event) => handle(field.key, event.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
+                <textarea
+                  rows={1}
+                  value={form[field.key]}
+                  onChange={(event) => handle(field.key, event.target.value)}
+                  onInput={autoGrowTextarea}
+                  style={textareaStyle}
+                />
               ) : (
                 <input type={field.type || "text"} value={form[field.key]} onChange={(event) => handle(field.key, event.target.value)} style={inputStyle} />
               )}
@@ -164,15 +177,14 @@ export function EditModal({ lead, onClose, onSave, onDelete, salesUsers = [], sa
   }, [lead]);
 
   const handle = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  const inputStyle = { width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: "6px", fontSize: "13px", outline: "none" };
+  const inputStyle = { width: "100%", padding: "10px 12px", border: "1.5px solid #dbe4f0", borderRadius: "12px", fontSize: "13px", outline: "none", color: "#334155", background: "#ffffff" };
+  const textareaStyle = { ...inputStyle, minHeight: 52, lineHeight: 1.5, resize: "none", overflow: "hidden" };
   const fields = [
     { label: "First Name", key: "firstName" },
     { label: "Last Name", key: "lastName" },
-    { label: "Title", key: "title" },
     { label: "Email", key: "email", type: "email" },
     { label: "Secondary Email", key: "secondaryEmail", type: "email" },
     { label: "Phone", key: "phone" },
-    { label: "Mobile", key: "mobile" },
     { label: "Company", key: "company" },
     { label: "Position", key: "position" },
     { label: "Industry", key: "industry" },
@@ -183,8 +195,8 @@ export function EditModal({ lead, onClose, onSave, onDelete, salesUsers = [], sa
     { label: "State", key: "state" },
     { label: "Country", key: "country" },
     { label: "Zip Code", key: "zipCode" },
-    { label: "Comments", key: "comments", span: 2 },
-    { label: "Description", key: "description", span: 2 },
+    { label: "Comments", key: "comments" },
+    { label: "Description", key: "description" },
   ];
 
   return (
@@ -196,7 +208,13 @@ export function EditModal({ lead, onClose, onSave, onDelete, salesUsers = [], sa
             <div key={field.key} style={{ gridColumn: field.span === 2 ? "1 / -1" : "auto" }}>
               <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "5px" }}>{field.label}</label>
               {field.key === "comments" || field.key === "description" ? (
-                <textarea rows={field.key === "description" ? 4 : 3} value={form[field.key] || ""} onChange={(event) => handle(field.key, event.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
+                <textarea
+                  rows={1}
+                  value={form[field.key] || ""}
+                  onChange={(event) => handle(field.key, event.target.value)}
+                  onInput={autoGrowTextarea}
+                  style={textareaStyle}
+                />
               ) : (
                 <input type={field.type || "text"} value={form[field.key] || ""} onChange={(event) => handle(field.key, event.target.value)} style={inputStyle} />
               )}
@@ -218,6 +236,7 @@ export function EditModal({ lead, onClose, onSave, onDelete, salesUsers = [], sa
               timeIntervals={15}
               dateFormat="MMM d, yyyy h:mm aa"
               className="lead-followup-datepicker"
+              wrapperClassName="lead-followup-datepicker-wrapper"
               customInput={<input style={inputStyle} />}
             />
           </div>

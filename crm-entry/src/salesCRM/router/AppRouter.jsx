@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from '../layout/DashboardLayout';
 import Leads from '../pages/Leads';
+import Activities from '../pages/Activities';
 import Deals from '../pages/Deals';
 import Accounts from '../pages/Accounts';
 import Calendar from '../pages/Calendar';
@@ -11,6 +12,7 @@ const AppRouter = () => {
       <Route path="/" element={<DashboardLayout />}>
         <Route index element={<Navigate to="leads" replace />} />
         <Route path="leads" element={<Leads />} />
+        <Route path="activities" element={<Activities />} />
         <Route path="deals" element={<Deals />} />
         <Route path="accounts" element={<Accounts />} />
         <Route path="calendar" element={<Calendar />} />
