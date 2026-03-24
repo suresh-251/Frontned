@@ -3,7 +3,7 @@ import api from "../api/apiClient";
 import { connectPlatform } from "../api/auth.api";
 import { selectPage } from "../api/facebook.pages.api";
 import { activateInstagramAccount } from "../api/instagram.accounts.api";
-import { getChannelMetrics, syncAnalytics, getGrowthMetrics } from "../api/analytics.api";
+import { getChannelMetrics, syncAnalytics } from "../api/analytics.api";
 import { getSelectedQuickActions, getQuickActions, saveQuickActions } from "../api/quickActions.api";
 import { appCache } from "../utils/cache";
 import { useBrand } from "../context/BrandContext";
@@ -12,7 +12,6 @@ import {
   FiEdit, FiUsers, FiSettings, FiActivity,
   FiZap, FiChevronDown, FiRefreshCw, FiSliders,
   FiBarChart2, FiMessageCircle, FiCalendar, FiBriefcase, FiBookOpen,
-  FiTrendingUp, FiTrendingDown, FiMinus,
 } from "react-icons/fi";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -130,39 +129,6 @@ function ActivityItem({ text, time }) {
   );
 }
  
-// ── Growth metric card ────────────────────────────────────────────────────────
-function GrowthCard({ label, current, previous, change, percent }) {
-  const isUp   = change > 0;
-  const isDown = change < 0;
-  const color  = isUp ? "text-emerald-600" : isDown ? "text-red-500" : "text-slate-400";
-  const bgColor = isUp ? "bg-emerald-50" : isDown ? "bg-red-50" : "bg-slate-50";
-  const TrendIcon = isUp ? FiTrendingUp : isDown ? FiTrendingDown : FiMinus;
-  const sign   = isUp ? "+" : "";
- 
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
-        <span className={`${bgColor} ${color} text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1`}>
-          <TrendIcon size={10} />
-          {sign}{percent?.toFixed(1) ?? 0}%
-        </span>
-      </div>
-      <div className="flex items-end justify-between">
-        <div>
-          <p className="text-xl font-black text-slate-800">{(current ?? 0).toLocaleString()}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            vs <span className="font-semibold">{(previous ?? 0).toLocaleString()}</span> last month
-          </p>
-        </div>
-        <div className={`text-xs font-bold ${color}`}>
-          {sign}{(change ?? 0).toLocaleString()}
-        </div>
-      </div>
-    </div>
-  );
-}
- 
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -182,9 +148,6 @@ export default function Dashboard() {
   const [allModules,   setAllModules]   = useState([]);
   const [showCustomize, setShowCustomize] = useState(false);
   const [savingQA,     setSavingQA]     = useState(false);
-  const [growth,       setGrowth]       = useState(null);
-  const [growthLoading, setGrowthLoading] = useState(true);
- 
   // ── Fetch from server and update cache ──────────────────────────────────────
   const fetchFromServer = useCallback(async (slug) => {
     const [accsRes, channelsRes] = await Promise.allSettled([
@@ -263,15 +226,6 @@ export default function Dashboard() {
       .catch(() => setQuickActions([]));
   }, []);
 
-  // ── Load growth metrics ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!activeBrand?.slug) return;
-    setGrowthLoading(true);
-    getGrowthMetrics()
-      .then(setGrowth)
-      .catch(() => setGrowth(null))
-      .finally(() => setGrowthLoading(false));
-  }, [activeBrand?.slug]);
 
   // ── Sync helper (reusable by manual + auto) ────────────────────────────────
   const runSync = useCallback(async (silent = false) => {
@@ -290,7 +244,6 @@ export default function Dashboard() {
       });
       appCache.invalidate(dashKey(activeBrand?.slug));
       await loadData(activeBrand?.slug, { force: true, silent: true });
-      getGrowthMetrics().then(setGrowth).catch(() => {});
     } catch (e) {
       if (!silent) setSyncMsg({ ok: false, text: e?.message || "Sync failed" });
     } finally {
@@ -322,7 +275,6 @@ export default function Dashboard() {
     const interval = setInterval(() => {
       appCache.invalidate(dashKey(activeBrand.slug));
       loadData(activeBrand.slug, { force: true, silent: true });
-      getGrowthMetrics().then(setGrowth).catch(() => {});
     }, 15 * 60 * 1000);
     return () => clearInterval(interval);
   }, [activeBrand?.slug, loadData]);
@@ -600,44 +552,8 @@ export default function Dashboard() {
             </div>
           </div>
  
-          {/* Month-over-Month Growth */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100">
-              <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                <FiTrendingUp className="text-emerald-500" size={14} /> Monthly Growth
-              </h3>
-              {growth && (
-                <p className="text-[10px] text-slate-400 mt-1">
-                  {new Date(growth.currentPeriodStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  {" – "}
-                  {new Date(growth.currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  {" vs "}
-                  {new Date(growth.previousPeriodStart).toLocaleDateString("en-US", { month: "short" })}
-                </p>
-              )}
-            </div>
-            <div className="p-4">
-              {growthLoading ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {[...Array(6)].map((_, i) => (
-                    <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />
-                  ))}
-                </div>
-              ) : growth ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <GrowthCard label="Followers"   current={growth.currentFollowers}        previous={growth.previousFollowers}        change={growth.followersChange}     percent={growth.followersGrowthPercent} />
-                  <GrowthCard label="Leads"        current={growth.currentMonthLeads}       previous={growth.previousMonthLeads}       change={growth.leadsChange}         percent={growth.leadsGrowthPercent} />
-                  <GrowthCard label="Engagement"   current={growth.currentMonthEngagement}  previous={growth.previousMonthEngagement}  change={growth.engagementChange}    percent={growth.engagementGrowthPercent} />
-                  <GrowthCard label="Reach"        current={growth.currentMonthReach}        previous={growth.previousMonthReach}        change={growth.reachChange}         percent={growth.reachGrowthPercent} />
-                  <GrowthCard label="Impressions"  current={growth.currentMonthImpressions}  previous={growth.previousMonthImpressions}  change={growth.impressionsChange}   percent={growth.impressionsGrowthPercent} />
-                  <GrowthCard label="Posts"        current={growth.currentMonthPosts}        previous={growth.previousMonthPosts}        change={growth.postsChange}         percent={growth.postsGrowthPercent} />
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 text-center py-8">No growth data available. Sync analytics first.</p>
-              )}
-            </div>
-          </div>
- 
+
+
           {/* Brand Growth Graph */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4">
