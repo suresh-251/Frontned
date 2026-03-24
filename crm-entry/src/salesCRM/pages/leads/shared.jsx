@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { memo, useEffect } from "react";
 import {
   Calendar,
@@ -21,13 +22,17 @@ import {
   X,
 } from "lucide-react";
 
-export const Icon = ({ id: IconComp, size = 18, color = "currentColor", sw = 1.8 }) => (
-  <IconComp size={size} color={color} strokeWidth={sw} aria-hidden="true" />
-);
+export const Icon = ({ id, size = 18, color = "currentColor", sw = 1.8 }) => {
+  const Component = id;
+  return <Component size={size} color={color} strokeWidth={sw} aria-hidden="true" />;
+};
 
-const mkI = (Comp) => ({ s = 14, c = "currentColor", sw = 1.7, ...rest }) => (
-  <Comp size={s} color={c} strokeWidth={sw} aria-hidden="true" {...rest} />
-);
+const mkI = (iconFactory) => {
+  const Component = iconFactory;
+  return ({ s = 14, c = "currentColor", sw = 1.7, ...rest }) => (
+    <Component size={s} color={c} strokeWidth={sw} aria-hidden="true" {...rest} />
+  );
+};
 
 export const ISearch = mkI(Search);
 export const IChevD = mkI(ChevronDown);
@@ -75,7 +80,7 @@ export function useClickOutside(ref, cb) {
   }, [ref, cb]);
 }
 
-export const StatCard = memo(({ label, value, detailValue = 0, detailLabel = "due today", helper, icon, alert, c, delay, onClick = null }) => {
+export const StatCard = memo(({ label, value, detailValue = 0, detailLabel = "due today", icon, alert, c, delay, onClick = null }) => {
   const CardTag = onClick ? "button" : "div";
   return (
   <CardTag

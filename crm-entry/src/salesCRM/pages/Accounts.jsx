@@ -193,10 +193,6 @@ function AccountDetailModal({ accountId, onClose, onEdit }) {
 function AccountFormModal({ mode, initialValues, existingAccounts, submitError, onClearSubmitError, onClose, onSave, saving }) {
   const [form, setForm] = useState(() => ({ ...EMPTY_ACCOUNT_FORM, ...initialValues }));
 
-  useEffect(() => {
-    setForm({ ...EMPTY_ACCOUNT_FORM, ...initialValues });
-  }, [initialValues]);
-
   const companyNameError = useMemo(
     () => getAccountNameError(form.companyName, existingAccounts, initialValues?.id),
     [existingAccounts, form.companyName, initialValues?.id],
@@ -363,7 +359,9 @@ export default function Accounts() {
       const parsed = raw ? JSON.parse(raw) : null;
       const allowed = new Set(ACCOUNT_COLUMNS.map((column) => column.key));
       if (Array.isArray(parsed) && parsed.length) return parsed.filter((key) => allowed.has(key));
-    } catch {}
+    } catch {
+      return ACCOUNT_COLUMNS.map((column) => column.key).filter((key) => key !== "serial");
+    }
     return ACCOUNT_COLUMNS.map((column) => column.key).filter((key) => key !== "serial");
   });
   const [detailAccountId, setDetailAccountId] = useState(null);
@@ -735,8 +733,8 @@ export default function Accounts() {
       </div>
 
       {detailAccountId ? <AccountDetailModal accountId={detailAccountId} onClose={() => setDetailAccountId(null)} onEdit={(account) => { setAccountFormError(""); setDetailAccountId(null); setEditAccount(account); }} /> : null}
-      {showCreate ? <AccountFormModal mode="create" initialValues={EMPTY_ACCOUNT_FORM} existingAccounts={accounts} submitError={accountFormError} onClearSubmitError={() => setAccountFormError("")} onClose={() => { setAccountFormError(""); setShowCreate(false); }} onSave={handleCreateAccount} saving={saving} /> : null}
-      {editAccount ? <AccountFormModal mode="edit" initialValues={editAccount} existingAccounts={accounts} submitError={accountFormError} onClearSubmitError={() => setAccountFormError("")} onClose={() => { setAccountFormError(""); setEditAccount(null); }} onSave={handleEditAccount} saving={saving} /> : null}
+      {showCreate ? <AccountFormModal key="create-account" mode="create" initialValues={EMPTY_ACCOUNT_FORM} existingAccounts={accounts} submitError={accountFormError} onClearSubmitError={() => setAccountFormError("")} onClose={() => { setAccountFormError(""); setShowCreate(false); }} onSave={handleCreateAccount} saving={saving} /> : null}
+      {editAccount ? <AccountFormModal key={`edit-account-${editAccount.id || "new"}`} mode="edit" initialValues={editAccount} existingAccounts={accounts} submitError={accountFormError} onClearSubmitError={() => setAccountFormError("")} onClose={() => { setAccountFormError(""); setEditAccount(null); }} onSave={handleEditAccount} saving={saving} /> : null}
       {showFilter ? <AccountFilterModal filters={filters} onApply={setFilters} onClose={() => setShowFilter(false)} activeFilterCount={activeFilterCount} /> : null}
       {showColPanel ? <ManageAccountColumnsPanel visibleCols={visibleCols} setVisibleCols={setVisibleCols} wrapText={wrapText} setWrapText={setWrapText} onClose={() => setShowColPanel(false)} /> : null}
     </div>

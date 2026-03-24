@@ -6,56 +6,14 @@ import { fmtDate, formatLeadSource, formatStatus, getInitials } from "./utils";
 import { IChevD, IChevR, IChevU, IEdit, IFilter, IKanban, IRows, ISearch, ISettings, ITrash, IX } from "./shared";
 import { AddLeadDropdown, AssigneeCell, FollowUpCell, ScoreBar, StatusCell } from "./components";
 import { LEAD_DATA_SOURCE_OPTIONS, LEAD_VIEW_OPTIONS, formatSocialLeadDate } from "./pageHelpers";
-
-const ACTIVITY_PANEL_TABS = [
-  { id: "tasks", label: "Tasks", icon: FileText },
-  { id: "calls", label: "Calls", icon: Phone },
-  { id: "meetings", label: "Meetings", icon: Calendar },
-  { id: "emails", label: "Emails", icon: Mail },
-];
-
-const ACTIVITY_BUCKETS = [
-  { id: "overdue", label: "Overdue" },
-  { id: "today", label: "Today" },
-  { id: "tomorrow", label: "Tomorrow" },
-  { id: "upcoming", label: "Upcoming" },
-];
-
-const startOfDay = (value) => {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
-};
-
-const endOfDay = (value) => {
-  const date = new Date(value);
-  date.setHours(23, 59, 59, 999);
-  return date;
-};
-
-const getRawActivityType = (item) => String(item?.type || item?.activityType || item?.activityTypeName || item?.eventType || "").toLowerCase();
-const isCompletedActivity = (item) => {
-  const status = String(item?.status || item?.callStatus || "").toLowerCase();
-  return status.includes("complete") || status.includes("cancel") || status.includes("closed") || status.includes("done");
-};
-const normalizePanelActivity = (item, bucket) => ({
-  id: item?.id || `${bucket}-${item?.subject || item?.title || item?.type || "activity"}-${item?.dueDate || item?.activityDate || item?.callStartTime || item?.createdAt || ""}`,
-  bucket,
-  type: item?.type || item?.activityType || item?.activityTypeName || item?.eventType || "Activity",
-  title: item?.subject || item?.title || item?.name || item?.type || "Activity",
-  dueDate: item?.dueDate || item?.activityDate || item?.callStartTime || item?.startTime || item?.createdAt || "",
-  status: item?.status || item?.callStatus || "",
-  leadName: item?.leadName || item?.lead?.name || item?.contactName || item?.prospectName || "",
-  description: item?.description || item?.body || item?.message || "",
-});
-const matchesPanelTab = (item, tabId) => {
-  const raw = getRawActivityType(item);
-  if (tabId === "tasks") return raw.includes("task");
-  if (tabId === "calls") return raw.includes("call");
-  if (tabId === "meetings") return raw.includes("meeting");
-  if (tabId === "emails") return raw.includes("email");
-  return false;
-};
+import {
+  ACTIVITY_BUCKET_DEFS,
+  ACTIVITY_TAB_DEFS,
+  endOfDay,
+  mapBucketItems,
+  matchesActivityTab,
+  startOfDay,
+} from "../../utils/activityBuckets";
 
 export function LeadActivitiesPanel({ open, activeTab, onTabChange, onClose }) {
   const [loading, setLoading] = useState(false);
@@ -86,10 +44,10 @@ export function LeadActivitiesPanel({ open, activeTab, onTabChange, onClose }) {
         if (cancelled) return;
 
         const nextBuckets = {
-          overdue: overdueResult.status === "fulfilled" ? (overdueResult.value || []).filter((item) => !isCompletedActivity(item)).map((item) => normalizePanelActivity(item, "overdue")) : [],
-          today: todayResult.status === "fulfilled" ? (todayResult.value || []).filter((item) => !isCompletedActivity(item)).map((item) => normalizePanelActivity(item, "today")) : [],
-          tomorrow: tomorrowResult.status === "fulfilled" ? (tomorrowResult.value || []).filter((item) => !isCompletedActivity(item)).map((item) => normalizePanelActivity(item, "tomorrow")) : [],
-          upcoming: upcomingResult.status === "fulfilled" ? (upcomingResult.value || []).filter((item) => !isCompletedActivity(item)).map((item) => normalizePanelActivity(item, "upcoming")) : [],
+          overdue: mapBucketItems(overdueResult, "overdue", {}, { excludeCompleted: true }),
+          today: mapBucketItems(todayResult, "today", {}, { excludeCompleted: true }),
+          tomorrow: mapBucketItems(tomorrowResult, "tomorrow", {}, { excludeCompleted: true }),
+          upcoming: mapBucketItems(upcomingResult, "upcoming", {}, { excludeCompleted: true }),
         };
 
         setBucketedItems(nextBuckets);
@@ -101,7 +59,7 @@ export function LeadActivitiesPanel({ open, activeTab, onTabChange, onClose }) {
         ) {
           setErrorMessage("Unable to load activities right now.");
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) setErrorMessage("Unable to load activities right now.");
       } finally {
         if (!cancelled) setLoading(false);
@@ -114,9 +72,11 @@ export function LeadActivitiesPanel({ open, activeTab, onTabChange, onClose }) {
     };
   }, [open]);
 
-  const filteredBuckets = useMemo(() => ACTIVITY_BUCKETS.map((bucket) => ({
+  const filteredBuckets = useMemo(() => ACTIVITY_BUCKET_DEFS
+    .filter((bucket) => bucket.id !== "closed")
+    .map((bucket) => ({
     ...bucket,
-    items: (bucketedItems[bucket.id] || []).filter((item) => matchesPanelTab(item, activeTab)),
+    items: (bucketedItems[bucket.id] || []).filter((item) => matchesActivityTab(item, activeTab)),
   })), [activeTab, bucketedItems]);
 
   if (!open) return null;
@@ -136,7 +96,8 @@ export function LeadActivitiesPanel({ open, activeTab, onTabChange, onClose }) {
         </div>
 
         <div style={{ padding: "12px 18px 10px", borderBottom: "1px solid #eef2f7", display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {ACTIVITY_PANEL_TABS.map(({ id, label, icon: Icon }) => {
+          {ACTIVITY_TAB_DEFS.map(({ id, label }) => {
+            const Icon = id === "tasks" ? FileText : id === "calls" ? Phone : id === "meetings" ? Calendar : Mail;
             const active = activeTab === id;
             return (
               <button

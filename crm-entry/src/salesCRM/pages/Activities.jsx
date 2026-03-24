@@ -4,110 +4,16 @@ import { useSearchParams } from "react-router-dom";
 import activitiesAPI from "../api/activities.api";
 import leadsAPI from "../api/leads.api";
 import { formatStatus, getFollowUpLabel } from "./leads/utils";
-
-const ACTIVITY_TABS = [
-  { id: "tasks", label: "Tasks" },
-  { id: "calls", label: "Calls" },
-  { id: "meetings", label: "Meetings" },
-  { id: "emails", label: "Emails" },
-];
-
-const ACTIVITY_BUCKETS = [
-  { id: "overdue", label: "Overdue" },
-  { id: "today", label: "Today" },
-  { id: "tomorrow", label: "Tomorrow" },
-  { id: "upcoming", label: "Upcoming" },
-  { id: "closed", label: "Closed" },
-];
-
-const INITIAL_BUCKETS = {
-  overdue: [],
-  today: [],
-  tomorrow: [],
-  upcoming: [],
-  closed: [],
-};
-
-const startOfDay = (value) => {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
-};
-
-const endOfDay = (value) => {
-  const date = new Date(value);
-  date.setHours(23, 59, 59, 999);
-  return date;
-};
-
-const getRawActivityType = (item) => String(item?.type || item?.activityType || item?.activityTypeName || item?.eventType || "").toLowerCase();
-const isCompletedActivity = (item) => {
-  const status = String(item?.status || item?.callStatus || "").toLowerCase();
-  return status.includes("complete") || status.includes("cancel") || status.includes("closed") || status.includes("done");
-};
-const getLeadDisplayName = (lead) => {
-  const directName = String(lead?.name || "").trim();
-  if (directName) return directName;
-
-  const firstName = String(lead?.firstName || "").trim();
-  const lastName = String(lead?.lastName || "").trim();
-  return `${firstName} ${lastName}`.trim();
-};
-
-const normalizeActivity = (item, bucket, leadNamesById = {}) => ({
-  id: item?.id || `${bucket}-${item?.subject || item?.title || item?.type || "activity"}-${item?.dueDate || item?.activityDate || item?.callStartTime || item?.createdAt || ""}`,
-  bucket,
-  leadId: item?.leadId ?? item?.leadID ?? item?.lead?.id ?? null,
-  type: item?.type || item?.activityType || item?.activityTypeName || item?.eventType || "Activity",
-  title: item?.subject || item?.title || item?.name || item?.type || "Activity",
-  dueDate: item?.dueDate || item?.date || item?.activityDate || item?.callStartTime || item?.startTime || item?.createdAt || "",
-  status: item?.status || item?.callStatus || "",
-  leadName:
-    item?.leadName ||
-    item?.lead?.name ||
-    getLeadDisplayName(item?.lead) ||
-    item?.leadFullName ||
-    item?.leadDisplayName ||
-    item?.contactName ||
-    item?.prospectName ||
-    leadNamesById[item?.leadId] ||
-    leadNamesById[item?.leadID] ||
-    leadNamesById[item?.lead?.id] ||
-    "",
-  description: item?.description || item?.body || item?.message || "",
-});
-
-const buildLeadNamesById = (leads) =>
-  (Array.isArray(leads) ? leads : []).reduce((acc, lead) => {
-    const leadId = lead?.id;
-    const name = getLeadDisplayName(lead);
-    if (leadId != null && name) {
-      acc[leadId] = name;
-      acc[String(leadId)] = name;
-    }
-    return acc;
-  }, {});
-
-const buildLeadOptions = (leads) => {
-  const seenNames = new Set();
-
-  return (Array.isArray(leads) ? leads : [])
-    .map((lead) => ({ id: String(lead?.id ?? ""), name: getLeadDisplayName(lead) }))
-    .filter((lead) => {
-      const normalizedName = lead.name.trim().toLowerCase();
-      if (!lead.id || !normalizedName || seenNames.has(normalizedName)) return false;
-      seenNames.add(normalizedName);
-      return true;
-    })
-    .sort((left, right) => left.name.localeCompare(right.name));
-};
-
-const mapBucketItems = (result, bucket, leadNamesById, { excludeCompleted = false } = {}) =>
-  result.status === "fulfilled"
-    ? (result.value || [])
-        .filter((item) => (excludeCompleted ? !isCompletedActivity(item) : true))
-        .map((item) => normalizeActivity(item, bucket, leadNamesById))
-    : [];
+import {
+  ACTIVITY_BUCKET_DEFS,
+  ACTIVITY_TAB_DEFS,
+  INITIAL_ACTIVITY_BUCKETS,
+  buildLeadNamesById,
+  endOfDay,
+  mapBucketItems,
+  matchesActivityTab,
+  startOfDay,
+} from "../utils/activityBuckets";
 
 const hasDisplayDate = (value) => {
   if (!value) return false;
@@ -115,26 +21,16 @@ const hasDisplayDate = (value) => {
   return !Number.isNaN(date.getTime());
 };
 
-const matchesTab = (item, tabId) => {
-  const raw = getRawActivityType(item);
-  if (tabId === "tasks") return raw.includes("task");
-  if (tabId === "calls") return raw.includes("call");
-  if (tabId === "meetings") return raw.includes("meeting");
-  if (tabId === "emails") return raw.includes("email");
-  return false;
-};
-
 export default function Activities() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const requestedLeadId = searchParams.get("leadId");
-  const initialTab = ACTIVITY_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : "tasks";
+  const initialTab = ACTIVITY_TAB_DEFS.some((tab) => tab.id === requestedTab) ? requestedTab : "tasks";
   const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedLeadId, setSelectedLeadId] = useState(requestedLeadId || "all");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [bucketedItems, setBucketedItems] = useState(INITIAL_BUCKETS);
-  const [leadOptions, setLeadOptions] = useState([]);
+  const [bucketedItems, setBucketedItems] = useState(INITIAL_ACTIVITY_BUCKETS);
   const [tabLeadOptions, setTabLeadOptions] = useState({
     tasks: [],
     calls: [],
@@ -143,7 +39,7 @@ export default function Activities() {
   });
 
   useEffect(() => {
-    if (requestedTab && ACTIVITY_TABS.some((tab) => tab.id === requestedTab)) {
+    if (requestedTab && ACTIVITY_TAB_DEFS.some((tab) => tab.id === requestedTab)) {
       setActiveTab(requestedTab);
     }
   }, [requestedTab]);
@@ -192,7 +88,6 @@ export default function Activities() {
 
         const allLeads = leadsResult.status === "fulfilled" ? (Array.isArray(leadsResult.value) ? leadsResult.value : []) : [];
         const leadNamesById = buildLeadNamesById(allLeads);
-        setLeadOptions(buildLeadOptions(allLeads));
 
         if (!leadId) {
           const allBucketedItems = {
@@ -209,7 +104,7 @@ export default function Activities() {
 
             Object.values(allBucketedItems)
               .flat()
-              .filter((item) => matchesTab(item, tabId))
+              .filter((item) => matchesActivityTab(item, tabId))
               .forEach((item) => {
                 const name = String(item?.leadName || "").trim();
                 const id = item?.leadId;
@@ -249,7 +144,7 @@ export default function Activities() {
         ) {
           setErrorMessage("Unable to load activities right now.");
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) setErrorMessage("Unable to load activities right now.");
       } finally {
         if (!cancelled) setLoading(false);
@@ -262,13 +157,13 @@ export default function Activities() {
     };
   }, [selectedLeadId]);
 
-  const filteredBuckets = useMemo(() => ACTIVITY_BUCKETS.map((bucket) => ({
+  const filteredBuckets = useMemo(() => ACTIVITY_BUCKET_DEFS.map((bucket) => ({
     ...bucket,
-    items: (bucketedItems[bucket.id] || []).filter((item) => matchesTab(item, activeTab)),
+    items: (bucketedItems[bucket.id] || []).filter((item) => matchesActivityTab(item, activeTab)),
   })), [activeTab, bucketedItems]);
 
   const activeTabLabel = useMemo(
-    () => ACTIVITY_TABS.find((tab) => tab.id === activeTab)?.label || "Activities",
+    () => ACTIVITY_TAB_DEFS.find((tab) => tab.id === activeTab)?.label || "Activities",
     [activeTab]
   );
 
