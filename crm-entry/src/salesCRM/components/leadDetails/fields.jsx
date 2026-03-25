@@ -12,9 +12,10 @@ import {
 
 export function InfoRow({ icon: Icon, label, value }) {
   if (!hasValue(value)) return null;
+  const InfoIcon = Icon;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 8, alignItems: "start", padding: "10px 0", borderBottom: "1px solid #edf2f7" }}>
-      <div style={{ width: 24, height: 24, borderRadius: 9, background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }}><Icon size={13} /></div>
+      <div style={{ width: 24, height: 24, borderRadius: 9, background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }}><InfoIcon size={13} /></div>
       <div><div style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div><div style={{ marginTop: 4, fontSize: 12, color: "#1e293b", wordBreak: "break-word" }}>{value}</div></div>
     </div>
   );

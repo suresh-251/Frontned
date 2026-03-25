@@ -14,15 +14,12 @@ export default function ThemeChange() {
       ? localStorage.getItem("sales-crm-theme")
       : "light"
   );
+  const resolvedTheme = allowedThemeIds.has(currentTheme) ? currentTheme : "light";
 
   useEffect(() => {
-    if (!allowedThemeIds.has(currentTheme)) {
-      setCurrentTheme("light");
-      return;
-    }
-    document.documentElement.setAttribute("data-theme", currentTheme);
-    localStorage.setItem("sales-crm-theme", currentTheme);
-  }, [currentTheme]);
+    document.documentElement.setAttribute("data-theme", resolvedTheme);
+    localStorage.setItem("sales-crm-theme", resolvedTheme);
+  }, [resolvedTheme]);
 
   return (
     <div className="p-2 max-h-[200px] overflow-y-auto custom-scrollbar">
@@ -35,7 +32,7 @@ export default function ThemeChange() {
             key={t.id}
             onClick={() => setCurrentTheme(t.id)}
             className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[10px] font-bold transition-all ${
-              currentTheme === t.id
+              resolvedTheme === t.id
                 ? "bg-indigo-500/10 text-indigo-500"
                 : "text-slate-500 hover:bg-slate-50/50"
             }`}
@@ -47,7 +44,7 @@ export default function ThemeChange() {
               />
               {t.name}
             </div>
-            {currentTheme === t.id && <Check size={12} />}
+            {resolvedTheme === t.id && <Check size={12} />}
           </button>
         ))}
       </div>

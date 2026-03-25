@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { flip } from "@floating-ui/react";
 import { Activity, FileText, Mail, MapPin, Phone, UserCheck, Wallet, X } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
@@ -140,7 +140,7 @@ function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
         return;
       }
       onOpenTab?.("calls");
-      window.location.href = `tel:${callableNumber}`;
+      window.open(`tel:${callableNumber}`, "_self");
       return;
     }
 
@@ -160,7 +160,7 @@ function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
     }
 
     onOpenTab?.("emails");
-    window.location.href = `mailto:${encodeURIComponent(emailAddress)}`;
+    window.open(`mailto:${encodeURIComponent(emailAddress)}`, "_self");
   };
 
   return (
@@ -177,6 +177,7 @@ function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 14 }}>
           {dealShortcutButtons.map(({ id, label, Icon, color, background, border }) => {
+            const ShortcutIcon = Icon;
             const enabled = id === "calls" ? canCall : id === "whatsapp" ? canWhatsapp : canEmail;
             return (
               <button
@@ -207,7 +208,7 @@ function DealInfoPanel({ deal, onOpenTab, stacked = false, mobile = false }) {
                   event.currentTarget.style.boxShadow = enabled ? "0 7px 14px rgba(15, 23, 42, 0.09)" : "0 4px 10px rgba(15, 23, 42, 0.05)";
                 }}
               >
-                <Icon size={14} color={enabled ? color : "#94a3b8"} />
+                <ShortcutIcon size={14} color={enabled ? color : "#94a3b8"} />
               </button>
             );
           })}
@@ -250,10 +251,12 @@ function ActivityBoard({ items, title }) {
         <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{title}</div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
-        {lanes.map(({ key, title: laneTitle, items: laneItems, Icon }) => (
+        {lanes.map(({ key, title: laneTitle, items: laneItems, Icon }) => {
+          const LaneIcon = Icon;
+          return (
           <div key={key} style={{ padding: 16, borderRight: key !== "other" ? "1px solid #edf2f7" : "none", minHeight: 220 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 10, background: "#eef4ff", color: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} /></div>
+              <div style={{ width: 28, height: 28, borderRadius: 10, background: "#eef4ff", color: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center" }}><LaneIcon size={14} /></div>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: "#1e293b" }}>{laneTitle} ({laneItems.length})</div>
             </div>
             {!laneItems.length ? <div style={{ border: "1px dashed #dbe4f0", borderRadius: 14, padding: "18px 14px", fontSize: 12.5, color: "#94a3b8", background: "#fbfdff" }}>No {laneTitle.toLowerCase()} yet.</div> : null}
@@ -270,7 +273,7 @@ function ActivityBoard({ items, title }) {
               ))}
             </div>
           </div>
-        ))}
+        )})}
       </div>
     </section>
   );
@@ -284,7 +287,7 @@ function NotesPanel({ deal, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const loadNotes = async () => {
+  const loadNotes = useCallback(async () => {
     const dealId = getDealId(deal);
     if (!dealId) return;
     setLoading(true);
@@ -305,11 +308,11 @@ function NotesPanel({ deal, onSaved }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [deal]);
 
   useEffect(() => {
     loadNotes();
-  }, [deal?.dealId, deal?.id]);
+  }, [loadNotes]);
 
   const reset = () => {
     setDraft("");
@@ -458,9 +461,11 @@ function Composer({ tab, deal, onSaved }) {
     taskDescription: "",
   });
 
+  const contactEmail = getContactEmail(deal);
+
   useEffect(() => {
-    setV((current) => ({ ...current, toEmail: getContactEmail(deal) }));
-  }, [deal?.contact?.email, deal?.email]);
+    setV((current) => ({ ...current, toEmail: contactEmail }));
+  }, [contactEmail]);
 
   const setField = (key, value) => {
     setV((current) => ({ ...current, [key]: value }));
@@ -740,7 +745,7 @@ function DealMiddle({ deal, activeTab, onTabChange, onActivitySaved, timeline = 
   const [communications, setCommunications] = useState({ emails: [], whatsapp: [] });
   const dealId = getDealId(deal);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!dealId) return;
     setLoading(true);
     try {
@@ -762,11 +767,11 @@ function DealMiddle({ deal, activeTab, onTabChange, onActivitySaved, timeline = 
     } finally {
       setLoading(false);
     }
-  };
+  }, [dealId]);
 
   useEffect(() => {
     loadData();
-  }, [dealId]);
+  }, [loadData]);
 
   const taskHistory = useMemo(() => [...openActivities, ...closedActivities].filter((item) => String(item?.type || "").toLowerCase().includes("task")), [openActivities, closedActivities]);
   const callHistory = useMemo(() => (
@@ -857,7 +862,7 @@ export default function DealDetailsModal({ deal, loading = false, onClose }) {
   const shellRadius = isMobileLayout ? 0 : isTabletLayout ? 24 : 28;
   const mobilePanels = [["overview", "Overview"], ["activities", "Activities"], ["timeline", "Timeline"]];
 
-  const loadTimeline = async () => {
+  const loadTimeline = useCallback(async () => {
     const dealId = getDealId(deal);
     if (!dealId) return;
     setTimelineLoading(true);
@@ -870,11 +875,11 @@ export default function DealDetailsModal({ deal, loading = false, onClose }) {
     } finally {
       setTimelineLoading(false);
     }
-  };
+  }, [deal]);
 
   useEffect(() => {
     loadTimeline();
-  }, [deal?.dealId, deal?.id]);
+  }, [loadTimeline]);
 
   useEffect(() => {
     setActiveTab("activity");

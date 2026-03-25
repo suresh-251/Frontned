@@ -57,11 +57,10 @@ const endOfMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0
 const toApiDateTime = (date) => date.toISOString();
 const toInputDate = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const sameDay = (left, right) => startOfDay(left).getTime() === startOfDay(right).getTime();
-const fmtHeaderMonth = (date) => date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 const fmtMonthYear = (date) => date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 const fmtDayName = (date) => date.toLocaleDateString("en-US", { weekday: "short" });
 const fmtDayNumber = (date) => date.toLocaleDateString("en-US", { day: "numeric" });
-const fmtRangeHeader = (start, end) => {
+const UNUSED_fmtRangeHeader = (start, end) => {
   if (sameDay(start, end)) {
     return start.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   }
@@ -268,7 +267,7 @@ function EventCard({ item, onOpen }) {
   );
 }
 
-function EventClusterCard({ items, height, columnWidth, onOpen }) {
+function EventClusterCard({ items, height, onOpen }) {
   const firstMeta = activityTypeMeta(items[0]?.type);
   const cardHeight = Math.max(62, Math.min(76, height));
   return (
@@ -578,7 +577,7 @@ function DayColumn({ day, items, columnWidth, fillWidth = false, onCreateEvent, 
         {renderItems.map((entry) => (
           <div key={entry.type === "cluster" ? entry.clusterId : `${entry.event.id}-${entry.event.subject || entry.event.title || entry.event.date}`} style={{ position: "absolute", top: entry.top, left: 0, right: 0, height: entry.height }}>
             {entry.type === "cluster" ? (
-              <EventClusterCard items={entry.items} height={entry.height} columnWidth={columnWidth} onOpen={onOpenCluster} />
+              <EventClusterCard items={entry.items} height={entry.height} onOpen={onOpenCluster} />
             ) : (
               <EventCard item={entry.event} onOpen={onOpenEvent} />
             )}

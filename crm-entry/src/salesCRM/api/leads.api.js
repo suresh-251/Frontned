@@ -31,6 +31,20 @@ const formatUserName = (user) => {
   return raw.replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+const tryRequestVariants = async (requests) => {
+  let lastError;
+
+  for (const request of requests) {
+    try {
+      return await request();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+};
+
 
 const leadsAPI = {
   getAll: async () => {
@@ -182,4 +196,3 @@ const leadsAPI = {
 };
 
 export default leadsAPI;
-

@@ -90,8 +90,9 @@ const useSalesRole = () => {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function SalesLeads() {
-  const { isManager, id: authId } = useSalesRole();
-  const { leads, loading, reload, changeStatus, saveRemark } = useAssignedLeads();
+  const MotionDiv = motion.div;
+  const { isManager } = useSalesRole();
+  const { leads, loading, reload, changeStatus, saveRemark, assignLead } = useAssignedLeads();
 
   const [employees, setEmployees]       = useState([]);
   const [salesDeptId, setSalesDeptId]   = useState(null);
@@ -142,7 +143,7 @@ export default function SalesLeads() {
     } catch {
       toast.error("Failed to load lead registry");
     }
-  }, [isManager, authId, reload]);
+  }, [isManager, reload]);
 
   useEffect(() => { initRegistry(); }, [initRegistry]);
 
@@ -190,6 +191,26 @@ export default function SalesLeads() {
     try { await saveRemark(lead.id, remark); }
     catch { toast.error("Failed to save remark"); }
     finally { setSavingLeads(prev => { const n = new Set(prev); n.delete(lead.id); return n; }); }
+  };
+
+  const handleAssignmentAction = async () => {
+    if (!selectedLead?.id || !targetUserId) {
+      toast.error("Select an employee to assign this lead.");
+      return;
+    }
+
+    const selectedEmployee = employees.find((emp) => Number(emp.userId) === Number(targetUserId));
+
+    try {
+      await assignLead(selectedLead.id, Number(targetUserId), selectedEmployee?.username || empSearchQuery || "");
+      toast.success("Lead assigned successfully");
+      setSelectedLead(null);
+      setTargetUserId("");
+      setEmpSearchQuery("");
+      setShowDropdown(false);
+    } catch {
+      toast.error("Failed to assign lead");
+    }
   };
 
   const exportToExcel = () => {
@@ -393,7 +414,7 @@ export default function SalesLeads() {
         <AnimatePresence>
           {viewLead && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setViewLead(null)}>
-              <motion.div
+              <MotionDiv
                 initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
                 className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
                 onClick={e => e.stopPropagation()}
@@ -445,7 +466,7 @@ export default function SalesLeads() {
                     </div>
                   )}
                 </div>
-              </motion.div>
+              </MotionDiv>
             </div>
           )}
         </AnimatePresence>
@@ -454,7 +475,7 @@ export default function SalesLeads() {
         <AnimatePresence>
           {selectedLead && isManager && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedLead(null)}>
-              <motion.div
+              <MotionDiv
                 initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
                 className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-gray-100 overflow-hidden"
                 onClick={e => e.stopPropagation()}
@@ -487,7 +508,7 @@ export default function SalesLeads() {
 
                     <AnimatePresence>
                       {showDropdown && searchableEmployees.length > 0 && (
-                        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+                        <MotionDiv initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
                           className="absolute z-[120] w-full mt-1 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden max-h-40 overflow-y-auto">
                           {searchableEmployees.map(emp => (
                             <button key={emp.userId} type="button"
@@ -500,7 +521,7 @@ export default function SalesLeads() {
                               <ChevronRight className="w-3 h-3 text-gray-300" />
                             </button>
                           ))}
-                        </motion.div>
+                        </MotionDiv>
                       )}
                     </AnimatePresence>
 
@@ -523,7 +544,7 @@ export default function SalesLeads() {
                     Assign Lead
                   </button>
                 </div>
-              </motion.div>
+              </MotionDiv>
             </div>
           )}
         </AnimatePresence>

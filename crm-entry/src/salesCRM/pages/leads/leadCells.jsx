@@ -1,9 +1,9 @@
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import activitiesAPI from "../../api/activities.api";
 import { LEAD_SOURCE_OPTIONS, STATUS_LIST, STATUS_META } from "./constants";
-import { formatLeadSource, formatStatus, getFollowUpLabel, getScoreTier, offsetDay, todayStr } from "./utils";
+import { formatLeadSource, formatStatus, getScoreTier } from "./utils";
 import { ICal, IChevD, useClickOutside } from "./shared";
 
 export function StatusCell({ value, onChange }) {
@@ -166,7 +166,7 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
     today: "No follow-ups for today.",
   };
 
-  const getPanelPos = () => {
+  const getPanelPos = useCallback(() => {
     if (!ref.current) return null;
     const rect = ref.current.getBoundingClientRect();
     const panelHeight = followUpView ? 420 : 220;
@@ -179,12 +179,12 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
     const top = openBelow ? Math.max(viewportPadding, rect.bottom + gap) : Math.max(viewportPadding, rect.top - Math.min(panelHeight, availableAbove - gap) - gap);
     const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - panelWidth - viewportPadding);
     return { top, left };
-  };
+  }, [followUpView]);
 
   useLayoutEffect(() => {
     if (!editing) return;
     setPanelPos(getPanelPos());
-  }, [editing]);
+  }, [editing, getPanelPos]);
 
   useEffect(() => {
     if (!editing) return;
@@ -202,7 +202,7 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
       window.removeEventListener("scroll", reposition, true);
       window.removeEventListener("resize", reposition);
     };
-  }, [editing]);
+  }, [editing, getPanelPos]);
 
   const closePicker = () => {
     setEditing(false);
@@ -281,8 +281,9 @@ export function FollowUpCell({ value, onChange, bucket = "All", leadId }) {
       setFollowUpError(error?.response?.data?.message || "Unable to load follow-ups.");
       setPanelPos(getPanelPos());
     } finally {
-      if (requestIdRef.current !== requestId) return;
-      setFollowUpLoading(false);
+      if (requestIdRef.current === requestId) {
+        setFollowUpLoading(false);
+      }
     }
   };
 

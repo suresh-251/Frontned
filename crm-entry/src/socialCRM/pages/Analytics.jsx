@@ -7,10 +7,10 @@ import {
 } from "recharts";
 
 import {
-  FiRefreshCw, FiTrendingUp, FiUsers, FiEye,
-  FiAward, FiDownloadCloud,
-  FiZap, FiBarChart2, FiShare2, FiStar, FiImage,
-  FiChevronLeft, FiChevronRight, FiHeart, FiMessageSquare, FiExternalLink,
+  FiRefreshCw, FiTrendingUp, FiTrendingDown, FiMinus, FiUsers, FiEye, FiHeart,
+  FiMessageSquare, FiAward, FiDownloadCloud,
+  FiZap, FiBarChart2, FiShare2, FiStar, FiChevronLeft,
+  FiChevronRight, FiImage, FiExternalLink,
 } from "react-icons/fi";
 import { useBrand } from "../context/BrandContext";
 import useAnalytics from "../hooks/useAnalytics";
@@ -66,39 +66,47 @@ function pick(obj, ...keys) {
   return 0;
 }
 
-// ── Skeleton donut card ───────────────────────────────────────────────────────
-function SkeletonDonutCard() {
+// ── Metric card (exact GrowthCard design, with optional previous-period compare) ─
+function MetricCard({ icon, label, current, previous, color = "#6366f1", displayValue }) {
+  const hasPrev   = previous != null;
+  const change    = hasPrev ? (current ?? 0) - previous : null;
+  const percent   = (hasPrev && previous !== 0) ? ((change / previous) * 100) : null;
+  const isUp      = change != null && change > 0;
+  const isDown    = change != null && change < 0;
+  const tColor    = isUp ? "text-emerald-600" : isDown ? "text-red-500" : "text-slate-400";
+  const tBg       = isUp ? "bg-emerald-50"    : isDown ? "bg-red-50"    : "bg-slate-50";
+  const TrendIcon = isUp ? FiTrendingUp : isDown ? FiTrendingDown : FiMinus;
+  const sign      = isUp ? "+" : "";
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-5 flex flex-col items-center gap-3 animate-pulse">
-      <div className="w-36 h-36 rounded-full bg-slate-200" />
-      <div className="h-2.5 w-20 rounded-full bg-slate-200" />
-      <div className="h-5 w-14 rounded-full bg-slate-100" />
-    </div>
-  );
-}
-
-// ── Donut card ────────────────────────────────────────────────────────────────
-function DonutCard({ icon, label, value, percent, color = "#6366f1" }) {
-  const SIZE = 120; const STROKE = 10;
-  const r = (SIZE - STROKE) / 2;
-  const circ = 2 * Math.PI * r;
-  const safePercent = Math.max(0.02, Math.min(percent || 0, 1));
-  const offset = circ * (1 - safePercent);
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col items-center hover:shadow-md transition">
-      <div className="relative mb-3">
-        <svg width={SIZE} height={SIZE} style={{ transform: "rotate(-90deg)" }}>
-          <circle cx={SIZE/2} cy={SIZE/2} r={r} stroke="#e5e7eb" strokeWidth={STROKE} fill="none" />
-          <circle cx={SIZE/2} cy={SIZE/2} r={r} stroke={color} strokeWidth={STROKE} fill="none"
-            strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-            style={{ transition: "all 0.6s ease" }} />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <div className="mb-1" style={{ color }}>{icon}</div>
-          <p className="text-lg font-bold text-slate-800">{value}</p>
-        </div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+        {hasPrev ? (
+          <span className={`${tBg} ${tColor} text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1`}>
+            <TrendIcon size={10} />
+            {sign}{(percent ?? 0).toFixed(1)}%
+          </span>
+        ) : (
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${color}18`, color }}>
+            {icon}
+          </div>
+        )}
       </div>
-      <p className="text-xs font-semibold text-slate-500">{label}</p>
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-xl font-black text-slate-800">{displayValue ?? fmt(current)}</p>
+          {hasPrev && (
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              vs <span className="font-semibold">{fmt(previous)}</span> last period
+            </p>
+          )}
+        </div>
+        {hasPrev && change != null && (
+          <div className={`text-xs font-bold ${tColor}`}>
+            {sign}{fmt(change)}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -121,6 +129,27 @@ function ChartTooltip({ active, payload, label }) {
     </div>
   );
 }
+
+// ── Stat card (summary row under top posts) ──────────────────────────────────
+const STAT_COLORS = {
+  blue:    "bg-blue-50 text-blue-600 border-blue-200",
+  indigo:  "bg-indigo-50 text-indigo-600 border-indigo-200",
+  rose:    "bg-rose-50 text-rose-600 border-rose-200",
+  orange:  "bg-orange-50 text-orange-600 border-orange-200",
+  emerald: "bg-emerald-50 text-emerald-600 border-emerald-200",
+  violet:  "bg-violet-50 text-violet-600 border-violet-200",
+};
+function StatCard({ icon, label, value, color = "blue" }) {
+  const cls = STAT_COLORS[color] || STAT_COLORS.blue;
+  return (
+    <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold ${cls}`}>
+      {icon}
+      <span>{label}</span>
+      <span className="font-black">{fmt(value)}</span>
+    </div>
+  );
+}
+
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 function Empty({ message }) {
@@ -199,7 +228,7 @@ export default function Analytics() {
   useEffect(() => {
     if (!activeBrand?.slug) return;
     getChannelMetrics(days).then(setChannelMetrics).catch(() => setChannelMetrics([]));
-    getGrowthMetrics().then(setGrowthData).catch(() => setGrowthData(null));
+    getGrowthMetrics(days).then(setGrowthData).catch(() => setGrowthData(null));
   }, [activeBrand?.slug, days]);
 
   // ── Debug: log raw API responses to spot blank fields ─────────────────────
@@ -230,9 +259,24 @@ export default function Analytics() {
     shares: pick(d ?? {}, "totalShares", "shares", "shareCount", "sharesCount"),
   }));
 
-  const totReach         = pick(summary ?? {}, "totalReach");
-  const totImpr          = pick(summary ?? {}, "totalImpressions");
-  const totPosts         = pick(summary ?? {}, "totalPosts");
+  // ── Derive accurate per-period totals from dailyBreakdown ─────────────────
+  // dailyBreakdown is already filtered by the selected `days` on the backend,
+  // so summing it here gives numbers that truly match the chosen time range.
+  // If daily data is available, always prefer it over the pre-aggregated summary
+  // totals (which may count all-time records instead of the filtered window).
+  const hasDailyData = daily.length > 0;
+  const _sum = (key) => daily.reduce((s, d) => s + (Number(d[key]) || 0), 0);
+
+  const totPosts       = hasDailyData ? _sum("postsCount")       : pick(summary ?? {}, "totalPosts");
+  const totReach       = hasDailyData ? _sum("totalReach")       : pick(summary ?? {}, "totalReach");
+  const totImpr        = hasDailyData ? _sum("totalImpressions") : pick(summary ?? {}, "totalImpressions");
+  const totEngagement  = hasDailyData ? _sum("totalEngagement")  : pick(summary ?? {}, "totalEngagement");
+  const totComments    = hasDailyData ? _sum("totalComments")    : pick(summary ?? {}, "totalComments");
+  const totClicks      = hasDailyData ? _sum("totalClicks")      : pick(summary ?? {}, "totalClicks");
+
+  // Followers, leads, unfollows, profile visits are not in the daily breakdown
+  // — keep reading them from summary / channelMetrics as before
+  const totLeads         = pick(summary ?? {}, "totalLeads");
   const totFollowers     = pick(summary ?? {}, "totalFollowers");
   // newFollowers: sum across all channels (getChannelMetrics is the correct source)
   const totNewFollowers  = channelMetrics.reduce((sum, ch) => sum + (Number(ch.newFollowers) || 0), 0);
@@ -247,76 +291,71 @@ export default function Analytics() {
 
   const audienceCards = [
     {
-      icon: <FiUsers size={18} />,
-      label: "Total Followers",
-      value: fmt(totFollowers),
-      percent: Math.min(totFollowers / 100_000, 1),
-      color: "#6366f1",
+      icon:    <FiUsers size={18} />,
+      label:   "Total Followers",
+      current: totFollowers,
+      previous: growthData?.previousFollowers ?? null,
+      color:   "#6366f1",
     },
     {
-      icon: <FiTrendingUp size={18} />,
-      label: "New Followers",
-      value: fmt(totNewFollowers),
-      percent: Math.min(totNewFollowers / Math.max(totFollowers, 1), 1),
-      color: "#10b981",
+      icon:    <FiTrendingUp size={18} />,
+      label:   "New Followers",
+      current: totNewFollowers,
+      previous: null,
+      color:   "#10b981",
     },
     {
-      icon: <FiZap size={18} />,
-      label: "Growth Rate",
-      value: isFirstTimeTracking
-        ? "New"
-        : rawGrowthRate != null
-          ? `${Number(rawGrowthRate).toFixed(1)}%`
-          : "—",
-      percent: isFirstTimeTracking ? 0.05 : rawGrowthRate != null ? Math.min(Math.abs(rawGrowthRate) / 100, 1) : 0,
-      color: "#8b5cf6",
+      icon:    <FiZap size={18} />,
+      label:   "Growth Rate",
+      current: rawGrowthRate != null ? Math.abs(rawGrowthRate) : 0,
+      previous: null,
+      color:   "#8b5cf6",
+      displayValue: isFirstTimeTracking ? "New" : rawGrowthRate != null ? `${Number(rawGrowthRate).toFixed(1)}%` : "—",
     },
     {
-      icon: <FiShare2 size={18} />,
-      label: "Unfollows",
-      value: fmt(totUnfollows),
-      percent: Math.min(totUnfollows / Math.max(totFollowers, 1), 1),
-      color: "#ef4444",
+      icon:    <FiShare2 size={18} />,
+      label:   "Unfollows",
+      current: totUnfollows,
+      previous: null,
+      color:   "#ef4444",
     },
   ];
 
-  const maxReachImpr = Math.max(totReach, totImpr, 1);
-
   const reachCards = [
     {
-      icon: <FiEye size={18} />,
-      label: "Reach",
-      value: fmt(totReach),
-      percent: totReach / maxReachImpr,
-      color: "#10b981",
+      icon:    <FiEye size={18} />,
+      label:   "Reach",
+      current: totReach,
+      previous: growthData?.previousMonthReach ?? null,
+      color:   "#10b981",
     },
     {
-      icon: <FiBarChart2 size={18} />,
-      label: "Impressions",
-      value: fmt(totImpr),
-      percent: totImpr / maxReachImpr,
-      color: "#8b5cf6",
+      icon:    <FiBarChart2 size={18} />,
+      label:   "Impressions",
+      current: totImpr,
+      previous: growthData?.previousMonthImpressions ?? null,
+      color:   "#8b5cf6",
     },
     {
-      icon: <FiStar size={18} />,
-      label: "Profile Visits",
-      value: fmt(totProfileVisits),
-      percent: Math.min(totProfileVisits / Math.max(totReach, 1), 1),
-      color: "#f59e0b",
+      icon:    <FiStar size={18} />,
+      label:   "Profile Visits",
+      current: totProfileVisits,
+      previous: null,
+      color:   "#f59e0b",
     },
     {
-      icon: <FiImage size={18} />,
-      label: "Post Reach",
-      value: fmt(avgPostReach),
-      percent: Math.min(avgPostReach / Math.max(totReach, 1), 1),
-      color: "#3b82f6",
+      icon:    <FiImage size={18} />,
+      label:   "Post Reach",
+      current: avgPostReach,
+      previous: null,
+      color:   "#3b82f6",
     },
     {
-      icon: <FiAward size={18} />,
-      label: "Total Posts",
-      value: fmt(totPosts),
-      percent: Math.min(totPosts / 100, 1),
-      color: "#f97316",
+      icon:    <FiAward size={18} />,
+      label:   "Total Posts",
+      current: totPosts,
+      previous: growthData?.previousMonthPosts ?? null,
+      color:   "#f97316",
     },
   ];
 
@@ -424,10 +463,10 @@ export default function Analytics() {
             <p className="text-[10px] text-slate-400">Follower growth · Last {days} days</p>
           </div>
         </div>
-        <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           {loading
-            ? Array.from({ length: 4 }).map((_, i) => <SkeletonDonutCard key={i} />)
-            : audienceCards.map((card, i) => <DonutCard key={i} {...card} />)
+            ? Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />)
+            : audienceCards.map((card, i) => <MetricCard key={i} {...card} />)
           }
         </div>
       </div>
@@ -443,10 +482,10 @@ export default function Analytics() {
             <p className="text-[10px] text-slate-400">Content distribution · Last {days} days</p>
           </div>
         </div>
-        <div className="p-5 grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {loading
-            ? Array.from({ length: 5 }).map((_, i) => <SkeletonDonutCard key={i} />)
-            : reachCards.map((card, i) => <DonutCard key={i} {...card} />)
+            ? Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />)
+            : reachCards.map((card, i) => <MetricCard key={i} {...card} />)
           }
         </div>
       </div>
@@ -569,9 +608,18 @@ export default function Analytics() {
         ) : filteredPosts.length === 0 ? (
           <Empty message="No post metrics yet. Sync to pull fresh data from your platforms." />
         ) : (
+          <>
+          <div className="px-6 py-4 flex flex-wrap gap-2">
+            <StatCard icon={<FiTrendingUp    size={14} />} label="Total Posts"  value={totPosts}      color="blue"    />
+            <StatCard icon={<FiEye           size={14} />} label="Views"        value={totImpr}       color="indigo"  />
+            <StatCard icon={<FiHeart         size={14} />} label="Engagement"   value={totEngagement} color="rose"    />
+            <StatCard icon={<FiMessageSquare size={14} />} label="Comments"     value={totComments}   color="orange"  />
+            <StatCard icon={<FiUsers         size={14} />} label="Total Leads"  value={totLeads}      color="emerald" />
+            <StatCard icon={<FiTrendingUp    size={14} />} label="Clicks"       value={totClicks}     color="violet"  />
+          </div>
           <div
             ref={postsScrollRef}
-            className="flex overflow-x-auto gap-4 px-5 py-5"
+            className="flex overflow-x-auto gap-4 px-5 pb-5"
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
             {filteredPosts.map((post, idx) => {
@@ -657,6 +705,7 @@ export default function Analytics() {
               );
             })}
           </div>
+          </>
         )}
       </div>
 
