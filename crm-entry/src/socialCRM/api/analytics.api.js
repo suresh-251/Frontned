@@ -54,6 +54,16 @@ export const getChannelMetrics = async (days = 30) => {
 };
 
 /**
+ * Lightweight dashboard summary — only followers, posts, leads per channel.
+ * Optimized for fast entry dashboard loading.
+ * GET /api/analytics/brand/dashboard-summary
+ */
+export const getDashboardSummary = async () => {
+  const res = await api.get("/analytics/brand/dashboard-summary");
+  return res.data;
+};
+
+/**
  * Manual analytics sync — pulls fresh metrics from platform APIs,
  * promotes to PostMetrics, and re-aggregates BrandDailyMetrics for today.
  * POST /api/analytics/sync?backfillDays=7

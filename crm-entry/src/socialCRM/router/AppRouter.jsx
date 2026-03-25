@@ -11,6 +11,7 @@ import TestPage from "../pages/TestPage";
 import BrandGate from "../pages/BrandGate";
 import BrandSetupPage from "../pages/BrandSetupPage";
 import BrandManager from "../pages/BrandManager";
+import SocialAccounts from "../pages/SocialAccounts";
 import Inbox from "../pages/Inbox";
 import Analytics from "../pages/Analytics";
 import { BrandProvider } from "../context/BrandContext";
@@ -32,6 +33,7 @@ export default function AppRouter() {
           <Route element={<DashboardLayout />}>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="brands" element={<BrandManager />} />
+            <Route path="accounts" element={<SocialAccounts />} />
             <Route path="post/create" element={<Navigate to="/crm/socialmedia/post/history" replace />} />
             <Route path="post/history" element={<PostHistory />} />
             <Route path="leads/forms" element={<Navigate to="/crm/socialmedia/leads" replace />} />

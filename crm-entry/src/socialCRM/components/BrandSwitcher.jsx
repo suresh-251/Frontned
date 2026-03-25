@@ -31,6 +31,8 @@ export default function BrandSwitcher() {
     try {
       await switchBrand(slug);
       toast.success("Brand switched!");
+      // Navigate to dashboard to force full content refresh for new brand
+      navigate("/crm/socialmedia/dashboard", { replace: true });
     } catch {
       toast.error("Failed to switch brand");
     }

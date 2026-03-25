@@ -8,6 +8,7 @@ import {
   updateBrand as apiUpdateBrand,
 } from "../api/brand.api";
 import { syncAnalytics } from "../api/analytics.api";
+import { getAccountsSummary } from "../api/auth.api";
 import { appCache } from "../utils/cache";
 import { secureStorage } from "../../utils/secureStorage";
 
@@ -95,19 +96,29 @@ export function BrandProvider({ children }) {
       console.log("Analytics sync skipped (cooldown active)");
       return;
     }
-    
-    syncTriggeredRef.current = true;
-    console.log("Auto-syncing analytics for brand:", activeBrand.slug);
-    
-    // Backfill 30 days of data on auto-sync
-    syncAnalytics(30)
-      .then(() => {
-        console.log("Analytics auto-sync completed (30 days backfill)");
-        markSynced();
+
+    // Only sync when active brand has at least one connected page/account.
+    getAccountsSummary()
+      .then((rows) => {
+        const hasAnyConnectedResource = (Array.isArray(rows) ? rows : [])
+          .some((r) => r?.connected && (r?.resourceCount ?? 0) > 0);
+        if (!hasAnyConnectedResource) {
+          console.log("Analytics sync skipped (no connected accounts in active brand)");
+          return;
+        }
+
+        syncTriggeredRef.current = true;
+        console.log("Auto-syncing analytics for brand:", activeBrand.slug);
+        return syncAnalytics(30)
+          .then(() => {
+            console.log("Analytics auto-sync completed (30 days backfill)");
+            markSynced();
+          })
+          .catch((err) => {
+            console.warn("Analytics auto-sync failed:", err.message);
+          });
       })
-      .catch((err) => {
-        console.warn("Analytics auto-sync failed:", err.message);
-      });
+      .catch(() => {});
   }, [activeBrand]);
 
   /** Flush every brand-scoped cache so the next page renders fresh data. */
@@ -127,15 +138,11 @@ export function BrandProvider({ children }) {
       secureStorage.set("brandSlug", slug);
       await activateBrand(slug);
 
-      const target = brands.find(b => b.slug === slug);
-      if (target) {
-        const updated = brands.map(b => ({ ...b, isActive: b.slug === slug }));
-        setBrands(updated);
-        setActiveBrand({ ...target, isActive: true });
-        appCache.set(BRANDS_CACHE_KEY, updated);
-      }
+      // Full page reload to ensure all content (analytics, leads, inbox,
+      // webhooks) refreshes for the newly selected brand's page.
+      window.location.assign("/crm/socialmedia/dashboard");
     },
-    [brands, invalidateAllBrandCaches]
+    [invalidateAllBrandCaches]
   );
 
   const createBrand = useCallback(

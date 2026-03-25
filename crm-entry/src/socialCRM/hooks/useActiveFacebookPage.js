@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from "react";
 import {
   getAvailablePages,
-  getActivePage,
   selectPage
 } from "../api/facebook.pages.api";
+import { getAccountsSummary } from "../api/auth.api";
 import { useBrand } from "../context/BrandContext";
 import { appCache } from "../utils/cache";
 
@@ -33,6 +33,19 @@ export default function useActiveFacebookPage() {
     try {
       setLoading(true);
       setError("");
+
+      // No connected Facebook account/pages for this active brand -> skip available pages call.
+      const summary = await getAccountsSummary().catch(() => []);
+      const fb = (Array.isArray(summary) ? summary : [])
+        .find((x) => (x?.platform || "").toLowerCase() === "facebook");
+      if (!fb?.connected || (fb.resourceCount ?? 0) === 0) {
+        if (activeSlugRef.current !== requestSlug) return;
+        setPages([]);
+        setActivePageState(null);
+        if (requestSlug) appCache.set(fbPagesCacheKey(requestSlug), { pages: [], activePage: null });
+        return;
+      }
+
       const data = await getAvailablePages();
       if (activeSlugRef.current !== requestSlug) return; // brand changed mid-flight
       const active = data.find(p => p.isActive) || null;

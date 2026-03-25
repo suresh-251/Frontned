@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Home,
   Inbox,
+  Link2,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -24,6 +25,7 @@ const navItems = [
   { label: "Subscriptions", path: "/crm/socialmedia/facebook/pages/subscriptions", Icon: RadioTower },
   { section: "Brands" },
   { label: "Manage Brands", path: "/crm/socialmedia/brands", Icon: Building2 },
+  { label: "Manage Accounts", path: "/crm/socialmedia/accounts", Icon: Link2 },
 ];
 
 export default function Sidebar({

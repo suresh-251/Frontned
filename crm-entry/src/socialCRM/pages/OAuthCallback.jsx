@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { getBrands } from "../api/brand.api";
-import { syncAnalytics } from "../api/analytics.api";
 
 export default function OAuthCallback() {
   const navigate = useNavigate();
@@ -14,32 +13,31 @@ export default function OAuthCallback() {
     handledRef.current = true;
 
     const status = params.get("status");
+    const platform = (params.get("platform") || "").toLowerCase();
     const returnUrl = params.get("returnUrl");
     const message = params.get("message");
+    const selectionUrl =
+      `/crm/socialmedia/facebook/pages/select?platform=${encodeURIComponent(platform || "facebook")}` +
+      (returnUrl ? `&returnUrl=${encodeURIComponent(returnUrl)}` : "");
 
+    // Both "connected" and "connected_select_resource" go to page selection.
+    // User must always pick one page — webhooks, analytics, leads, inbox
+    // are all enabled when the user selects a page.
     if (status === "connected_select_resource" || status === "connected") {
-      toast.success("Account connected successfully 🎉");
+      toast.success("Account connected. Select a page to continue.");
 
+      // If no brand exists yet, create one first then come back to selection
       getBrands()
-        .then(async (brands) => {
+        .then((brands) => {
           const hasActive = brands.some((b) => b.isActive);
           if (brands.length === 0 || !hasActive) {
             navigate("/crm/socialmedia/brand/setup", { replace: true });
           } else {
-            // Auto-sync analytics in background after successful connection (30 days backfill)
-            try {
-              syncAnalytics(30).then(() => {
-                console.log("Analytics synced in background after OAuth (30 days backfill)");
-              }).catch((err) => {
-                console.warn("Background analytics sync failed:", err.message);
-              });
-            } catch { /* ignore sync errors */ }
-            
-            navigate(returnUrl || "/crm/socialmedia/dashboard", { replace: true });
+            navigate(selectionUrl, { replace: true });
           }
         })
         .catch(() => {
-          navigate("/crm/socialmedia/brand/setup", { replace: true });
+          navigate(selectionUrl, { replace: true });
         });
       return;
     }

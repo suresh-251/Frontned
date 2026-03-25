@@ -3,7 +3,7 @@ import api from "../api/apiClient";
 import { connectPlatform } from "../api/auth.api";
 import { selectPage } from "../api/facebook.pages.api";
 import { activateInstagramAccount } from "../api/instagram.accounts.api";
-import { getChannelMetrics, syncAnalytics, getGrowthMetrics } from "../api/analytics.api";
+import { getDashboardSummary, syncAnalytics } from "../api/analytics.api";
 import { getSelectedQuickActions, getQuickActions, saveQuickActions } from "../api/quickActions.api";
 import { appCache } from "../utils/cache";
 import { useBrand } from "../context/BrandContext";
@@ -12,12 +12,7 @@ import {
   FiEdit, FiUsers, FiSettings, FiActivity,
   FiZap, FiChevronDown, FiRefreshCw, FiSliders,
   FiBarChart2, FiMessageCircle, FiCalendar, FiBriefcase, FiBookOpen,
-  FiTrendingUp, FiTrendingDown, FiMinus,
 } from "react-icons/fi";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid, Legend,
-} from "recharts";
  
 // Icon map for quick action modules
 const ICON_MAP = {
@@ -92,7 +87,7 @@ function SkeletonRow() {
           </div>
         </div>
       </td>
-      {[...Array(4)].map((_, i) => (
+      {[...Array(3)].map((_, i) => (
         <td key={i} className="px-6 py-5 text-right">
           <div className="h-3.5 bg-slate-200 rounded w-12 ml-auto" />
         </td>
@@ -129,40 +124,7 @@ function ActivityItem({ text, time }) {
     </div>
   );
 }
- 
-// ── Growth metric card ────────────────────────────────────────────────────────
-function GrowthCard({ label, current, previous, change, percent }) {
-  const isUp   = change > 0;
-  const isDown = change < 0;
-  const color  = isUp ? "text-emerald-600" : isDown ? "text-red-500" : "text-slate-400";
-  const bgColor = isUp ? "bg-emerald-50" : isDown ? "bg-red-50" : "bg-slate-50";
-  const TrendIcon = isUp ? FiTrendingUp : isDown ? FiTrendingDown : FiMinus;
-  const sign   = isUp ? "+" : "";
- 
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
-        <span className={`${bgColor} ${color} text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1`}>
-          <TrendIcon size={10} />
-          {sign}{percent?.toFixed(1) ?? 0}%
-        </span>
-      </div>
-      <div className="flex items-end justify-between">
-        <div>
-          <p className="text-xl font-black text-slate-800">{(current ?? 0).toLocaleString()}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            vs <span className="font-semibold">{(previous ?? 0).toLocaleString()}</span> last month
-          </p>
-        </div>
-        <div className={`text-xs font-bold ${color}`}>
-          {sign}{(change ?? 0).toLocaleString()}
-        </div>
-      </div>
-    </div>
-  );
-}
- 
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -172,7 +134,7 @@ export default function Dashboard() {
  
   const [accountsByPlatform, setAccountsByPlatform] = useState({});
   const [selectedAccount,    setSelectedAccount]    = useState({});
-  const [channelMetrics,     setChannelMetrics]     = useState([]);
+  const [dashboardSummary,   setDashboardSummary]   = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [refreshing,   setRefreshing]   = useState(false); // background refresh indicator
   const [activating,   setActivating]   = useState(null);
@@ -182,18 +144,16 @@ export default function Dashboard() {
   const [allModules,   setAllModules]   = useState([]);
   const [showCustomize, setShowCustomize] = useState(false);
   const [savingQA,     setSavingQA]     = useState(false);
-  const [growth,       setGrowth]       = useState(null);
-  const [growthLoading, setGrowthLoading] = useState(true);
  
   // ── Fetch from server and update cache ──────────────────────────────────────
   const fetchFromServer = useCallback(async (slug) => {
-    const [accsRes, channelsRes] = await Promise.allSettled([
+    const [accsRes, summaryRes] = await Promise.allSettled([
       api.get(`/brands/${slug}/accounts`),
-      getChannelMetrics(30),
+      getDashboardSummary(),
     ]);
  
-    const rawAccs   = accsRes.status     === "fulfilled" ? (accsRes.value.data.accounts ?? [])  : [];
-    const chMetrics = channelsRes.status === "fulfilled" ? (channelsRes.value ?? []) : [];
+    const rawAccs   = accsRes.status   === "fulfilled" ? (accsRes.value.data.accounts ?? [])  : [];
+    const summary   = summaryRes.status === "fulfilled" ? (summaryRes.value ?? []) : [];
  
     // Group accounts by platform (displayName already set by backend)
     const grouped = {};
@@ -209,7 +169,7 @@ export default function Dashboard() {
       sel[plat] = (accs.find(a => a.isActive) ?? accs[0])?.pageIdentifier ?? null;
     }
  
-    const payload = { accountsByPlatform: grouped, selectedAccount: sel, channelMetrics: chMetrics };
+    const payload = { accountsByPlatform: grouped, selectedAccount: sel, dashboardSummary: summary };
     appCache.set(dashKey(slug), payload);
     return payload;
   }, []);
@@ -218,7 +178,7 @@ export default function Dashboard() {
   const applyData = useCallback((data) => {
     setAccountsByPlatform(data.accountsByPlatform);
     setSelectedAccount(data.selectedAccount);
-    setChannelMetrics(data.channelMetrics);
+    setDashboardSummary(data.dashboardSummary || []);
   }, []);
  
   // ── Main load logic (SWR) ───────────────────────────────────────────────────
@@ -263,16 +223,6 @@ export default function Dashboard() {
       .catch(() => setQuickActions([]));
   }, []);
 
-  // ── Load growth metrics ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!activeBrand?.slug) return;
-    setGrowthLoading(true);
-    getGrowthMetrics()
-      .then(setGrowth)
-      .catch(() => setGrowth(null))
-      .finally(() => setGrowthLoading(false));
-  }, [activeBrand?.slug]);
-
   // ── Sync helper (reusable by manual + auto) ────────────────────────────────
   const runSync = useCallback(async (silent = false) => {
     if (syncing) return;
@@ -290,7 +240,6 @@ export default function Dashboard() {
       });
       appCache.invalidate(dashKey(activeBrand?.slug));
       await loadData(activeBrand?.slug, { force: true, silent: true });
-      getGrowthMetrics().then(setGrowth).catch(() => {});
     } catch (e) {
       if (!silent) setSyncMsg({ ok: false, text: e?.message || "Sync failed" });
     } finally {
@@ -306,15 +255,17 @@ export default function Dashboard() {
   const autoSynced = useRef(false);
   useEffect(() => {
     if (!activeBrand?.slug || loading || autoSynced.current || syncing) return;
-    // Check if all channel metrics are empty (no reach/engagement data)
-    const hasData = channelMetrics.some(
-      ch => (ch.totalReach > 0) || (ch.totalEngagement > 0) || (ch.totalFollowers > 0)
+    // Check if summary data is empty
+    const hasData = dashboardSummary.some(
+      ch => (ch.totalFollowers > 0) || (ch.totalPosts > 0) || (ch.totalLeads > 0)
     );
-    if (!hasData && channelMetrics.length === 0 && Object.keys(accountsByPlatform).length > 0) {
+    const connectedAccountsCount = Object.values(accountsByPlatform)
+      .reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0);
+    if (!hasData && dashboardSummary.length === 0 && connectedAccountsCount > 0) {
       autoSynced.current = true;
       runSync(true);
     }
-  }, [activeBrand?.slug, loading, channelMetrics, accountsByPlatform, syncing, runSync]);
+  }, [activeBrand?.slug, loading, dashboardSummary, accountsByPlatform, syncing, runSync]);
 
   // ── Periodic background refresh every 15 minutes ──────────────────────────
   useEffect(() => {
@@ -322,7 +273,6 @@ export default function Dashboard() {
     const interval = setInterval(() => {
       appCache.invalidate(dashKey(activeBrand.slug));
       loadData(activeBrand.slug, { force: true, silent: true });
-      getGrowthMetrics().then(setGrowth).catch(() => {});
     }, 15 * 60 * 1000);
     return () => clearInterval(interval);
   }, [activeBrand?.slug, loadData]);
@@ -370,35 +320,22 @@ export default function Dashboard() {
     const acc   = accs.find(a => a.pageIdentifier === selId) ?? accs[0];
     if (!acc) return null;
  
-    const ch =
-      channelMetrics.find(c => c.accountId === acc.pageIdentifier) ??
-      channelMetrics.find(c => c.platform?.toLowerCase() === platform.toLowerCase());
+    // Find summary data for this account
+    const summary =
+      dashboardSummary.find(c => c.accountId === acc.pageIdentifier) ??
+      dashboardSummary.find(c => c.platform?.toLowerCase() === platform.toLowerCase());
  
     return {
       acc,
-      profilePictureUrl: acc?.profilePictureUrl || ch?.profilePictureUrl
+      profilePictureUrl: acc?.profilePictureUrl || summary?.profilePictureUrl
         || (platform === "Facebook" && acc?.pageIdentifier
           ? `https://graph.facebook.com/${acc.pageIdentifier}/picture?type=large`
           : null),
-      totalFollowers: ch?.totalFollowers ?? null,
-      totalPosts:     ch?.totalPosts ?? ch?.postsCount ?? ch?.posts ?? null,
-      reach:          ch?.totalReach       > 0 ? ch.totalReach      : null,
-      engagement:     ch?.totalEngagement  > 0 ? ch.totalEngagement : null,
-      leads:          ch?.totalLeads       ?? null,
+      totalFollowers: summary?.totalFollowers ?? null,
+      totalPosts:     summary?.totalPosts ?? null,
+      leads:          summary?.totalLeads ?? null,
     };
   };
- 
-  const graphData = PLATFORMS.map(plat => {
-    const m = getMetrics(plat) || {};
-    return {
-      platform:   plat,
-      followers:  m?.totalFollowers || 0,
-      newFollowers: m?.newFollowers || 0,
-      reach:      m?.reach          || 0,
-      engagement: m?.engagement     || 0,
-      leads:      m?.leads          || 0,
-    };
-  });
  
   const hasAnyAccounts = Object.keys(accountsByPlatform).length > 0;
  
@@ -479,22 +416,20 @@ export default function Dashboard() {
             <div className="w-full">
               <table className="w-full table-fixed">
                 <colgroup>
-                  <col className="w-[38%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[18%]" />
+                  <col className="w-[40%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[20%]" />
                 </colgroup>
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr className="text-xs uppercase tracking-wider text-slate-500 font-semibold">
                     <th className="px-4 py-4 text-left text-[13px]">Channel</th>
                     <th className="px-4 py-4 text-right text-[13px] whitespace-nowrap">Followers</th>
-                    <th className="px-4 py-4 text-right text-[13px] whitespace-nowrap">Reach</th>
                     <th className="px-4 py-4 text-right text-[13px] whitespace-nowrap">Total Posts</th>
                     <th className="pl-4 pr-6 py-4 text-right text-[13px] whitespace-nowrap">Leads</th>
                   </tr>
                 </thead>
- 
+
                 <tbody className="divide-y divide-slate-100">
                   {/* Loading skeleton — shown only on first load with no cache */}
                   {loading && !hasAnyAccounts ? (
@@ -503,7 +438,7 @@ export default function Dashboard() {
                     PLATFORMS.map(plat => {
                       const accs    = accountsByPlatform[plat] ?? [];
                       const metrics = getMetrics(plat);
- 
+
                       if (accs.length === 0) {
                         return (
                           <tr key={plat} className="hover:bg-slate-50 transition">
@@ -519,8 +454,8 @@ export default function Dashboard() {
                                 </div>
                               </div>
                             </td>
-                            {[...Array(4)].map((_, i) => (
-                              <td key={i} className={`${i === 3 ? "pl-4 pr-6" : "px-4"} py-5 text-right text-slate-300 text-[15px] tabular-nums whitespace-nowrap align-middle`}>—</td>
+                            {[...Array(3)].map((_, i) => (
+                              <td key={i} className={`${i === 2 ? "pl-4 pr-6" : "px-4"} py-5 text-right text-slate-300 text-[15px] tabular-nums whitespace-nowrap align-middle`}>—</td>
                             ))}
                           </tr>
                         );
@@ -587,9 +522,6 @@ export default function Dashboard() {
                             <StatCell value={metrics?.totalFollowers} />
                           </td>
                           <td className="px-4 py-5 text-right text-[15px] font-semibold text-slate-800 tabular-nums whitespace-nowrap align-middle">
-                            <StatCell value={metrics?.reach} />
-                          </td>
-                          <td className="px-4 py-5 text-right text-[15px] font-semibold text-slate-800 tabular-nums whitespace-nowrap align-middle">
                             <StatCell value={metrics?.totalPosts} />
                           </td>
                           <td className="pl-4 pr-6 py-5 text-right text-[15px] font-semibold text-slate-800 tabular-nums whitespace-nowrap align-middle">
@@ -603,75 +535,8 @@ export default function Dashboard() {
               </table>
             </div>
           </div>
- 
-          {/* Month-over-Month Growth */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100">
-              <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                <FiTrendingUp className="text-emerald-500" size={14} /> Monthly Growth
-              </h3>
-              {growth && (
-                <p className="text-[10px] text-slate-400 mt-1">
-                  {new Date(growth.currentPeriodStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  {" – "}
-                  {new Date(growth.currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  {" vs "}
-                  {new Date(growth.previousPeriodStart).toLocaleDateString("en-US", { month: "short" })}
-                </p>
-              )}
-            </div>
-            <div className="p-4">
-              {growthLoading ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {[...Array(6)].map((_, i) => (
-                    <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />
-                  ))}
-                </div>
-              ) : growth ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <GrowthCard label="Followers"   current={growth.currentFollowers}        previous={growth.previousFollowers}        change={growth.followersChange}     percent={growth.followersGrowthPercent} />
-                  <GrowthCard label="Leads"        current={growth.currentMonthLeads}       previous={growth.previousMonthLeads}       change={growth.leadsChange}         percent={growth.leadsGrowthPercent} />
-                  <GrowthCard label="Engagement"   current={growth.currentMonthEngagement}  previous={growth.previousMonthEngagement}  change={growth.engagementChange}    percent={growth.engagementGrowthPercent} />
-                  <GrowthCard label="Reach"        current={growth.currentMonthReach}        previous={growth.previousMonthReach}        change={growth.reachChange}         percent={growth.reachGrowthPercent} />
-                  <GrowthCard label="Impressions"  current={growth.currentMonthImpressions}  previous={growth.previousMonthImpressions}  change={growth.impressionsChange}   percent={growth.impressionsGrowthPercent} />
-                  <GrowthCard label="Posts"        current={growth.currentMonthPosts}        previous={growth.previousMonthPosts}        change={growth.postsChange}         percent={growth.postsGrowthPercent} />
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 text-center py-8">No growth data available. Sync analytics first.</p>
-              )}
-            </div>
-          </div>
- 
-          {/* Brand Growth Graph */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4">
-              Brand Growth Overview
-            </h3>
-            {loading && !hasAnyAccounts ? (
-              <div className="h-[300px] flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : (
-              <div className="w-full" style={{ minHeight: 300 }}>
-                <ResponsiveContainer width="100%" height={300} minWidth={0}>
-                  <BarChart data={graphData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="platform" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="followers"  name="Followers"  fill="#58C5B3" />
-                    <Bar dataKey="newFollowers" name="New Followers" fill="#6c5ce7" />
-                    <Bar dataKey="reach"      name="Reach"      fill="#4cbb17" />
-                    <Bar dataKey="engagement" name="Engagement" fill="#fd6c9e" />
-                    <Bar dataKey="leads"      name="Leads"      fill="#ffb90f" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
         </div>
- 
+
         {/* RIGHT: Quick Actions + Activity */}
         <div className="col-span-12 lg:col-span-4 space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">

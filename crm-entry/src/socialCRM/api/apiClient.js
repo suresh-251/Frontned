@@ -3,9 +3,9 @@ import toast from "react-hot-toast";
 import { getAccessToken, clearAccessToken } from "../../utils/authStorage";
 import { secureStorage } from "../../utils/secureStorage";
 import { appCache } from "../utils/cache";
-export const BASE_URL = "https://crmsocial.metagensoft.com/api";
+// export const BASE_URL = "https://crmsocial.metagensoft.com/api";
 // Local dev override (requires `dotnet run` in Backend folder):
-// export const BASE_URL = "https://localhost:7015/api";
+export const BASE_URL = "https://localhost:7015/api";
 // export const BASE_URL = "http://89.116.20.215:9090/api";
 
 
