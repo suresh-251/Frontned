@@ -29,8 +29,24 @@ steps:
   displayName: 'Deploy CRM Frontend'
   inputs:
     sshEndpoint: 'hostinger-vps'
-    runOptions: 'commands'
-    commands: |
-      cd /opt/crm-frontend
-      export IMAGE_TAG=$(Build.BuildId)
-      docker compose up -d   
+    runOptions: inline
+    inline: |
+      set -e
+
+      IMAGE_TAG=$(Build.BuildId)
+      IMAGE=registry.nafabarter.com/crm-frontend:$IMAGE_TAG
+
+      echo "Deploying $IMAGE"
+
+      # Stop and remove old container
+      docker rm -f crm-frontend || true
+
+      # Pull latest image
+      docker pull $IMAGE
+
+      # Run container
+      docker run -d \
+        --name crm-frontend \
+        -p 5173:80 \
+        --restart always \
+        $IMAGE
