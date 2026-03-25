@@ -33,5 +33,5 @@ steps:
     commands: |
       cd /opt/crm-frontend
       export IMAGE_TAG=$(Build.BuildId)
-      docker compose pull
-      docker compose up -d
+      docker compose pull crm-frontend
+      docker compose up -d crm-frontend
