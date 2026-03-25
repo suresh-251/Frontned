@@ -25,7 +25,13 @@ steps:
       latest
       $(tag)
     
-- script: |
-    curl -X POST -k https://89.116.20.215:9443/api/stacks/webhooks/cd5cb9fd-abc1-47c7-b4bd-f40ae0d07637?IMAGE_TAG=$(Build.BuildId)
-  displayName: 'Trigger Portainer webhook'
-  condition: succeeded()
+- task: SSH@0
+  displayName: 'Deploy CRM Frontend'
+  inputs:
+    sshEndpoint: 'hostinger-vps'
+    runOptions: 'commands'
+    commands: |
+      cd /opt/crm-frontend
+      export IMAGE_TAG=$(Build.BuildId)
+      docker compose pull
+      docker compose up -d
