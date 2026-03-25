@@ -41,7 +41,7 @@ const DAY_OPTIONS = [
 const ENGAGEMENT_TREND_METRICS = [
   { key: "likes", label: "Likes", color: "#ef4444" },
   { key: "comments", label: "Comments", color: "#f59e0b" },
-  { key: "views", label: "Impressions", color: "#8b5cf6" },
+  { key: "shares", label: "Shares", color: "#10b981" },
 ];
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -227,7 +227,7 @@ export default function Analytics() {
     ...d,
     likes: pick(d ?? {}, "totalLikes", "likes"),
     comments: pick(d ?? {}, "totalComments", "comments"),
-    views: pick(d ?? {}, "totalImpressions", "impressions", "views"),
+    shares: pick(d ?? {}, "totalShares", "shares", "shareCount", "sharesCount"),
   }));
 
   const totReach         = pick(summary ?? {}, "totalReach");
