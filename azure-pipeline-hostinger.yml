@@ -33,4 +33,4 @@ steps:
     commands: |
       cd /opt/crm-frontend
       export IMAGE_TAG=$(Build.BuildId)
-      docker compose up -d --force-recreate crm-frontend      
+      docker compose up -d   
