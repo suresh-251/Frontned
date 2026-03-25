@@ -31,7 +31,11 @@ steps:
     sshEndpoint: 'hostinger-vps'
     runOptions: 'commands'
     commands: |
+      pwd
+      ls -l
       cd /opt/crm-frontend
+      pwd
+      ls -l
+      docker compose config --services
       export IMAGE_TAG=$(Build.BuildId)
-      docker compose pull crm-frontend
-      docker compose up -d crm-frontend
+      docker compose up -d --force-recreate
