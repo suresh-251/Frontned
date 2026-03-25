@@ -2,22 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { BarChart2, TrendingUp, X } from "lucide-react";
 import { offsetDay, todayStr } from "./utils";
 
-export function LeadsPerformanceChart({ onClose, leads }) {
+export function LeadsPerformanceChart({ onClose }) {
   const [animated, setAnimated] = useState(false);
   const [tooltip, setTooltip] = useState(null);
   const [activeRange, setActiveRange] = useState("30");
   const [customRange, setCustomRange] = useState({ from: offsetDay(29), to: todayStr() });
   const [customTouched, setCustomTouched] = useState(false);
-
-  useEffect(() => {
-    if (activeRange !== "custom") {
-      setCustomTouched(false);
-      return;
-    }
-    if (!customTouched) {
-      setCustomRange({ from: "", to: "" });
-    }
-  }, [activeRange, customTouched]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => setAnimated(true), 60);
@@ -47,7 +37,8 @@ export function LeadsPerformanceChart({ onClose, leads }) {
       const date = new Date(rangeInfo.startDate);
       date.setDate(rangeInfo.startDate.getDate() + index);
       const label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      const base = 10 + Math.sin(index * 0.4) * 8 + Math.random() * 18;
+      const deterministicNoise = ((index * 37) % 19) / 19;
+      const base = 10 + Math.sin(index * 0.4) * 8 + deterministicNoise * 18;
       const value = Math.round(Math.max(3, base));
       return { label, value, date };
     });
@@ -97,7 +88,20 @@ export function LeadsPerformanceChart({ onClose, leads }) {
             <div className="chart-modal__header-actions">
               <div className="chart-range-tabs">
                 {[["7", "7 days"], ["30", "30 days"], ["90", "90 days"], ["custom", "Custom"]].map(([value, label]) => (
-                  <button key={value} className={`chart-range-tab ${activeRange === value ? "chart-range-tab--active" : ""}`} onClick={() => setActiveRange(value)}>{label}</button>
+                  <button
+                    key={value}
+                    className={`chart-range-tab ${activeRange === value ? "chart-range-tab--active" : ""}`}
+                    onClick={() => {
+                      setActiveRange(value);
+                      if (value === "custom") {
+                        if (!customTouched) setCustomRange({ from: "", to: "" });
+                        return;
+                      }
+                      setCustomTouched(false);
+                    }}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
               <button className="chart-modal__close" onClick={onClose}><X size={16} strokeWidth={2} /></button>

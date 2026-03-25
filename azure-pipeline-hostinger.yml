@@ -25,7 +25,28 @@ steps:
       latest
       $(tag)
     
-- script: |
-    curl -X POST -k https://89.116.20.215:9443/api/stacks/webhooks/cd5cb9fd-abc1-47c7-b4bd-f40ae0d07637?IMAGE_TAG=$(Build.BuildId)
-  displayName: 'Trigger Portainer webhook'
-  condition: succeeded()
+- task: SSH@0
+  displayName: 'Deploy CRM Frontend'
+  inputs:
+    sshEndpoint: 'hostinger-vps'
+    runOptions: inline
+    inline: |
+      set -e
+
+      IMAGE_TAG=$(Build.BuildId)
+      IMAGE=registry.nafabarter.com/crm-frontend:$IMAGE_TAG
+
+      echo "Deploying $IMAGE"
+
+      # Stop and remove old container
+      docker rm -f crm-frontend || true
+
+      # Pull latest image
+      docker pull $IMAGE
+
+      # Run container
+      docker run -d \
+        --name crm-frontend \
+        -p 5173:80 \
+        --restart always \
+        $IMAGE

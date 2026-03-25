@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import notesAPI from "../../../api/notes.api";
 import Toast from "../../../utils/toast";
 import { card, fmtDate, getApiErrorMessage, input } from "../shared";
@@ -23,7 +23,7 @@ export default function NotesSection({ lead, onSaved }) {
     return rightTime - leftTime;
   }), [notes]);
 
-  const loadNotes = async () => {
+  const loadNotes = useCallback(async () => {
     if (!lead?.id) return;
     setLoading(true);
     try {
@@ -45,11 +45,11 @@ export default function NotesSection({ lead, onSaved }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [lead?.id]);
 
   useEffect(() => {
     loadNotes();
-  }, [lead?.id]);
+  }, [loadNotes]);
 
   const resetEditor = () => {
     setDraft("");

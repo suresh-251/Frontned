@@ -1,7 +1,7 @@
 import "../styles/Leads.css";
 import "react-datepicker/dist/react-datepicker.css";
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DatePicker from "react-datepicker";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -92,23 +92,6 @@ const parseImportedDate = (value) => {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const getStageSelectStyle = (stage) => {
-  const meta = STAGE_META[stage] || { color: "#475569", bg: "#e2e8f0" };
-  return {
-    minWidth: 140,
-    padding: "8px 36px 8px 12px",
-    border: `1.5px solid ${meta.color}`,
-    borderRadius: 999,
-    background: `${meta.bg} url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='${encodeURIComponent(meta.color)}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 12px center / 14px 14px`,
-    color: meta.color,
-    fontWeight: 700,
-    outline: "none",
-    appearance: "none",
-    cursor: "pointer",
-    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.24)",
-  };
 };
 
 function StageCell({ value, onChange }) {
@@ -338,7 +321,7 @@ export default function Deals() {
   const [wrapText, setWrapText] = useState(false);
   const [showColPanel, setShowColPanel] = useState(false);
 
-  const loadDeals = async () => {
+  const loadDeals = useCallback(async () => {
     setLoading(true);
     try {
       const data = await dealsAPI.getAll({
@@ -355,11 +338,11 @@ export default function Deals() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters.closingDateFrom, filters.closingDateTo, filters.leadSource, filters.owner]);
 
   useEffect(() => {
     loadDeals();
-  }, [filters.leadSource, filters.owner, filters.closingDateFrom, filters.closingDateTo]);
+  }, [loadDeals]);
 
   useEffect(() => {
     setSelected((current) => {
@@ -372,9 +355,6 @@ export default function Deals() {
   useEffect(() => {
     localStorage.setItem(VISIBLE_DEAL_COLUMNS_STORAGE_KEY, JSON.stringify(visibleCols));
   }, [visibleCols]);
-
-  const totalValue = useMemo(() => deals.reduce((sum, deal) => sum + normalizeAmount(deal), 0), [deals]);
-  const convertedCount = deals.filter((deal) => normalizeStage(deal) === "ClosedWon").length;
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -736,11 +716,14 @@ export default function Deals() {
           </button>
           <div className="toolbar-divider" />
           <div style={{ display: "flex", border: "1.5px solid var(--cborder)", borderRadius: "8px", overflow: "hidden", background: "var(--cs)", boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)" }}>
-            {[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map(({ k, l, I }) => (
-              <button key={k} onClick={() => setViewMode(k)} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", border: "none", borderRight: k === "list" ? "1px solid var(--cborder)" : "none", background: viewMode === k ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "transparent", color: viewMode === k ? "var(--ci)" : "var(--cm)" }}>
-                <I s={13} />{l}
-              </button>
-            ))}
+            {[{ k: "list", l: "List", I: IRows }, { k: "kanban", l: "Kanban", I: IKanban }].map((item) => {
+              const ViewIcon = item.I;
+              return (
+                <button key={item.k} onClick={() => setViewMode(item.k)} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", border: "none", borderRight: item.k === "list" ? "1px solid var(--cborder)" : "none", background: viewMode === item.k ? "color-mix(in srgb, var(--ci) 12%, var(--cs))" : "transparent", color: viewMode === item.k ? "var(--ci)" : "var(--cm)" }}>
+                  <ViewIcon s={13} />{item.l}
+                </button>
+              );
+            })}
           </div>
           <div className="toolbar-divider" />
           <div className="unified-search">
@@ -1071,250 +1054,6 @@ export default function Deals() {
     </div>
   );
 }
-
-const dealFormSectionStyle = {
-  display: "grid",
-  gap: 14,
-  padding: "18px 18px 16px",
-  borderRadius: 18,
-  border: "1px solid #e2e8f0",
-  background: "#ffffff",
-  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.04)",
-};
-
-const dealCreateHeroStyle = {
-  position: "relative",
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
-  gap: 18,
-  alignItems: "end",
-  padding: "28px 28px 24px",
-  background: "radial-gradient(circle at top left, rgba(96, 165, 250, 0.36) 0%, rgba(37, 99, 235, 0.18) 26%, transparent 54%), linear-gradient(135deg, #0f172a 0%, #123a63 54%, #1d4ed8 100%)",
-};
-
-const dealCreateHeroEyebrowStyle = {
-  display: "inline-flex",
-  width: "fit-content",
-  padding: "6px 10px",
-  borderRadius: 999,
-  background: "rgba(255,255,255,0.12)",
-  border: "1px solid rgba(255,255,255,0.14)",
-  color: "#dbeafe",
-  fontSize: 11,
-  fontWeight: 800,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-};
-
-const dealCreateHeroMetaWrapStyle = {
-  display: "flex",
-  gap: 10,
-  alignItems: "stretch",
-  marginRight: 52,
-};
-
-const dealCreateHeroMetaCardStyle = {
-  minWidth: 120,
-  padding: "12px 14px",
-  borderRadius: 16,
-  background: "rgba(255,255,255,0.1)",
-  border: "1px solid rgba(255,255,255,0.12)",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
-};
-
-const dealCreateHeroMetaLabelStyle = {
-  fontSize: 10.5,
-  fontWeight: 700,
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
-  color: "rgba(219, 234, 254, 0.82)",
-};
-
-const dealCreateHeroMetaValueStyle = {
-  marginTop: 6,
-  fontSize: 16,
-  fontWeight: 800,
-  color: "#ffffff",
-};
-
-const dealCreateLayoutStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1.6fr) minmax(250px, 0.9fr)",
-  gap: 20,
-  alignItems: "start",
-};
-
-const dealCreateSectionStyle = {
-  ...dealFormSectionStyle,
-  padding: "20px 20px 18px",
-  borderRadius: 22,
-};
-
-const dealCreateSectionHeaderStyle = {
-  display: "grid",
-  gap: 2,
-  paddingBottom: 2,
-};
-
-const dealCreateMainGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 16,
-  alignItems: "start",
-};
-
-const dealCreateAsideStyle = {
-  position: "sticky",
-  top: 0,
-  display: "grid",
-  gap: 16,
-};
-
-const dealCreateAsideCardStyle = {
-  display: "grid",
-  gap: 14,
-  padding: "20px 18px",
-  borderRadius: 22,
-  background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
-  border: "1px solid #dbe4f0",
-  boxShadow: "0 14px 30px rgba(15, 23, 42, 0.08)",
-};
-
-const dealCreateAsideEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 800,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#2563eb",
-};
-
-const dealCreateAsideTitleStyle = {
-  fontSize: 20,
-  fontWeight: 800,
-  color: "#0f172a",
-  lineHeight: 1.1,
-};
-
-const dealCreateAsideBlurbStyle = {
-  fontSize: 13,
-  lineHeight: 1.55,
-  color: "#64748b",
-};
-
-const dealCreateSummaryStackStyle = {
-  display: "grid",
-  gap: 10,
-  paddingTop: 6,
-};
-
-const dealCreateSummaryRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  padding: "10px 12px",
-  borderRadius: 14,
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
-};
-
-const dealCreateSummaryLabelStyle = {
-  fontSize: 12,
-  fontWeight: 700,
-  color: "#64748b",
-};
-
-const dealCreateSummaryValueStyle = {
-  fontSize: 12.5,
-  fontWeight: 800,
-  color: "#0f172a",
-  textAlign: "right",
-};
-
-const dealCreateSummaryStagePillStyle = (stage) => {
-  const meta = STAGE_META[stage] || { color: "#475569", bg: "#e2e8f0" };
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "6px 10px",
-    borderRadius: 999,
-    background: meta.bg,
-    color: meta.color,
-    fontSize: 11.5,
-    fontWeight: 800,
-    border: `1px solid color-mix(in srgb, ${meta.color} 18%, #dbe4f0)`,
-  };
-};
-
-const dealCreateAsideTipsStyle = {
-  display: "grid",
-  gap: 10,
-  padding: "18px",
-  borderRadius: 20,
-  background: "#ffffff",
-  border: "1px solid #dbe4f0",
-  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.05)",
-};
-
-const dealCreateAsideTipsTitleStyle = {
-  fontSize: 13,
-  fontWeight: 800,
-  color: "#0f172a",
-};
-
-const dealCreateAsideTipItemStyle = {
-  position: "relative",
-  paddingLeft: 16,
-  fontSize: 12.5,
-  lineHeight: 1.55,
-  color: "#64748b",
-};
-
-const dealFormSectionHeaderStyle = {
-  display: "grid",
-  gap: 2,
-};
-
-const dealFormSectionEyebrowStyle = {
-  fontSize: 10.5,
-  fontWeight: 800,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#94a3b8",
-};
-
-const dealFormSectionTitleStyle = {
-  fontSize: 15,
-  fontWeight: 800,
-  color: "#0f172a",
-};
-
-const dealFormGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 14,
-  alignItems: "start",
-};
-
-const dealFieldLabelStyle = {
-  fontSize: 12,
-  fontWeight: 700,
-  color: "#374151",
-  display: "block",
-  marginBottom: 6,
-};
-
-const dealFieldInputStyle = {
-  width: "100%",
-  minWidth: 0,
-  padding: "10px 12px",
-  border: "1.5px solid #e5e7eb",
-  borderRadius: 10,
-  fontSize: 13,
-  outline: "none",
-  background: "#ffffff",
-};
 
 const dealModalSelectStyle = {
   width: "100%",

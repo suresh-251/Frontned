@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FaWhatsapp } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import {
@@ -35,7 +35,6 @@ import {
   assignee,
   attachmentUrl,
   card,
-  compactMeetingDate,
   contactShortcutButtonStyle,
   contactShortcutIconColor,
   contactShortcutKeyframes,
@@ -147,6 +146,7 @@ export function LeftPanel({ lead, onConvert, onOpenTab, stacked = false, mobile 
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 18 }}>
           {CONTACT_SHORTCUTS.map(({ id, label, icon: Icon }) => {
+            const ShortcutIcon = Icon;
             const enabled = shortcutEnabled[id];
             return (
               <button
@@ -162,7 +162,7 @@ export function LeftPanel({ lead, onConvert, onOpenTab, stacked = false, mobile 
                 onMouseDown={(event) => handleContactShortcutMouseDown(event, enabled)}
                 onMouseUp={(event) => handleContactShortcutMouseUp(event, enabled)}
               >
-                <Icon size={13} color={contactShortcutIconColor(enabled)} />
+                <ShortcutIcon size={13} color={contactShortcutIconColor(enabled)} />
               </button>
             );
           })}
@@ -323,7 +323,7 @@ export function ConvertToDealModal({ lead, onClose, onConverted }) {
   );
 }
 
-export function Timeline({ items, loading, onRefresh, stacked = false, mobile = false, onClose = null, eyebrow = "Lead Story", description = "A clean view of status changes, communications, and lead updates." }) {
+export function Timeline({ items, loading, stacked = false, mobile = false, onClose = null, eyebrow = "Lead Story", description = "A clean view of status changes, communications, and lead updates." }) {
   const groups = useMemo(() => items.reduce((acc, item) => { const key = fmtDate(timelineDateValue(item), false); (acc[key] ||= []).push(item); return acc; }, {}), [items]);
   return (
     <aside style={{ height: mobile ? "auto" : "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", borderLeft: stacked ? "none" : "1px solid #e2e8f0", borderTop: stacked ? "1px solid #e2e8f0" : "none", background: "linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%)" }}>
@@ -404,7 +404,7 @@ function Attachments({ leadId }) {
     uploadedAt: item?.uploadedAt || item?.createdAt || item?.date || "",
   });
 
-  const loadAttachments = async () => {
+  const loadAttachments = useCallback(async () => {
     if (!leadId) {
       setItems([]);
       setErrorMessage("Missing lead ID for attachments.");
@@ -422,11 +422,11 @@ function Attachments({ leadId }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [leadId]);
 
   useEffect(() => {
     loadAttachments();
-  }, [leadId]);
+  }, [loadAttachments]);
 
   const handleUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -494,7 +494,7 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
   const [closed, setClosed] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [communications, setCommunications] = useState({ emails: [], whatsapp: [] });
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!lead?.id) return;
     setLoading(true);
     try {
@@ -546,8 +546,8 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
     } finally {
       setLoading(false);
     }
-  };
-  useEffect(() => { load(); }, [lead?.id]);
+  }, [lead?.id]);
+  useEffect(() => { load(); }, [load]);
   const callHistory = useMemo(() => (
     (Array.isArray(timeline) ? timeline : [])
       .filter((item) => String(item?.type || item?.eventType || "").toLowerCase().includes("call"))
@@ -636,7 +636,7 @@ export function Middle({ lead, activeTab, onTabChange, onActivitySaved, timeline
         return;
       }
       throw new Error("Clipboard API unavailable");
-    } catch (error) {
+    } catch {
       Toast.error("Unable to copy the meeting link");
     }
   };

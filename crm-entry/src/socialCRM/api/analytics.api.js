@@ -9,7 +9,7 @@ import api from "./apiClient";
  * Full brand analytics summary — totals + daily breakdown + platform breakdown + top posts.
  * GET /api/analytics/brand/summary?days=7
  */
-export const getBrandSummary = async (days = 0, platform = null, sortBy = "engagement") => {
+export const getBrandSummary = async (days = 7, platform = null, sortBy = "engagement") => {
   const params = { days };
   if (platform && platform !== "all") params.platform = platform;
   if (sortBy && sortBy !== "engagement") params.sortBy = sortBy;
@@ -99,7 +99,7 @@ export const getBestPostingTimes = async (days = 30) => {
  * engagement, reach, impressions, and posts.
  * GET /api/analytics/brand/growth
  */
-export const getGrowthMetrics = async () => {
-  const res = await api.get("/analytics/brand/growth");
+export const getGrowthMetrics = async (days = 30) => {
+  const res = await api.get("/analytics/brand/growth", { params: { days } });
   return res.data;
 };

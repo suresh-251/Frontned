@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { X } from "lucide-react";
 import leadsAPI from "../api/leads.api";
 import Toast from "../utils/toast";
@@ -32,7 +32,7 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted, onAct
     ["timeline", "Timeline"],
   ];
 
-  const loadTimeline = async () => {
+  const loadTimeline = useCallback(async () => {
     if (!lead?.id) return;
     setTimelineLoading(true);
     try {
@@ -43,11 +43,11 @@ export default function LeadDetailsModal({ lead, onClose, onDealConverted, onAct
     } finally {
       setTimelineLoading(false);
     }
-  };
+  }, [lead?.id]);
 
   useEffect(() => {
     loadTimeline();
-  }, [lead?.id]);
+  }, [loadTimeline]);
 
   useEffect(() => {
     setActiveTab("activity");

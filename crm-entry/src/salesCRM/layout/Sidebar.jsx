@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2,
@@ -48,18 +48,7 @@ export default function Sidebar({
   const isActivitiesChildActive =
     location.pathname === "/crm/sales/activities" &&
     ["?tab=tasks", "?tab=calls", "?tab=meetings", "?tab=emails"].includes(location.search);
-
-  useEffect(() => {
-    if (isActivitiesChildActive && !collapsed) {
-      setActivitiesOpen(true);
-    }
-  }, [collapsed, isActivitiesChildActive]);
-
-  useEffect(() => {
-    if (collapsed) {
-      setActivitiesOpen(false);
-    }
-  }, [collapsed]);
+  const showActivitiesChildren = !collapsed && (activitiesOpen || isActivitiesChildActive);
 
   return (
     <>
@@ -94,10 +83,12 @@ export default function Sidebar({
         </div>
 
         <nav className="salescrm-sidebar__nav">
-          {navItems.map(({ label, path, Icon, children }) => {
+          {navItems.map((item) => {
+            const { label, path, children } = item;
             const isActivitiesGroup = Array.isArray(children) && children.length > 0;
 
             if (!isActivitiesGroup) {
+              const LinkIcon = item.Icon;
               return (
                 <NavLink
                   key={path}
@@ -110,7 +101,7 @@ export default function Sidebar({
                     `salescrm-navlink ${isActive ? "salescrm-navlink--active" : ""}`
                   }
                 >
-                  <Icon size={18} />
+                  <LinkIcon size={18} />
                   <span className="salescrm-sidebar__label">{label}</span>
                 </NavLink>
               );
@@ -126,21 +117,19 @@ export default function Sidebar({
                   aria-expanded={activitiesOpen}
                   title={label}
                   onClick={() => {
-                    if (!collapsed) {
-                      setActivitiesOpen((open) => !open);
-                    }
+                    if (!collapsed) setActivitiesOpen((open) => !open);
                   }}
                 >
                   <ClipboardList size={18} />
                   <span className="salescrm-sidebar__label">{label}</span>
                   {!collapsed ? (
                     <span className="salescrm-navlink__chevron" aria-hidden="true">
-                      {activitiesOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      {showActivitiesChildren ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </span>
                   ) : null}
                 </button>
 
-                {!collapsed && activitiesOpen ? (
+                {showActivitiesChildren ? (
                   <div className="salescrm-sidebar__subnav">
                     {children.map((child) => {
                       const isChildActive = `${location.pathname}${location.search}` === child.path;

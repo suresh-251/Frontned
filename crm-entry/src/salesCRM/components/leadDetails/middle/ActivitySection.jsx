@@ -10,6 +10,7 @@ const hasDisplayDate = (value) => {
 };
 
 function Lane({ title, Icon, items, stacked = false, mobile = false }) {
+  const LaneIcon = Icon;
   const sortedItems = useMemo(() => [...items].sort((a, b) => {
     const aTime = a?.date ? new Date(a.date).getTime() : 0;
     const bTime = b?.date ? new Date(b.date).getTime() : 0;
@@ -21,7 +22,7 @@ function Lane({ title, Icon, items, stacked = false, mobile = false }) {
     <div style={{ minWidth: 0, flex: stacked ? "0 0 auto" : "1 1 0", minHeight: stacked && !mobile ? 188 : 0, maxHeight: stacked && !mobile ? 240 : "none", display: "flex", flexDirection: "column", overflow: "hidden", border: stacked ? "1.5px solid #cfddeb" : "none", borderRight: stacked ? "1.5px solid #cfddeb" : showRightDivider ? "1px solid #dde7f1" : "none", borderBottom: stacked ? "1.5px solid #cfddeb" : "none", borderRadius: stacked ? 18 : 0, background: "#ffffff", boxShadow: stacked ? "0 0 0 1px rgba(207, 221, 235, 0.34), 0 10px 24px rgba(148, 163, 184, 0.08)" : "none" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: stacked ? "16px 16px 14px" : "12px 14px", borderBottom: "1px solid #edf3f9", background: "#fbfdff" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: stacked ? 36 : 28, height: stacked ? 36 : 28, borderRadius: stacked ? 10 : 8, background: "#ffffff", border: "1.5px solid #c9d9ea", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={stacked ? 16 : 14} /></div>
+          <div style={{ width: stacked ? 36 : 28, height: stacked ? 36 : 28, borderRadius: stacked ? 10 : 8, background: "#ffffff", border: "1.5px solid #c9d9ea", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center" }}><LaneIcon size={stacked ? 16 : 14} /></div>
           <div style={{ fontSize: stacked ? 15 : 13.5, fontWeight: 800, color: "#1e293b" }}>{title}</div>
         </div>
         <div style={{ minWidth: stacked ? 30 : 24, height: stacked ? 30 : 24, padding: stacked ? "0 9px" : "0 7px", borderRadius: 999, background: "#ffffff", border: "1.5px solid #c9d9ea", color: "#475569", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: stacked ? 12.5 : 12, fontWeight: 800 }}>{items.length}</div>
