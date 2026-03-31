@@ -1,6 +1,6 @@
 // src/pages/Leads.jsx
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import useFacebookLeads from "../hooks/useFacebookLeads";
 import { useBrand } from "../context/BrandContext";
 import { appCache } from "../utils/cache";
@@ -22,10 +22,232 @@ import {
   FaChevronDown, FaCheck, FaTimes, FaEye, FaEdit, FaTrashAlt,
   FaChevronRight, FaChevronLeft, FaSpinner,
   FaCheckSquare, FaCalendarAlt, FaBuilding, FaUserPlus, FaHistory,
-  FaPhone, FaWhatsapp, FaEnvelope, FaSms,
+  FaPhone, FaCommentDots, FaWhatsapp, FaFacebookMessenger, FaEnvelope,
+  FaCopy, FaPhoneAlt, FaFacebook, FaInstagram,
 } from "react-icons/fa";
 
 const HUB_URL = BASE_URL.replace("/api", "") + "/hubs/leads";
+const LEAD_STATUS_OPTIONS = ["New", "Contacted", "Qualified", "Lost"];
+const PLATFORM_STYLE = {
+  Facebook: { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", dot: "bg-blue-500" },
+  Instagram: { bg: "bg-pink-50", border: "border-pink-200", text: "text-pink-700", dot: "bg-pink-500" },
+  LinkedIn: { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-700", dot: "bg-sky-500" },
+};
+
+const normalizePhone = (phone) => String(phone || "").replace(/[^\d+]/g, "");
+const getLeadPlatform = (lead) => {
+  const platform = String(lead?.platform || "Facebook").trim().toLowerCase();
+  if (platform === "instagram") return "Instagram";
+  if (platform === "linkedin") return "LinkedIn";
+  return "Facebook";
+};
+const addQueryParam = (url, key, value) => {
+  if (!url || !value) return url;
+  const divider = url.includes("?") ? "&" : "?";
+  return `${url}${divider}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+};
+
+const getMessengerUrl = (lead) => {
+  const directUrl =
+    lead?.messengerUrl ||
+    lead?.messengerLink ||
+    lead?.facebookMessengerUrl ||
+    lead?.profileUrl;
+  if (directUrl) return directUrl;
+
+  const messengerId =
+    lead?.psid ||
+    lead?.pageScopedId ||
+    lead?.facebookUserId ||
+    lead?.messengerUserId;
+  return messengerId ? `https://m.me/${messengerId}` : null;
+};
+
+const getInboxConversationId = (lead) =>
+  lead?.conversationId ||
+  lead?.inboxConversationId ||
+  lead?.messengerConversationId ||
+  lead?.facebookConversationId ||
+  lead?.threadId ||
+  null;
+
+const getInboxUrl = (lead) => {
+  const id = getInboxConversationId(lead);
+  return id ? `/crm/socialmedia/inbox?conversationId=${encodeURIComponent(String(id))}` : null;
+};
+
+const normalizeDepartments = (departments = [], activeBrand = null) => {
+  const activeBranchId =
+    activeBrand?.branchId ??
+    activeBrand?.branch?.id ??
+    activeBrand?.branch?.branchId ??
+    null;
+
+  const source = activeBranchId == null
+    ? departments
+    : departments.filter((d) => String(d.branchId ?? "") === String(activeBranchId));
+
+  const seen = new Set();
+  return source.filter((d) => {
+    const key = `${d.departmentId ?? d.id}|${String(d.departmentName || d.name || "").toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const getLeadChannelTargets = (lead, message = "", subject = "Lead Follow-up") => {
+  const options = [];
+  const platform = getLeadPlatform(lead);
+  const inboxUrl = getInboxUrl(lead);
+  const messengerUrl = getMessengerUrl(lead);
+  const phone = normalizePhone(lead?.phone);
+  const draftInboxUrl = addQueryParam(inboxUrl, "draft", message);
+  const draftText = encodeURIComponent(message || "");
+  const mailSubject = encodeURIComponent(subject || "Lead Follow-up");
+
+  if (inboxUrl) {
+    options.push({
+      key: "inbox",
+      type: "inbox",
+      label: platform === "Instagram" ? "Instagram Chat" : "Facebook Chat",
+      href: message ? draftInboxUrl : inboxUrl,
+      external: false,
+      Icon: platform === "Instagram" ? FaInstagram : FaFacebookMessenger,
+      color: platform === "Instagram" ? "text-pink-600" : "text-blue-600",
+    });
+  } else if (messengerUrl) {
+    options.push({
+      key: "messenger",
+      type: "messenger",
+      label: "Messenger",
+      href: messengerUrl,
+      external: true,
+      Icon: FaFacebookMessenger,
+      color: "text-blue-600",
+    });
+  }
+
+  if (phone) {
+    const waNum = phone.replace(/[^0-9]/g, "");
+    options.push({
+      key: "whatsapp",
+      type: "whatsapp",
+      label: "WhatsApp",
+      href: `https://wa.me/${waNum}${draftText ? `?text=${draftText}` : ""}`,
+      external: true,
+      Icon: FaWhatsapp,
+      color: "text-green-600",
+    });
+  }
+
+  if (lead?.email) {
+    options.push({
+      key: "email",
+      type: "email",
+      label: "Email",
+      href: `mailto:${lead.email}?subject=${mailSubject}&body=${draftText}`,
+      external: false,
+      Icon: FaEnvelope,
+      color: "text-indigo-600",
+    });
+  }
+
+  return options;
+};
+
+const LeadContactActions = ({ lead, compact = false, onCompose }) => {
+  const [callOpen, setCallOpen] = useState(false);
+  const ref = useRef();
+
+  const options = getLeadChannelTargets(lead);
+  const phone = normalizePhone(lead?.phone);
+
+  useEffect(() => {
+    const onOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setCallOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, []);
+
+  const copyPhone = async () => {
+    if (!phone) return;
+    try {
+      await navigator.clipboard.writeText(phone);
+    } catch { /* fallback: do nothing */ }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5" ref={ref}>
+      {/* ── Call Button with dropdown (no browser alert) ── */}
+      <div className="relative">
+        {phone ? (
+          <button
+            type="button"
+            onClick={() => setCallOpen((p) => !p)}
+            className={`inline-flex items-center gap-1 rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors ${compact ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-xs font-medium"}`}
+          >
+            <FaPhone className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+            Call
+            <FaChevronDown className={compact ? "w-2 h-2" : "w-2.5 h-2.5"} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className={`inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed ${compact ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-xs font-medium"}`}
+          >
+            <FaPhone className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+            Call
+          </button>
+        )}
+
+        {callOpen && phone && (
+          <div className="absolute left-0 top-full mt-1 w-52 rounded-xl border border-slate-200 bg-white shadow-xl z-30 p-2 space-y-1">
+            <div className="flex items-center justify-between px-2 py-1.5 bg-slate-50 rounded-lg">
+              <span className="text-xs font-semibold text-slate-700">{phone}</span>
+              <button onClick={copyPhone} className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors" title="Copy number">
+                <FaCopy className="w-3 h-3" />
+              </button>
+            </div>
+            <a
+              href={`tel:${phone}`}
+              onClick={() => setCallOpen(false)}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+            >
+              <FaPhoneAlt className="w-3 h-3 text-green-500" />
+              Open Phone App
+            </a>
+            <button
+              type="button"
+              onClick={() => { copyPhone(); setCallOpen(false); }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <FaCopy className="w-3 h-3 text-slate-400" />
+              Copy Number
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Compose Button ── */}
+      <div>
+        <button
+          type="button"
+          disabled={options.length === 0}
+          onClick={() => onCompose?.(lead)}
+          className={`inline-flex items-center gap-1 rounded-lg border transition-colors ${options.length === 0 ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed" : "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"} ${compact ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-xs font-medium"}`}
+        >
+          <FaCommentDots className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+          Compose
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // ─────────────────────────────────────────────
 // AVATAR COMPONENT
@@ -225,10 +447,6 @@ export default function Leads() {
   const users = useUsers();
   const [departments, setDepartments] = useState([]);
 
-  // ── Form → Multi-department assignment state ──────────────────────────────
-  const [assignDeptIds, setAssignDeptIds] = useState([]);
-  const [assignDeptNames, setAssignDeptNames] = useState({});
-  const [assigningDept, setAssigningDept] = useState(false);
   // ── Form → Department unified toggle state ───────────────────────────────
   const [deptSearch, setDeptSearch] = useState("");
   const [selectedDeptIds, setSelectedDeptIds] = useState([]);   // current checkbox state
@@ -239,6 +457,9 @@ export default function Leads() {
   const [remarkMap, setRemarkMap] = useState({});
   const [selectedLead, setSelectedLead] = useState(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [composeLeads, setComposeLeads] = useState([]);
+  const [bulkMessageText, setBulkMessageText] = useState("");
+  const [bulkMessageSubject, setBulkMessageSubject] = useState("Lead Follow-up");
   // Multi-user/dept assignment modal
   const [assignModalLead, setAssignModalLead] = useState(null);
   // Remark history (inline popover in table)
@@ -255,6 +476,8 @@ export default function Leads() {
   const [viewMode, setViewMode] = useState("list");
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [platformFilter, setPlatformFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -460,6 +683,11 @@ useEffect(() => {
     getDepartments().then(setDepartments).catch(() => {});
   }, []);
 
+  const branchDepartments = useMemo(
+    () => normalizeDepartments(departments, activeBrand),
+    [departments, activeBrand]
+  );
+
   // Live preview: count leads in selected form matching date range
   useEffect(() => {
     if (!filters.formId) { setFormLeadCount(null); return; }
@@ -488,7 +716,84 @@ useEffect(() => {
   // Turn off select mode completely & clear array
   const handleToggleSelectMode = () => {
     setIsSelectMode(!isSelectMode);
-    if (isSelectMode) setSelectedLeadIds([]);
+    if (isSelectMode) {
+      setSelectedLeadIds([]);
+      setComposeLeads([]);
+      setBulkMessageText("");
+    }
+  };
+
+  // Guard: don't show stale data from a previous brand during transition
+  // Allow data when dataSlug matches OR during initial load (dataSlug is catching up)
+  const slugMatches = !activeBrand?.slug || dataSlug === activeBrand?.slug;
+  const _leads = slugMatches ? leads : [];
+
+  const selectedLeads = useMemo(
+    () => _leads.filter((lead) => selectedLeadIds.includes(lead.id)),
+    [_leads, selectedLeadIds]
+  );
+
+  const openComposeModal = (leadsToCompose = []) => {
+    const uniqueLeads = [];
+    const seen = new Set();
+    leadsToCompose.forEach((lead) => {
+      if (!lead || seen.has(lead.id)) return;
+      seen.add(lead.id);
+      uniqueLeads.push(lead);
+    });
+    setComposeLeads(uniqueLeads);
+  };
+
+  const composedLeadTargets = useMemo(
+    () => composeLeads.map((lead) => ({
+      ...lead,
+      platform: getLeadPlatform(lead),
+      channels: getLeadChannelTargets(lead, bulkMessageText.trim(), bulkMessageSubject.trim() || "Lead Follow-up"),
+    })),
+    [composeLeads, bulkMessageText, bulkMessageSubject]
+  );
+
+  const composeEmails = useMemo(
+    () => [...new Set(composeLeads.map((lead) => lead.email).filter(Boolean))],
+    [composeLeads]
+  );
+
+  const composeLinksByType = useMemo(() => {
+    const groups = { inbox: [], messenger: [], whatsapp: [], email: [] };
+    composedLeadTargets.forEach((lead) => {
+      lead.channels.forEach((channel) => {
+        if (!groups[channel.type]) groups[channel.type] = [];
+        groups[channel.type].push({ ...channel, leadId: lead.id, leadName: lead.name || `Lead ${lead.id}` });
+      });
+    });
+    return groups;
+  }, [composedLeadTargets]);
+
+  const openBulkEmail = () => {
+    if (composeEmails.length === 0) {
+      Toast?.error("No selected leads have an email address.");
+      return;
+    }
+    const subject = encodeURIComponent(bulkMessageSubject.trim() || "Lead Follow-up");
+    const body = encodeURIComponent(bulkMessageText || "");
+    const bcc = encodeURIComponent(composeEmails.join(","));
+    window.location.href = `mailto:?bcc=${bcc}&subject=${subject}&body=${body}`;
+  };
+
+  const openComposeLinks = (type) => {
+    const links = composeLinksByType[type] || [];
+    if (links.length === 0) {
+      Toast?.error(`No ${type} targets available for the selected leads.`);
+      return;
+    }
+
+    links.forEach((link, index) => {
+      window.setTimeout(() => {
+        window.open(link.href, "_blank", "noopener,noreferrer");
+      }, index * 140);
+    });
+
+    Toast?.success(`Opened ${links.length} ${type === "inbox" ? "chat" : type} target(s).`);
   };
 
   /* =========================
@@ -496,20 +801,20 @@ useEffect(() => {
      ========================= */
   const getLeadDate = (l) => new Date(l.metaCreatedAt || l.syncedAt || l.createdAt);
 
-  // Guard: don't show stale data from a previous brand during transition
-  // Allow data when dataSlug matches OR during initial load (dataSlug is catching up)
-  const slugMatches = !activeBrand?.slug || dataSlug === activeBrand?.slug;
-  const _leads = slugMatches ? leads : [];
-
   const filteredLeads = _leads.filter(l => {
     // 1. Search Query
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const matches = (l.name || "").toLowerCase().includes(q) ||
                       (l.email || "").toLowerCase().includes(q) ||
-                      (l.phone || "").toLowerCase().includes(q);
+                      (l.phone || "").toLowerCase().includes(q) ||
+                      getLeadPlatform(l).toLowerCase().includes(q);
       if (!matches) return false;
     }
+    // 2. Platform
+    if (platformFilter && getLeadPlatform(l) !== platformFilter) return false;
+    // 3. Status
+    if (statusFilter && (l.status || "New") !== statusFilter) return false;
     // 2. From Date
     if (filterFromDate) {
       if (getLeadDate(l) < new Date(filterFromDate)) return false;
@@ -529,7 +834,7 @@ useEffect(() => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterFromDate, filterToDate, filters.pageId, filters.formId]);
+  }, [searchQuery, platformFilter, statusFilter, filterFromDate, filterToDate, filters.pageId, filters.formId]);
 
   /* =========================
      EXPORT TO EXCEL
@@ -655,7 +960,7 @@ useEffect(() => {
       if (toAssign.length) {
         const depts = toAssign.map(id => ({
           departmentId: id,
-          departmentName: departments.find(d => String(d.departmentId) === id)?.departmentName || "",
+          departmentName: branchDepartments.find(d => String(d.departmentId) === id)?.departmentName || "",
         }));
         const result = await assignByFormToDepartments(
           filters.formId,
@@ -742,7 +1047,7 @@ useEffect(() => {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
-            <p className="text-sm text-gray-500 mt-1">Manage and track your Facebook leads</p>
+            <p className="text-sm text-gray-500 mt-1">Manage and track social leads across connected channels</p>
           </div>
           <div className="flex items-center gap-2">
             <button 
@@ -769,36 +1074,43 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* ── Platform Breakdown Counts ── */}
-        {_leads.length > 0 && (() => {
-          const counts = {};
-          _leads.forEach(l => {
-            const p = (l.platform || "Facebook").toLowerCase();
-            counts[p] = (counts[p] || 0) + 1;
-          });
-          const PLAT_STYLE = {
-            facebook:  { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", dot: "bg-blue-500" },
-            instagram: { bg: "bg-pink-50", border: "border-pink-200", text: "text-pink-700", dot: "bg-pink-500" },
-            linkedin:  { bg: "bg-sky-50",  border: "border-sky-200",  text: "text-sky-700",  dot: "bg-sky-500"  },
-          };
-          return (
-            <div className="flex items-center gap-3 flex-wrap">
+        <div className="bg-white rounded-2xl border border-gray-100 px-4 py-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 border border-gray-200 text-gray-700 text-sm font-bold">
                 <FaUsers className="w-3.5 h-3.5" />
-                {_leads.length} Total Leads
+                {filteredLeads.length}
+                {_leads.length !== filteredLeads.length ? ` / ${_leads.length}` : ""} Leads
               </div>
-              {Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([plat, count]) => {
-                const s = PLAT_STYLE[plat] || PLAT_STYLE.facebook;
+              {Object.entries(
+                _leads.reduce((counts, lead) => {
+                  const platform = getLeadPlatform(lead);
+                  counts[platform] = (counts[platform] || 0) + 1;
+                  return counts;
+                }, {})
+              ).sort((a, b) => b[1] - a[1]).map(([platform, count]) => {
+                const style = PLATFORM_STYLE[platform] || PLATFORM_STYLE.Facebook;
                 return (
-                  <div key={plat} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${s.bg} border ${s.border} ${s.text} text-sm font-semibold`}>
-                    <span className={`w-2 h-2 rounded-full ${s.dot}`} />
-                    {plat.charAt(0).toUpperCase() + plat.slice(1)}: {count}
+                  <div key={platform} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${style.bg} border ${style.border} ${style.text} text-sm font-semibold`}>
+                    <span className={`w-2 h-2 rounded-full ${style.dot}`} />
+                    {platform}: {count}
                   </div>
                 );
               })}
             </div>
-          );
-        })()}
+
+            <div className="relative w-full max-w-md">
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search leads by name, email, phone, or platform..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 w-full transition-all"
+              />
+            </div>
+          </div>
+        </div>
 
         {/* ── Social Token Error Banner ── */}
         {socialTokenError && (
@@ -826,6 +1138,23 @@ useEffect(() => {
             value={filters.formId}
             onChange={val => reload({ formId: val })}
             disabled={!filters.pageId}
+          />
+
+          <FilterDropdown
+            label="Filter by Platform"
+            options={[...new Set(_leads.map((lead) => getLeadPlatform(lead)))].map((platform) => ({
+              label: platform,
+              value: platform,
+            }))}
+            value={platformFilter}
+            onChange={setPlatformFilter}
+          />
+
+          <FilterDropdown
+            label="Filter by Status"
+            options={LEAD_STATUS_OPTIONS.map((status) => ({ label: status, value: status }))}
+            value={statusFilter}
+            onChange={setStatusFilter}
           />
 
           {/* Sync from Meta */}
@@ -932,8 +1261,8 @@ useEffect(() => {
           </div>
 
           {/* Department checkbox grid */}
-          {departments.length === 0 ? (
-            <p className="text-xs text-gray-400 italic pl-1">No departments available.</p>
+          {branchDepartments.length === 0 ? (
+            <p className="text-xs text-gray-400 italic pl-1">No departments available for the active brand branch.</p>
           ) : (
             <div className="space-y-2">
               {/* Search */}
@@ -946,7 +1275,7 @@ useEffect(() => {
               />
               {/* Grid of toggles */}
               <div className="flex flex-wrap gap-2">
-                {departments
+                {branchDepartments
                   .filter(d => (d.departmentName || "").toLowerCase().includes(deptSearch.toLowerCase()))
                   .map(d => {
                     const id = String(d.departmentId);
@@ -1006,13 +1335,23 @@ useEffect(() => {
                 <FaFileExport className="w-3.5 h-3.5" /> Export All
               </button>
               {isSelectMode && (
-                <button 
-                  onClick={() => exportToExcel("selected")}
-                  disabled={selectedLeadIds.length === 0}
-                  className="flex items-center gap-1.5 px-3 py-1 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                   Export Selected ({selectedLeadIds.length})
-                </button>
+                <>
+                  <button 
+                    onClick={() => exportToExcel("selected")}
+                    disabled={selectedLeadIds.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Export Selected ({selectedLeadIds.length})
+                  </button>
+                  <button
+                    onClick={() => openComposeModal(selectedLeads)}
+                    disabled={selectedLeadIds.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1 text-sm text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <FaCommentDots className="w-3 h-3" />
+                    Compose & Forward ({selectedLeadIds.length})
+                  </button>
+                </>
               )}
             </div>
             
@@ -1043,16 +1382,7 @@ useEffect(() => {
             </button>
           </div>
           
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-gray-500">
-              {filteredLeads.length} leads
-            </p>
-            <div className="relative">
-              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input type="text" placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 w-60 transition-all" />
-            </div>
-          </div>
+          <div className="flex items-center gap-2" />
         </div>
 
         {/* ── Google Sheets Settings Panel ── */}
@@ -1168,7 +1498,7 @@ useEffect(() => {
                             <Avatar name={l.name || "?"} />
                             <div>
                               <p className="text-sm font-semibold text-gray-800">{l.name || "—"}</p>
-                              <p className="text-xs text-gray-400">{l.email || l.phone || l.platform || "Lead"}</p>
+                              <p className="text-xs text-gray-400">{l.formName || `${getLeadPlatform(l)} lead`}</p>
                             </div>
                           </div>
                         </td>
@@ -1209,30 +1539,9 @@ useEffect(() => {
                             {l.email && <p className="text-xs text-indigo-600 font-medium truncate max-w-[150px]">{l.email}</p>}
                             {l.phone && <p className="text-xs text-gray-500">{l.phone}</p>}
                             {!l.email && !l.phone && <span className="text-gray-300">—</span>}
-                            {(l.phone || l.email) && (
-                              <div className="flex items-center gap-1 pt-1">
-                                {l.phone && (
-                                  <>
-                                    <a href={`tel:${l.phone}`} title="Call"
-                                      className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors">
-                                      <FaPhone className="w-3 h-3" />
-                                    </a>
-                                    <a href={`https://wa.me/${l.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer" title="WhatsApp"
-                                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors">
-                                      <FaWhatsapp className="w-3 h-3" />
-                                    </a>
-                                    <a href={`sms:${l.phone}`} title="SMS"
-                                      className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
-                                      <FaSms className="w-3 h-3" />
-                                    </a>
-                                  </>
-                                )}
-                                {l.email && (
-                                  <a href={`mailto:${l.email}`} title="Email"
-                                    className="p-1.5 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 transition-colors">
-                                    <FaEnvelope className="w-3 h-3" />
-                                  </a>
-                                )}
+                            {(l.phone || getLeadChannelTargets(l).length > 0) && (
+                              <div className="pt-1">
+                                <LeadContactActions lead={l} compact onCompose={() => openComposeModal([l])} />
                               </div>
                             )}
                           </div>
@@ -1531,30 +1840,9 @@ useEffect(() => {
                       {l.phone && <p className="text-xs text-gray-500 mb-1">{l.phone}</p>}
 
                       {/* Quick action buttons */}
-                      {(l.phone || l.email) && (
+                      {(l.phone || getLeadChannelTargets(l).length > 0) && (
                         <div className="flex items-center gap-1.5 mb-2">
-                          {l.phone && (
-                            <>
-                              <a href={`tel:${l.phone}`} title="Call"
-                                className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors">
-                                <FaPhone className="w-3 h-3" />
-                              </a>
-                              <a href={`https://wa.me/${l.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer" title="WhatsApp"
-                                className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors">
-                                <FaWhatsapp className="w-3 h-3" />
-                              </a>
-                              <a href={`sms:${l.phone}`} title="SMS"
-                                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
-                                <FaSms className="w-3 h-3" />
-                              </a>
-                            </>
-                          )}
-                          {l.email && (
-                            <a href={`mailto:${l.email}`} title="Email"
-                              className="p-1.5 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 transition-colors">
-                              <FaEnvelope className="w-3 h-3" />
-                            </a>
-                          )}
+                          <LeadContactActions lead={l} compact onCompose={() => openComposeModal([l])} />
                         </div>
                       )}
 
@@ -1592,34 +1880,165 @@ useEffect(() => {
       </div>
 
       {/* ── DETAILS MODAL ── */}
+      <Modal
+        isOpen={composeLeads.length > 0}
+        onClose={() => setComposeLeads([])}
+        title={`${composeLeads.length === 1 ? "Compose Message" : "Compose & Forward"} (${composeLeads.length})`}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">Recipients</p>
+              <p className="text-sm font-semibold text-slate-800">{composeLeads.length}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">Inbox / DM</p>
+              <p className="text-sm font-semibold text-slate-800">{(composeLinksByType.inbox?.length || 0) + (composeLinksByType.messenger?.length || 0)}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">WhatsApp</p>
+              <p className="text-sm font-semibold text-slate-800">{composeLinksByType.whatsapp?.length || 0}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">Email</p>
+              <p className="text-sm font-semibold text-slate-800">{composeEmails.length}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[200px,1fr] gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Email Subject</label>
+              <input
+                type="text"
+                value={bulkMessageSubject}
+                onChange={(e) => setBulkMessageSubject(e.target.value)}
+                placeholder="Lead Follow-up"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Message</label>
+              <textarea
+                value={bulkMessageText}
+                onChange={(e) => setBulkMessageText(e.target.value)}
+                rows={4}
+                placeholder="Write once, then forward to inbox, Instagram, WhatsApp, or email."
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => openComposeLinks("inbox")}
+              disabled={(composeLinksByType.inbox?.length || 0) === 0}
+              className="px-3 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Open Inbox Chats ({composeLinksByType.inbox?.length || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => openComposeLinks("messenger")}
+              disabled={(composeLinksByType.messenger?.length || 0) === 0}
+              className="px-3 py-2 text-xs font-semibold rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Open Messenger ({composeLinksByType.messenger?.length || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => openComposeLinks("whatsapp")}
+              disabled={(composeLinksByType.whatsapp?.length || 0) === 0}
+              className="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Open WhatsApp ({composeLinksByType.whatsapp?.length || 0})
+            </button>
+            <button
+              type="button"
+              onClick={openBulkEmail}
+              disabled={composeEmails.length === 0}
+              className="px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Email BCC ({composeEmails.length})
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!bulkMessageText.trim()) return;
+                try {
+                  await navigator.clipboard.writeText(bulkMessageText.trim());
+                  Toast?.success("Message copied. Use it in the opened chat tabs.");
+                } catch {
+                  Toast?.error("Could not copy message.");
+                }
+              }}
+              disabled={!bulkMessageText.trim()}
+              className="px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Copy Message
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+              <p className="text-xs font-semibold text-slate-700">Forward Targets</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Facebook and Instagram inbox links open with the drafted message ready in the CRM inbox.</p>
+            </div>
+            <div className="max-h-80 overflow-auto divide-y divide-slate-100">
+              {composedLeadTargets.map((lead) => (
+                <div key={lead.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{lead.name || `Lead ${lead.id}`}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                        lead.platform === "Instagram" ? "bg-pink-50 text-pink-700 border-pink-200" :
+                        lead.platform === "LinkedIn" ? "bg-sky-50 text-sky-700 border-sky-200" :
+                        "bg-blue-50 text-blue-700 border-blue-200"
+                      }`}>
+                        {lead.platform}
+                      </span>
+                      {lead.phone && <span className="text-[11px] text-slate-500">{lead.phone}</span>}
+                      {lead.email && <span className="text-[11px] text-slate-500">{lead.email}</span>}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    {lead.channels.length === 0 ? (
+                      <span className="text-xs text-slate-400">No contact source</span>
+                    ) : (
+                      lead.channels.map((channel) => {
+                        const ChannelIcon = channel.Icon;
+                        return (
+                          <a
+                            key={`${lead.id}-${channel.key}`}
+                            href={channel.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            {ChannelIcon && <ChannelIcon className={`w-3 h-3 ${channel.color || ""}`} />}
+                            {channel.label}
+                          </a>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── DETAILS MODAL ── */}
       <Modal isOpen={!!selectedLead} onClose={() => setSelectedLead(null)} title="Lead Form Details" size="lg">
         <div className="space-y-5">
           {/* Quick contact actions */}
-          {selectedLead && (selectedLead.phone || selectedLead.email) && (
+          {selectedLead && (selectedLead.phone || getLeadChannelTargets(selectedLead).length > 0) && (
             <div className="flex items-center gap-2 flex-wrap p-3 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide mr-2">Quick Actions</span>
-              {selectedLead.phone && (
-                <>
-                  <a href={`tel:${selectedLead.phone}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
-                    <FaPhone className="w-3 h-3" /> Call
-                  </a>
-                  <a href={`https://wa.me/${selectedLead.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors">
-                    <FaWhatsapp className="w-3 h-3" /> WhatsApp
-                  </a>
-                  <a href={`sms:${selectedLead.phone}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
-                    <FaSms className="w-3 h-3" /> SMS
-                  </a>
-                </>
-              )}
-              {selectedLead.email && (
-                <a href={`mailto:${selectedLead.email}`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 transition-colors">
-                  <FaEnvelope className="w-3 h-3" /> Email
-                </a>
-              )}
+              <LeadContactActions lead={selectedLead} onCompose={() => openComposeModal([selectedLead])} />
             </div>
           )}
 
@@ -1659,7 +2078,7 @@ useEffect(() => {
       {assignModalLead && (
         <LeadAssignmentModal
           lead={assignModalLead}
-          departments={departments}
+          departments={branchDepartments}
           users={users}
           onClose={() => { setAssignModalLead(null); reload({}, true); }}
           hookHandlers={{
@@ -1676,7 +2095,3 @@ useEffect(() => {
     </div>
   );
 }
-
-
-
-

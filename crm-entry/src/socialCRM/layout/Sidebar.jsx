@@ -10,22 +10,31 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RadioTower,
+  Users,
   UsersRound,
 } from "lucide-react";
 import nafaLogo from "../../assets/nafa.png";
 import { useAuth } from "../../auth/AuthContext";
+import useMemberRole from "../hooks/useMemberRole";
 
+/**
+ * Each nav item can optionally declare a `module` key.
+ * When present, the item is only rendered if the current user
+ * has canRead access for that module (Owner / Admin always pass).
+ * Items without a `module` key are always visible (e.g. Dashboard).
+ */
 const navItems = [
   { label: "Dashboard", path: "/crm/socialmedia/dashboard", Icon: Home },
-  { label: "Posts / Schedule", path: "/crm/socialmedia/post/history", Icon: ClipboardList, matchPrefix: "/crm/socialmedia/post" },
-  { label: "Inbox", path: "/crm/socialmedia/inbox", Icon: Inbox },
-  { label: "Analytics", path: "/crm/socialmedia/analytics", Icon: BarChart3 },
+  { label: "Posts / Schedule", path: "/crm/socialmedia/post/history", Icon: ClipboardList, matchPrefix: "/crm/socialmedia/post", module: "posts" },
+  { label: "Inbox", path: "/crm/socialmedia/inbox", Icon: Inbox, module: "inbox" },
+  { label: "Analytics", path: "/crm/socialmedia/analytics", Icon: BarChart3, module: "analytics" },
   { section: "Leads" },
-  { label: "Leads", path: "/crm/socialmedia/leads", Icon: UsersRound },
-  { label: "Subscriptions", path: "/crm/socialmedia/facebook/pages/subscriptions", Icon: RadioTower },
-  { section: "Brands" },
-  { label: "Manage Brands", path: "/crm/socialmedia/brands", Icon: Building2 },
-  { label: "Manage Accounts", path: "/crm/socialmedia/accounts", Icon: Link2 },
+  { label: "Leads", path: "/crm/socialmedia/leads", Icon: UsersRound, module: "leads" },
+  { label: "Subscriptions", path: "/crm/socialmedia/facebook/pages/subscriptions", Icon: RadioTower, module: "leads" },
+  { section: "Settings" },
+  { label: "Brands", path: "/crm/socialmedia/brands", Icon: Building2, module: "brand_settings" },
+  { label: "Social Channels", path: "/crm/socialmedia/accounts", Icon: Link2, module: "social_accounts" },
+  { label: "Team Members", path: "/crm/socialmedia/brands/members", Icon: Users, module: "members" },
 ];
 
 export default function Sidebar({
@@ -37,6 +46,29 @@ export default function Sidebar({
 }) {
   const location = useLocation();
   const { logout } = useAuth();
+  const { canAccess } = useMemberRole();
+
+  // Build a filtered list — hide items the user cannot access.
+  // Section headers are kept only if at least one item after them is visible.
+  const visibleItems = [];
+  let pendingSection = null;
+
+  for (const item of navItems) {
+    if (item.section) {
+      pendingSection = item;
+      continue;
+    }
+
+    const allowed = !item.module || canAccess(item.module);
+    if (!allowed) continue;
+
+    // Flush the pending section header before the first visible child
+    if (pendingSection) {
+      visibleItems.push(pendingSection);
+      pendingSection = null;
+    }
+    visibleItems.push(item);
+  }
 
   const sidebarClassName = [
     "socialcrm-sidebar",
@@ -82,7 +114,7 @@ export default function Sidebar({
         </div>
 
         <nav className="socialcrm-sidebar__nav">
-          {navItems.map((item, i) => {
+          {visibleItems.map((item, i) => {
             if (item.section) {
               if (collapsed) return null;
               return (

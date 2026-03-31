@@ -9,7 +9,10 @@ export function useInboxHub({
   brandId,
   conversationId,
   onNewMessage,
+  onMessageUpdated,
+  onMessageDeleted,
   onConversationUpdated,
+  onConversationDeleted,
   onMessageRead,
   onTyping,
   onBrandSwitched,
@@ -22,7 +25,10 @@ export function useInboxHub({
     connRef.current = conn;
 
     if (onNewMessage)          conn.on("NewMessage",          onNewMessage);
+    if (onMessageUpdated)      conn.on("MessageUpdated",      onMessageUpdated);
+    if (onMessageDeleted)      conn.on("MessageDeleted",      onMessageDeleted);
     if (onConversationUpdated) conn.on("ConversationUpdated", onConversationUpdated);
+    if (onConversationDeleted) conn.on("ConversationDeleted", onConversationDeleted);
     if (onMessageRead)         conn.on("MessageRead",         onMessageRead);
     if (onTyping)              conn.on("TypingIndicator",     onTyping);
     if (onBrandSwitched)       conn.on("BrandSwitched",       onBrandSwitched);

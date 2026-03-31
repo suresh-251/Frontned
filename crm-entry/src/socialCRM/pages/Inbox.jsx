@@ -3,21 +3,25 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useBrand } from "../context/BrandContext";
 import { appCache } from "../utils/cache";
+import { useLocation } from "react-router-dom";
 
 const inboxCacheKey = (slug) => `ph_inbox_${slug ?? "none"}`;
 import {
   getConversations,
   getMessages,
   sendMessage,
+  updateMessage,
+  deleteMessage,
   markConversationRead,
   updateConversationStatus,
+  deleteConversation,
   syncInbox,
 } from "../api/inbox.api";
 import { useInboxHub } from "../hooks/useInboxHub";
 import {
   FaPaperPlane, FaPaperclip, FaSearch, FaChevronDown, FaCheck,
   FaEllipsisV, FaArchive, FaTimes, FaRedo, FaSpinner, FaInbox,
-  FaFacebook, FaInstagram, FaLinkedin, FaSmile, FaReply,
+  FaFacebook, FaInstagram, FaLinkedin, FaSmile, FaReply, FaTrash, FaEdit,
 } from "react-icons/fa";
 
 // ── Platform config ───────────────────────────────────────────────────────
@@ -96,7 +100,7 @@ function TagBadge({ tag }) {
   return <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full capitalize ${map[tag] ?? "bg-gray-100 text-gray-500"}`}>{tag}</span>;
 }
 
-function ConvoMenu({ convo, onStatusChange }) {
+function ConvoMenu({ convo, onStatusChange, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -125,6 +129,10 @@ function ConvoMenu({ convo, onStatusChange }) {
             className="flex items-center gap-2 w-full px-3 py-2 text-gray-700 hover:bg-gray-50 transition">
             <FaArchive size={10} className="text-gray-400" /> Archive
           </button>
+          <button onClick={() => { onDelete?.(convo.id); setOpen(false); }}
+            className="flex items-center gap-2 w-full px-3 py-2 text-red-600 hover:bg-red-50 transition">
+            <FaTrash size={10} className="text-red-500" /> Delete
+          </button>
         </div>
       )}
     </div>
@@ -134,6 +142,10 @@ function ConvoMenu({ convo, onStatusChange }) {
 // ── Main component ────────────────────────────────────────────────────────
 export default function Inbox() {
   const { activeBrand } = useBrand();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const requestedConversationId = searchParams.get("conversationId");
+  const requestedDraft = searchParams.get("draft") || "";
 
   const [convos, setConvos]           = useState([]);
   const [dataSlug, setDataSlug]       = useState(activeBrand?.slug ?? null);
@@ -160,6 +172,11 @@ export default function Inbox() {
   const [replyTo, setReplyTo]         = useState(null); // { id, senderName, messageText }
   const [attachment, setAttachment]   = useState(null);  // File object
   const [attachPreview, setAttachPreview] = useState(null); // data URL for images
+  
+  // Edit/Delete message state
+  const [editingMsg, setEditingMsg]   = useState(null); // { id, conversationId, messageText }
+  const [deletingMsg, setDeletingMsg] = useState(null); // { id, conversationId }
+  const [msgActionLoading, setMsgActionLoading] = useState(false);
 
   const filterRef   = useRef(null);
   const bottomRef   = useRef(null);
@@ -299,6 +316,27 @@ export default function Inbox() {
     return () => { cancelled = true; };
   }, [activeBrand?.slug, fetchMessages]);
 
+  // Deep-link support: /inbox?conversationId=123
+  useEffect(() => {
+    if (!requestedConversationId || !Array.isArray(convos) || convos.length === 0) return;
+    const matched = convos.find((c) => String(c.id) === String(requestedConversationId));
+    if (!matched) return;
+    if (active && String(active.id) === String(matched.id)) return;
+
+    setActive(matched);
+    setLoadingMsgs(true);
+    fetchMessages(matched.id, 1)
+      .finally(() => setLoadingMsgs(false));
+    markConversationRead(matched.id).catch(() => {});
+  }, [requestedConversationId, convos, active, fetchMessages]);
+
+  useEffect(() => {
+    if (!requestedDraft || !requestedConversationId || !active) return;
+    if (String(active.id) !== String(requestedConversationId)) return;
+    setReply(requestedDraft);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [requestedDraft, requestedConversationId, active]);
+
   // ── Auto-sync: if no conversations exist after initial load, sync once ───
   const autoSynced = useRef(false);
   useEffect(() => {
@@ -328,7 +366,14 @@ export default function Inbox() {
   const handleNewMessage = useCallback((msg) => {
     setMessages((prev) => ({
       ...prev,
-      [msg.conversationId]: [...(prev[msg.conversationId] ?? []), msg],
+      [msg.conversationId]: (() => {
+        const current = prev[msg.conversationId] ?? [];
+        const exists = current.some((item) =>
+          item.id === msg.id ||
+          (item.externalMessageId && msg.externalMessageId && item.externalMessageId === msg.externalMessageId)
+        );
+        return exists ? current : [...current, msg];
+      })(),
     }));
     setConvos((prev) =>
       prev.map((c) =>
@@ -344,11 +389,42 @@ export default function Inbox() {
     );
   }, []);
 
+  const handleMessageUpdated = useCallback((msg) => {
+    setMessages((prev) => ({
+      ...prev,
+      [msg.conversationId]: (prev[msg.conversationId] ?? []).map((item) =>
+        item.id === msg.id ? { ...item, ...msg } : item
+      ),
+    }));
+  }, []);
+
+  const handleMessageDeleted = useCallback((conversationId, messageId) => {
+    setMessages((prev) => ({
+      ...prev,
+      [conversationId]: (prev[conversationId] ?? []).filter((item) => item.id !== messageId),
+    }));
+  }, []);
+
   const handleConversationUpdated = useCallback((conv) => {
     setConvos((prev) => {
       const exists = prev.some((c) => c.id === conv.id);
       return exists ? prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c)) : [conv, ...prev];
     });
+  }, []);
+
+  const handleConversationDeleted = useCallback((conversationId) => {
+    setConvos((prev) => prev.filter((item) => item.id !== conversationId));
+    setMessages((prev) => {
+      const next = { ...prev };
+      delete next[conversationId];
+      return next;
+    });
+    setMsgMeta((prev) => {
+      const next = { ...prev };
+      delete next[conversationId];
+      return next;
+    });
+    setActive((current) => (current?.id === conversationId ? null : current));
   }, []);
 
   const handleMessageRead = useCallback((conversationId) => {
@@ -358,7 +434,10 @@ export default function Inbox() {
   const { joinConversation, leaveConversation } = useInboxHub({
     brandId: activeBrand?.id,
     onNewMessage: handleNewMessage,
+    onMessageUpdated: handleMessageUpdated,
+    onMessageDeleted: handleMessageDeleted,
     onConversationUpdated: handleConversationUpdated,
+    onConversationDeleted: handleConversationDeleted,
     onMessageRead: handleMessageRead,
     onConnected: setHubStatus,
   });
@@ -429,16 +508,24 @@ export default function Inbox() {
       timestamp: new Date().toISOString(),
       attachments: attachmentUrl ? [{ id: Date.now(), fileType: "image", fileUrl: attachmentUrl }] : [],
     };
-    setMessages((prev) => ({ ...prev, [active.id]: [...(prev[active.id] ?? []), optimistic] }));
     setConvos((prev) => prev.map((c) => (c.id === active.id ? { ...c, lastMessage: text } : c)));
 
     try {
       const saved = await sendMessage(active.id, { messageText: quotedText, attachmentUrl });
       setMessages((prev) => ({
         ...prev,
-        [active.id]: (prev[active.id] ?? []).map((m) => (m.id === optimistic.id ? saved : m)),
+        [active.id]: (() => {
+          const current = prev[active.id] ?? [];
+          const exists = current.some((item) =>
+            item.id === saved.id ||
+            (item.externalMessageId && saved.externalMessageId && item.externalMessageId === saved.externalMessageId)
+          );
+          return exists ? current : [...current, saved];
+        })(),
       }));
-    } catch { /* keep optimistic */ }
+    } catch {
+      setMessages((prev) => ({ ...prev, [active.id]: [...(prev[active.id] ?? []), optimistic] }));
+    }
     finally { setSending(false); }
   };
 
@@ -474,6 +561,64 @@ export default function Inbox() {
   const handleStatusChange = async (id, status) => {
     setConvos((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));
     try { await updateConversationStatus(id, status); } catch { /* offline */ }
+  };
+
+  // ── Edit message ─────────────────────────────────────────────────────
+  const handleEditMessage = async () => {
+    if (!editingMsg || msgActionLoading) return;
+    setMsgActionLoading(true);
+    try {
+      const updated = await updateMessage(editingMsg.conversationId, editingMsg.id, {
+        messageText: editingMsg.messageText,
+      });
+      // Update local state
+      setMessages((prev) => ({
+        ...prev,
+        [editingMsg.conversationId]: (prev[editingMsg.conversationId] ?? []).map((m) =>
+          m.id === editingMsg.id ? { ...m, ...updated, edited: true } : m
+        ),
+      }));
+      setEditingMsg(null);
+    } catch (err) {
+      console.error("Failed to update message:", err);
+    } finally {
+      setMsgActionLoading(false);
+    }
+  };
+
+  // ── Delete message ───────────────────────────────────────────────────
+  const handleDeleteMessage = async () => {
+    if (!deletingMsg || msgActionLoading) return;
+    setMsgActionLoading(true);
+    try {
+      await deleteMessage(deletingMsg.conversationId, deletingMsg.id);
+      // Remove from local state
+      setMessages((prev) => ({
+        ...prev,
+        [deletingMsg.conversationId]: (prev[deletingMsg.conversationId] ?? []).filter(
+          (m) => m.id !== deletingMsg.id
+        ),
+      }));
+      setDeletingMsg(null);
+    } catch (err) {
+      console.error("Failed to delete message:", err);
+    } finally {
+      setMsgActionLoading(false);
+    }
+  };
+
+  // ── Delete conversation ──────────────────────────────────────────────
+  const handleDeleteConversation = async (convoId) => {
+    try {
+      await deleteConversation(convoId);
+      setConvos((prev) => prev.filter((c) => c.id !== convoId));
+      if (active?.id === convoId) {
+        setActive(null);
+        setMessages((prev) => { const n = { ...prev }; delete n[convoId]; return n; });
+      }
+    } catch (err) {
+      console.error("Failed to delete conversation:", err);
+    }
   };
 
   // ── Filter ────────────────────────────────────────────────────────────
@@ -630,7 +775,7 @@ export default function Inbox() {
                             {c.unreadCount}
                           </span>
                         )}
-                        <ConvoMenu convo={c} onStatusChange={handleStatusChange} />
+                          <ConvoMenu convo={c} onStatusChange={handleStatusChange} onDelete={handleDeleteConversation} />
                       </div>
                     </div>
 
@@ -788,24 +933,45 @@ export default function Inbox() {
                           }`
                     }`}>
                       <p className="whitespace-pre-wrap">{msg.messageText}</p>
-                      <p className={`text-[10px] mt-1 ${isMe ? "text-blue-200 text-right" : "text-gray-400"}`}>
+                      <p className={`text-[10px] mt-1 flex items-center gap-1 ${isMe ? "text-blue-200 justify-end" : "text-gray-400"}`}>
                         {fmtFull(msg.timestamp)}
+                        {msg.edited && <span className="italic">(edited)</span>}
                         {isMe && msg.status === "Read"      && " ✓✓"}
                         {isMe && msg.status === "Delivered" && " ✓"}
                       </p>
                     </div>
 
-                    {/* Reply button — appears on hover */}
-                    <button
-                      onClick={() => {
-                        setReplyTo({ id: msg.id, senderName: msg.senderName ?? "User", messageText: msg.messageText });
-                        textareaRef.current?.focus();
-                      }}
-                      className={`absolute ${isMe ? "-left-8" : "-right-8"} top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm text-gray-400 hover:text-blue-600 hover:border-blue-300 opacity-0 group-hover:opacity-100 transition-all`}
-                      title="Reply"
-                    >
-                      <FaReply size={10} />
-                    </button>
+                    {/* Action buttons — appears on hover */}
+                    <div className={`absolute ${isMe ? "-left-20" : "-right-20"} top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all`}>
+                      <button
+                        onClick={() => {
+                          setReplyTo({ id: msg.id, senderName: msg.senderName ?? "User", messageText: msg.messageText });
+                          textareaRef.current?.focus();
+                        }}
+                        className="w-6 h-6 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm text-gray-400 hover:text-blue-600 hover:border-blue-300 transition-all"
+                        title="Reply"
+                      >
+                        <FaReply size={10} />
+                      </button>
+                      {isMe && (
+                        <>
+                          <button
+                            onClick={() => setEditingMsg({ id: msg.id, conversationId: active.id, messageText: msg.messageText })}
+                            className="w-6 h-6 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm text-gray-400 hover:text-amber-600 hover:border-amber-300 transition-all"
+                            title="Edit message"
+                          >
+                            <FaEdit size={10} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingMsg({ id: msg.id, conversationId: active.id })}
+                            className="w-6 h-6 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm text-gray-400 hover:text-red-600 hover:border-red-300 transition-all"
+                            title="Delete message"
+                          >
+                            <FaTrash size={10} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -910,6 +1076,81 @@ export default function Inbox() {
               <FaInbox size={24} className="text-gray-300" />
             </div>
             <p className="text-sm font-medium text-gray-500">Select a conversation to start messaging</p>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Message Modal */}
+      {editingMsg && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setEditingMsg(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-200">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <FaEdit className="text-amber-500" /> Edit Message
+              </h3>
+            </div>
+            <div className="p-5">
+              <textarea
+                value={editingMsg.messageText}
+                onChange={(e) => setEditingMsg({ ...editingMsg, messageText: e.target.value })}
+                rows={4}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                autoFocus
+              />
+              <p className="text-[10px] text-amber-600 mt-2 flex items-center gap-1">
+                ⚠️ This will update the message on the platform (if supported)
+              </p>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex gap-2 justify-end">
+              <button
+                onClick={() => setEditingMsg(null)}
+                className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditMessage}
+                disabled={msgActionLoading || !editingMsg.messageText.trim()}
+                className="px-4 py-2 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
+              >
+                {msgActionLoading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Message Modal */}
+      {deletingMsg && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setDeletingMsg(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FaTrash className="text-red-500" size={20} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Message?</h3>
+              <p className="text-sm text-gray-500 mb-1">
+                This will delete the message from your inbox.
+              </p>
+              <p className="text-[10px] text-red-500">
+                ⚠️ If supported, this will also delete on the platform (Facebook/Instagram)
+              </p>
+            </div>
+            <div className="px-6 pb-6 flex gap-2">
+              <button
+                onClick={() => setDeletingMsg(null)}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteMessage}
+                disabled={msgActionLoading}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:opacity-50"
+              >
+                {msgActionLoading ? "Deleting..." : "Delete"}
+              </button>
+            </div>
           </div>
         </div>
       )}

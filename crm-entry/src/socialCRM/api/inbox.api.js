@@ -15,6 +15,12 @@ export const getMessages = (conversationId, params = {}) =>
 export const sendMessage = (conversationId, payload) =>
   api.post(`/inbox/conversations/${conversationId}/messages`, payload).then((r) => r.data);
 
+export const updateMessage = (conversationId, messageId, payload) =>
+  api.put(`/inbox/conversations/${conversationId}/messages/${messageId}`, payload).then((r) => r.data);
+
+export const deleteMessage = (conversationId, messageId) =>
+  api.delete(`/inbox/conversations/${conversationId}/messages/${messageId}`).then((r) => r.data);
+
 export const markConversationRead = (conversationId) =>
   api.patch(`/inbox/conversations/${conversationId}/read`);
 
@@ -23,6 +29,9 @@ export const assignConversation = (conversationId, userId, userName) =>
 
 export const updateConversationStatus = (conversationId, status) =>
   api.patch(`/inbox/conversations/${conversationId}/status`, { status }).then((r) => r.data);
+
+export const deleteConversation = (conversationId) =>
+  api.delete(`/inbox/conversations/${conversationId}`).then((r) => r.data);
 
 // ── Sync: pull existing conversations from Facebook/Instagram Graph API ───
 export const syncInbox = () =>
